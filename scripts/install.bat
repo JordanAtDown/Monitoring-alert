@@ -5,12 +5,27 @@ setlocal EnableDelayedExpansion
 ::  install.bat — Compile, installe et démarre MonitoringAlert
 ::
 ::  Usage :
-::    install.bat                            DB par défaut (ProgramData)
-::    install.bat "D:\Backup\temps.db"       DB personnalisée
+::    install.bat [chemin_db] [dossier_installation]
 ::
-::  Après installation, tous les fichiers sont dans :
-::    C:\Program Files\MonitoringAlert\      — executable
-::    C:\ProgramData\MonitoringAlert\        — config.toml, DB, scripts
+::  Exemples :
+::    install.bat
+::      → exe dans C:\Program Files\MonitoringAlert
+::      → DB  dans C:\ProgramData\MonitoringAlert\temperatures.db
+::
+::    install.bat "D:\Backup\temps.db"
+::      → exe dans C:\Program Files\MonitoringAlert
+::      → DB  dans D:\Backup\temps.db
+::
+::    install.bat "" "D:\Apps\MonitoringAlert"
+::      → exe dans D:\Apps\MonitoringAlert
+::      → DB  dans C:\ProgramData\MonitoringAlert\temperatures.db
+::
+::    install.bat "D:\Backup\temps.db" "D:\Apps\MonitoringAlert"
+::      → exe dans D:\Apps\MonitoringAlert
+::      → DB  dans D:\Backup\temps.db
+::
+::  Après installation, tous les fichiers de gestion sont dans :
+::    C:\ProgramData\MonitoringAlert\
 :: ============================================================
 
 :: --- Vérification des droits admin ---
@@ -20,13 +35,36 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
+:: --- Chemins par défaut ---
+set "DEFAULT_INSTALL_DIR=C:\Program Files\MonitoringAlert"
 set "DATA_DIR=C:\ProgramData\MonitoringAlert"
 set "EXE_NAME=monitoring-alert.exe"
 set "TARGET=x86_64-pc-windows-msvc"
 
 :: Récupérer le dossier contenant ce script (source des .bat)
 set "SCRIPT_DIR=%~dp0"
+
+:: Chemin DB : %1 si fourni et non vide
+if not "%~1"=="" (
+    set "CUSTOM_DB=%~1"
+) else (
+    set "CUSTOM_DB="
+)
+
+:: Dossier d'installation : %2 si fourni et non vide, sinon défaut
+if not "%~2"=="" (
+    set "INSTALL_DIR=%~2"
+) else (
+    set "INSTALL_DIR=%DEFAULT_INSTALL_DIR%"
+)
+
+echo  Dossier d'installation : %INSTALL_DIR%
+if not "!CUSTOM_DB!"=="" (
+    echo  Chemin DB personnalise : !CUSTOM_DB!
+) else (
+    echo  Chemin DB             : %DATA_DIR%\temperatures.db (defaut)
+)
+echo.
 
 :: --- 1. Build ---
 echo [1/6] Compilation release...
@@ -49,27 +87,25 @@ if %errorLevel% neq 0 (
 echo [3/6] Creation du dossier de donnees "%DATA_DIR%"...
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
-:: --- 4. Copie des scripts de gestion dans ProgramData ---
-echo [4/6] Copie des scripts de gestion dans "%DATA_DIR%"...
-copy /Y "%SCRIPT_DIR%install.bat"   "%DATA_DIR%\install.bat"   >nul
-copy /Y "%SCRIPT_DIR%uninstall.bat" "%DATA_DIR%\uninstall.bat" >nul
-copy /Y "%SCRIPT_DIR%update.bat"    "%DATA_DIR%\update.bat"    >nul
-echo        Scripts disponibles dans %DATA_DIR%
+:: --- 4. Enregistrement du chemin d'installation ---
+echo [4/6] Enregistrement du chemin d'installation...
+echo %INSTALL_DIR%> "%DATA_DIR%\install_path.txt"
+echo        Chemin enregistre dans %DATA_DIR%\install_path.txt
 
-:: --- 5. Configuration du chemin DB ---
-if not "%~1"=="" (
-    echo [5/6] Ecriture de config.toml avec le chemin DB personnalise...
+:: --- 5. Configuration du chemin DB et copie des scripts ---
+echo [5/6] Configuration et copie des scripts de gestion...
+if not "!CUSTOM_DB!"=="" (
     powershell -NoProfile -Command ^
-        "$p = '%~1' -replace '\\', '\\\\'; " ^
+        "$p = '!CUSTOM_DB!' -replace '\\', '\\\\'; " ^
         "[System.IO.File]::WriteAllText('%DATA_DIR%\config.toml', \"db_path = \`\"`$p\`\"\`n\")"
     if %errorLevel% neq 0 (
         echo [ERREUR] Impossible d'ecrire config.toml.
         exit /b 1
     )
-    echo        DB : %~1
-) else (
-    echo [5/6] Aucun chemin DB personnalise -- DB par defaut : %DATA_DIR%\temperatures.db
 )
+copy /Y "%SCRIPT_DIR%install.bat"   "%DATA_DIR%\install.bat"   >nul
+copy /Y "%SCRIPT_DIR%uninstall.bat" "%DATA_DIR%\uninstall.bat" >nul
+copy /Y "%SCRIPT_DIR%update.bat"    "%DATA_DIR%\update.bat"    >nul
 
 :: --- 6. Enregistrement et demarrage du service ---
 echo [6/6] Enregistrement du service Windows...
@@ -88,11 +124,10 @@ echo.
 echo Installation terminee. Le service MonitoringAlert est actif.
 echo.
 echo  Fichiers installes :
-echo    Executable : %INSTALL_DIR%\%EXE_NAME%
-echo    Donnees    : %DATA_DIR%\
-echo      - config.toml   (chemin DB)
-echo      - temperatures.db (creee au 1er demarrage du service)
-echo      - install.bat / uninstall.bat / update.bat
+echo    Executable    : %INSTALL_DIR%\%EXE_NAME%
+echo    Donnees       : %DATA_DIR%\
+echo      config.toml, temperatures.db, install_path.txt
+echo      install.bat, uninstall.bat, update.bat
 echo.
 echo  Verification : sc query MonitoringAlert
 echo              ou services.msc
