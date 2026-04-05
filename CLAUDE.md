@@ -155,6 +155,21 @@ Le workflow `.github/workflows/build.yml` se déclenche sur :
 
 ---
 
+## Documentation
+
+**À chaque commit, vérifier que la documentation est à jour.**
+
+| Fichier | Mettre à jour si… |
+|---|---|
+| `monitoring-alert/README.md` | Changement de comportement visible (install, config, CLI, rapport) |
+| `scripts/config.toml` | Ajout ou suppression d'une clé de configuration |
+| `CHANGELOG.md` | Avant chaque release (toujours) |
+
+> Un commit `feat` ou `fix` qui modifie le comportement visible doit être accompagné
+> d'un commit `docs` (ou inclure la mise à jour dans le même commit si elle est mineure).
+
+---
+
 ## Versioning
 
 - Suivre [SemVer](https://semver.org/) : `MAJOR.MINOR.PATCH`
