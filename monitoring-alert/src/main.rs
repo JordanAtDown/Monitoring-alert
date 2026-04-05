@@ -5,6 +5,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 mod collector;
+mod config;
 mod db;
 mod report;
 mod sensors;
@@ -32,6 +33,10 @@ fn handle_service_main(args: Vec<std::ffi::OsString>) {
     about = "Moniteur de température long terme — service Windows"
 )]
 struct Cli {
+    /// Chemin vers la base de données (priorité sur config.toml)
+    #[arg(long, global = true)]
+    db: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -71,28 +76,23 @@ enum ServiceAction {
     Stop,
 }
 
-fn default_db_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("temperatures.db")
-}
-
 fn run_cli() -> Result<()> {
     let cli = Cli::parse();
+    let db_path = cli.db.unwrap_or_else(|| config::AppConfig::load().db_path);
 
     match cli.command {
         Commands::Collect => {
-            let conn = db::init_db(&default_db_path())?;
+            let conn = db::init_db(&db_path)?;
             collector::collect_and_store(&conn)?;
         }
         Commands::Watch { interval } => {
             let stop = Arc::new(AtomicBool::new(false));
             let stop_ctrlc = Arc::clone(&stop);
             ctrlc_handler(stop_ctrlc);
-            collector::watch(&default_db_path(), interval, stop)?;
+            collector::watch(&db_path, interval, stop)?;
         }
         Commands::Report { output } => {
-            let conn = db::init_db(&default_db_path())?;
+            let conn = db::init_db(&db_path)?;
             report::generate_report(&conn, output.as_deref())?;
         }
         Commands::Service { action } => match action {

@@ -38,7 +38,6 @@ mod collector_tests {
 #[cfg(test)]
 mod db_tests {
     use crate::db;
-    use std::path::Path;
 
     fn in_memory_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory DB");
@@ -78,11 +77,9 @@ mod db_tests {
     #[test]
     fn insert_reading_and_query_sensors() {
         let conn = in_memory_db();
-        let snap_id =
-            db::insert_snapshot(&conn, "2024-01-01T12:00:00", Some(5.0), None, "idle")
-                .expect("insert snapshot");
-        db::insert_reading(&conn, snap_id, "AMDCPU", "CPU Package", 42.5)
-            .expect("insert reading");
+        let snap_id = db::insert_snapshot(&conn, "2024-01-01T12:00:00", Some(5.0), None, "idle")
+            .expect("insert snapshot");
+        db::insert_reading(&conn, snap_id, "AMDCPU", "CPU Package", 42.5).expect("insert reading");
 
         let sensors = db::get_distinct_sensors(&conn).expect("sensors");
         assert_eq!(sensors.len(), 1);
@@ -148,9 +145,8 @@ mod report_tests {
     #[test]
     fn report_with_data_does_not_panic() {
         let conn = in_memory_conn();
-        let snap =
-            db::insert_snapshot(&conn, "2024-01-01T00:00:00", Some(5.0), None, "idle")
-                .expect("insert");
+        let snap = db::insert_snapshot(&conn, "2024-01-01T00:00:00", Some(5.0), None, "idle")
+            .expect("insert");
         db::insert_reading(&conn, snap, "AMDCPU", "CPU Package", 38.0).expect("reading");
         report::generate_report(&conn, None).expect("report with data");
     }

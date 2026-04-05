@@ -1,15 +1,17 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
+#[cfg(windows)]
 pub const SERVICE_NAME: &str = "MonitoringAlert";
+#[cfg(windows)]
 pub const SERVICE_DISPLAY_NAME: &str = "Monitoring Alert - Temperature Monitor";
+#[cfg(windows)]
 pub const SERVICE_DESCRIPTION: &str =
     "Collecte les températures système toutes les 5 minutes via LibreHardwareMonitor";
-pub const SERVICE_DB_PATH: &str = r"C:\ProgramData\MonitoringAlert\temperatures.db";
 
 #[cfg(windows)]
 pub mod windows {
     use super::*;
-    use anyhow::bail;
+    use anyhow::{bail, Context};
     use std::ffi::OsString;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,7 +48,10 @@ pub mod windows {
         };
 
         let service = manager
-            .create_service(&service_info, ServiceAccess::CHANGE_CONFIG | ServiceAccess::START)
+            .create_service(
+                &service_info,
+                ServiceAccess::CHANGE_CONFIG | ServiceAccess::START,
+            )
             .context("Failed to create service")?;
 
         // Set description
@@ -79,24 +84,22 @@ pub mod windows {
             .update_failure_actions(failure_actions)
             .context("Failed to set failure/recovery actions")?;
 
-        println!(
-            "Service '{}' installed successfully.",
-            SERVICE_DISPLAY_NAME
-        );
+        println!("Service '{}' installed successfully.", SERVICE_DISPLAY_NAME);
         println!("Run 'monitoring-alert service start' to start it.");
         Ok(())
     }
 
     pub fn uninstall() -> Result<()> {
-        let manager =
-            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
-                .context("Failed to open Service Manager")?;
+        let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+            .context("Failed to open Service Manager")?;
         let service = manager
             .open_service(SERVICE_NAME, ServiceAccess::DELETE | ServiceAccess::STOP)
             .context("Failed to open service (is it installed?)")?;
 
         // Stop it first if running
-        let status = service.query_status().context("Failed to query service status")?;
+        let status = service
+            .query_status()
+            .context("Failed to query service status")?;
         if status.current_state != ServiceState::Stopped {
             service
                 .stop()
@@ -110,9 +113,8 @@ pub mod windows {
     }
 
     pub fn start() -> Result<()> {
-        let manager =
-            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
-                .context("Failed to open Service Manager")?;
+        let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+            .context("Failed to open Service Manager")?;
         let service = manager
             .open_service(SERVICE_NAME, ServiceAccess::START)
             .context("Failed to open service")?;
@@ -124,9 +126,8 @@ pub mod windows {
     }
 
     pub fn stop() -> Result<()> {
-        let manager =
-            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
-                .context("Failed to open Service Manager")?;
+        let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+            .context("Failed to open Service Manager")?;
         let service = manager
             .open_service(SERVICE_NAME, ServiceAccess::STOP)
             .context("Failed to open service")?;
@@ -154,9 +155,8 @@ pub mod windows {
             }
         };
 
-        let status_handle =
-            service_control_handler::register(SERVICE_NAME, event_handler)
-                .context("Failed to register service control handler")?;
+        let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)
+            .context("Failed to register service control handler")?;
 
         // Report Running
         status_handle
@@ -172,8 +172,7 @@ pub mod windows {
             })
             .context("Failed to set service status Running")?;
 
-        // Ensure DB directory exists
-        let db_path = PathBuf::from(SERVICE_DB_PATH);
+        let db_path = crate::config::AppConfig::load().db_path;
 
         let result = crate::collector::watch(&db_path, 300, stop_flag);
 

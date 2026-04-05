@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 pub struct TemperatureReading {
     pub hardware: String,
@@ -12,6 +12,7 @@ pub struct SnapshotData {
     pub gpu_load: Option<f64>,
 }
 
+#[cfg(windows)]
 fn extract_hardware(parent: &str) -> String {
     parent
         .split('/')
@@ -23,6 +24,7 @@ fn extract_hardware(parent: &str) -> String {
         .to_uppercase()
 }
 
+#[cfg(windows)]
 fn is_gpu_hardware(hardware_type: &str) -> bool {
     let hw = hardware_type.to_uppercase();
     hw.contains("GPU") || hw.contains("ATI") || hw.contains("NVIDIA") || hw.contains("AMD")
@@ -30,6 +32,7 @@ fn is_gpu_hardware(hardware_type: &str) -> bool {
 
 #[cfg(windows)]
 pub fn read_sensors() -> Result<SnapshotData> {
+    use anyhow::Context;
     use serde::Deserialize;
     use wmi::{COMLibrary, WMIConnection};
 
