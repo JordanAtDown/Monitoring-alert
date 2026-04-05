@@ -67,30 +67,29 @@ feat: many things at once
 
 ---
 
-## Branches
+## Branche de travail
 
-| Branche | Usage |
+**Toujours travailler sur `main`.** Ce projet n'utilise pas de branches de
+fonctionnalité ni de Pull Requests.
+
+| Règle | Détail |
 |---|---|
-| `main` | Code stable, toujours buildable et testé |
-| `feat/<nom>` | Nouvelle fonctionnalité |
-| `fix/<nom>` | Correction de bug |
-| `chore/<nom>` | Tâches diverses (CI, deps, outils) |
-
-- Créer une branche depuis `main`
-- Ouvrir une Pull Request pour merger sur `main`
-- Squash ou rebase avant de merger pour garder un historique propre
+| Branche unique | `main` — tout le travail se fait ici |
+| Push direct | `git push origin main` après chaque commit |
+| Jamais de branche intermédiaire | Pas de `feat/*`, `fix/*`, ni PR |
 
 ---
 
 ## Workflow de développement
 
 ```
-1. git checkout main && git pull origin main
-2. git checkout -b feat/ma-fonctionnalite
-3. Développer en commits atomiques
-4. git push -u origin feat/ma-fonctionnalite
-5. Ouvrir une Pull Request → revue → merge
+1. git pull origin main              — synchroniser avant de commencer
+2. Développer en commits atomiques
+3. git push -u origin main           — pousser immédiatement sur main
 ```
+
+> Claude doit systématiquement pousser sur `main` et uniquement sur `main`,
+> sans créer de branche intermédiaire ni de Pull Request.
 
 ---
 
