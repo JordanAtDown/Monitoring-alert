@@ -17,4 +17,3 @@ Thumbs.db
 
 # Reports
 *.txt
-!monitoring-alert/README.md
