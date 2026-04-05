@@ -9,8 +9,6 @@ poussière, une pâte thermique dégradée ou un ventilateur défaillant.
 
 | Logiciel | Version minimale | Notes |
 |---|---|---|
-| Rust | 1.75+ | `rustup target add x86_64-pc-windows-msvc` |
-| Visual Studio Build Tools | 2022 | Toolchain MSVC |
 | LibreHardwareMonitor | dernière version | WMI activé (voir ci-dessous) |
 
 ### Activer le support WMI dans LibreHardwareMonitor
@@ -21,72 +19,98 @@ poussière, une pâte thermique dégradée ou un ventilateur défaillant.
 
 ---
 
-## Compilation
+## Installation
 
-```powershell
-# Mode debug
-cargo build
+### 1. Télécharger la dernière release
 
-# Mode release (production)
-cargo build --release --target x86_64-pc-windows-msvc
+Télécharger l'archive depuis la page [Releases](https://github.com/jordanatdown/monitoring-alert/releases)
+et extraire le contenu dans un dossier temporaire :
+
+```
+monitoring-alert-v0.x.x\
+├── monitoring-alert.exe
+├── config.toml       ← à éditer avant l'installation
+├── install.bat
+├── uninstall.bat
+└── update.bat
 ```
 
-L'exécutable est dans `target\x86_64-pc-windows-msvc\release\monitoring-alert.exe`.
+### 2. Éditer `config.toml`
 
----
+```toml
+# Dossier où sera installé l'exécutable
+install_dir = "C:\\Program Files\\MonitoringAlert"
 
-## Installation du service
+# Chemin de la base de données de températures
+# Placer sur un lecteur sauvegardé si souhaité
+db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
+```
 
-> ⚠ Les commandes `service install`, `uninstall`, `start`, `stop` nécessitent
-> une invite de commandes **administrateur**.
+### 3. Lancer `install.bat` en tant qu'administrateur
 
-```powershell
-# 1. Copier l'exécutable dans un emplacement permanent
-mkdir "C:\Program Files\MonitoringAlert"
-copy target\x86_64-pc-windows-msvc\release\monitoring-alert.exe "C:\Program Files\MonitoringAlert\"
+Le script :
+1. Copie `monitoring-alert.exe` dans `install_dir`
+2. Crée `C:\ProgramData\MonitoringAlert\`
+3. Y dépose `config.toml`, `uninstall.bat` et `update.bat`
+4. Enregistre et démarre le service Windows
 
-# 2. Installer et démarrer le service Windows
-cd "C:\Program Files\MonitoringAlert"
-.\monitoring-alert.exe service install
-.\monitoring-alert.exe service start
+Le dossier temporaire peut ensuite être supprimé.
+
+### Après installation
+
+```
+C:\Program Files\MonitoringAlert\      ← exécutable uniquement
+C:\ProgramData\MonitoringAlert\
+    config.toml                        ← configuration (install_dir, db_path)
+    temperatures.db                    ← base de données
+    uninstall.bat                      ← désinstallation
+    update.bat                         ← mise à jour
 ```
 
 Le service :
 - Tourne sous le nom **MonitoringAlert**
 - Démarre automatiquement au démarrage de Windows
-- Stocke la base de données dans `C:\ProgramData\MonitoringAlert\temperatures.db`
 - Se redémarre automatiquement après un crash (3 tentatives, délai 5 s)
+- Est visible dans `services.msc` ou via `sc query MonitoringAlert`
 
-### Désinstallation
+---
 
-```powershell
-# Invite admin requise
-cd "C:\Program Files\MonitoringAlert"
-.\monitoring-alert.exe service stop
-.\monitoring-alert.exe service uninstall
+## Mise à jour
 
-# Optionnel : supprimer les fichiers
-Remove-Item -Recurse "C:\Program Files\MonitoringAlert"
-Remove-Item -Recurse "C:\ProgramData\MonitoringAlert"   # ⚠ supprime aussi la DB
-```
+Lancer `update.bat` (dans `C:\ProgramData\MonitoringAlert\`) **en tant qu'administrateur**.
 
-### Mise à jour
+Le script :
+1. Arrête le service
+2. Télécharge la dernière release depuis GitHub
+3. Remplace l'exécutable
+4. Redémarre le service
 
-```powershell
-# 1. Arrêter le service
-"C:\Program Files\MonitoringAlert\monitoring-alert.exe" service stop
+`config.toml` et `temperatures.db` sont conservés intacts.
 
-# 2. Recompiler
-cargo build --release --target x86_64-pc-windows-msvc
+---
 
-# 3. Remplacer l'exe
-copy /Y target\x86_64-pc-windows-msvc\release\monitoring-alert.exe "C:\Program Files\MonitoringAlert\"
+## Désinstallation
 
-# 4. Redémarrer le service
-"C:\Program Files\MonitoringAlert\monitoring-alert.exe" service start
-```
+Lancer `uninstall.bat` (dans `C:\ProgramData\MonitoringAlert\`) **en tant qu'administrateur**.
 
-La DB dans `C:\ProgramData\MonitoringAlert\` est conservée intacte entre les mises à jour.
+Le script :
+1. Arrête et supprime le service
+2. Supprime le dossier d'installation (exe)
+3. Demande confirmation avant de supprimer `C:\ProgramData\MonitoringAlert\` (DB + config)
+
+---
+
+## Configuration
+
+`C:\ProgramData\MonitoringAlert\config.toml` est le seul fichier à modifier.
+
+| Clé | Description | Défaut |
+|---|---|---|
+| `install_dir` | Dossier de l'exécutable | `C:\Program Files\MonitoringAlert` |
+| `db_path` | Chemin complet de la base SQLite | `C:\ProgramData\MonitoringAlert\temperatures.db` |
+
+Pour appliquer un nouveau `db_path` : modifier le fichier et redémarrer le service
+(`sc stop MonitoringAlert && sc start MonitoringAlert`).
 
 ---
 
@@ -96,7 +120,7 @@ La DB dans `C:\ProgramData\MonitoringAlert\` est conservée intacte entre les mi
 # Collecte unique (test / debug)
 monitoring-alert.exe collect
 
-# Boucle de collecte toutes les 5 minutes (même logique que le service)
+# Boucle de collecte (même logique que le service)
 monitoring-alert.exe watch --interval 300
 
 # Rapport sur stdout
@@ -104,16 +128,14 @@ monitoring-alert.exe report
 
 # Rapport dans un fichier
 monitoring-alert.exe report -o rapport.txt
+
+# Utiliser une DB spécifique (override config.toml)
+monitoring-alert.exe --db "D:\autre\temperatures.db" report
 ```
 
 ---
 
 ## Structure de la base de données
-
-```
-C:\ProgramData\MonitoringAlert\temperatures.db   (service)
-.\temperatures.db                                 (CLI)
-```
 
 Deux tables SQLite :
 
@@ -153,7 +175,7 @@ Seuils d'alerte :
 
 ---
 
-## Supervision / Journalisation
+## Supervision
 
 Les logs du service sont visibles dans l'Observateur d'événements Windows :
 **Applications et services → MonitoringAlert**
@@ -165,6 +187,14 @@ Get-EventLog -LogName Application -Source MonitoringAlert -Newest 50
 
 ---
 
-## Développement
+## Développement / Compilation
 
 Voir [CLAUDE.md](../CLAUDE.md) pour les conventions de contribution.
+
+```powershell
+# Prérequis : Rust + MSVC toolchain
+rustup target add x86_64-pc-windows-msvc
+
+# Build release
+cargo build --release --target x86_64-pc-windows-msvc
+```
