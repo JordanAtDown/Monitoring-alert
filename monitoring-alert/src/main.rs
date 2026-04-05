@@ -27,7 +27,7 @@ fn handle_service_main(args: Vec<std::ffi::OsString>) {
 
 #[derive(Parser)]
 #[command(
-    name = "tempmon",
+    name = "monitoring-alert",
     version,
     about = "Moniteur de température long terme — service Windows"
 )]

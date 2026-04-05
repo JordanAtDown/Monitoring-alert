@@ -1,7 +1,7 @@
-# CLAUDE.md — Workflow de développement TempMon
+# CLAUDE.md — Workflow de développement monitoring-alert
 
 Ce fichier définit les conventions et le workflow à respecter pour toutes les
-contributions au projet **TempMon** (dépôt `monitoring-alert`).
+contributions au projet **monitoring-alert**.
 
 ---
 

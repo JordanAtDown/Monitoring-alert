@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial project structure for `tempmon` Windows temperature monitoring service
+- Initial project structure for `monitoring-alert` Windows temperature monitoring service
 - SQLite embedded database (no external DLL) via `rusqlite` with `bundled` feature
 - WMI sensor reading via `wmi` crate connected to `ROOT\LibreHardwareMonitor`
 - Load categorization: `idle`, `light`, `moderate`, `heavy` based on CPU %

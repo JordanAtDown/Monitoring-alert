@@ -1,5 +1,5 @@
 # Rust build artifacts
-tempmon/target/
+monitoring-alert/target/
 # Note: Cargo.lock is committed for binary crates (recommended)
 
 # Database files
@@ -17,4 +17,4 @@ Thumbs.db
 
 # Reports
 *.txt
-!tempmon/README.md
+!monitoring-alert/README.md

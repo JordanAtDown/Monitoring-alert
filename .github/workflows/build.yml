@@ -31,17 +31,17 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tempmon/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('tempmon/Cargo.lock') }}
+            monitoring-alert/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('monitoring-alert/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
       - name: Check formatting
-        working-directory: tempmon
+        working-directory: monitoring-alert
         run: cargo fmt --check
 
       - name: Run Clippy
-        working-directory: tempmon
+        working-directory: monitoring-alert
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   build:
@@ -64,20 +64,20 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tempmon/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('tempmon/Cargo.lock') }}
+            monitoring-alert/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('monitoring-alert/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
       - name: Build (release)
-        working-directory: tempmon
+        working-directory: monitoring-alert
         run: cargo build --release --target x86_64-pc-windows-msvc
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tempmon-windows-x64
-          path: tempmon/target/x86_64-pc-windows-msvc/release/tempmon.exe
+          name: monitoring-alert-windows-x64
+          path: monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe
           if-no-files-found: error
 
   test:
@@ -100,11 +100,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tempmon/target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('tempmon/Cargo.lock') }}
+            monitoring-alert/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('monitoring-alert/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
       - name: Run tests
-        working-directory: tempmon
+        working-directory: monitoring-alert
         run: cargo test --target x86_64-pc-windows-msvc

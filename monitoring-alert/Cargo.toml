@@ -1,5 +1,5 @@
 [package]
-name = "tempmon"
+name = "monitoring-alert"
 version = "0.1.0"
 edition = "2021"
 description = "Long-term temperature monitoring Windows service"
@@ -7,7 +7,7 @@ license = "MIT"
 authors = []
 
 [[bin]]
-name = "tempmon"
+name = "monitoring-alert"
 path = "src/main.rs"
 
 [dependencies]

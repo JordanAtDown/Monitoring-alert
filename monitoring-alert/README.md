@@ -1,4 +1,4 @@
-# TempMon — Moniteur de température long terme
+# monitoring-alert — Moniteur de température long terme
 
 Service Windows de surveillance thermique pour détecter les dérives dues à la
 poussière, une pâte thermique dégradée ou un ventilateur défaillant.
@@ -31,7 +31,7 @@ cargo build
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
-L'exécutable est dans `target\x86_64-pc-windows-msvc\release\tempmon.exe`.
+L'exécutable est dans `target\x86_64-pc-windows-msvc\release\monitoring-alert.exe`.
 
 ---
 
@@ -41,28 +41,52 @@ L'exécutable est dans `target\x86_64-pc-windows-msvc\release\tempmon.exe`.
 > une invite de commandes **administrateur**.
 
 ```powershell
-# 1. Copier l'exécutable dans un emplacement permanent, par exemple :
-copy target\x86_64-pc-windows-msvc\release\tempmon.exe C:\Program Files\TempMon\
+# 1. Copier l'exécutable dans un emplacement permanent
+mkdir "C:\Program Files\MonitoringAlert"
+copy target\x86_64-pc-windows-msvc\release\monitoring-alert.exe "C:\Program Files\MonitoringAlert\"
 
-# 2. Installer le service Windows
-C:\Program Files\TempMon\tempmon.exe service install
-
-# 3. Démarrer le service
-C:\Program Files\TempMon\tempmon.exe service start
+# 2. Installer et démarrer le service Windows
+cd "C:\Program Files\MonitoringAlert"
+.\monitoring-alert.exe service install
+.\monitoring-alert.exe service start
 ```
 
 Le service :
-- Tourne sous le nom **TempMon**
+- Tourne sous le nom **MonitoringAlert**
 - Démarre automatiquement au démarrage de Windows
-- Stocke la base de données dans `C:\ProgramData\TempMon\temperatures.db`
+- Stocke la base de données dans `C:\ProgramData\MonitoringAlert\temperatures.db`
 - Se redémarre automatiquement après un crash (3 tentatives, délai 5 s)
 
 ### Désinstallation
 
 ```powershell
-C:\Program Files\TempMon\tempmon.exe service stop
-C:\Program Files\TempMon\tempmon.exe service uninstall
+# Invite admin requise
+cd "C:\Program Files\MonitoringAlert"
+.\monitoring-alert.exe service stop
+.\monitoring-alert.exe service uninstall
+
+# Optionnel : supprimer les fichiers
+Remove-Item -Recurse "C:\Program Files\MonitoringAlert"
+Remove-Item -Recurse "C:\ProgramData\MonitoringAlert"   # ⚠ supprime aussi la DB
 ```
+
+### Mise à jour
+
+```powershell
+# 1. Arrêter le service
+"C:\Program Files\MonitoringAlert\monitoring-alert.exe" service stop
+
+# 2. Recompiler
+cargo build --release --target x86_64-pc-windows-msvc
+
+# 3. Remplacer l'exe
+copy /Y target\x86_64-pc-windows-msvc\release\monitoring-alert.exe "C:\Program Files\MonitoringAlert\"
+
+# 4. Redémarrer le service
+"C:\Program Files\MonitoringAlert\monitoring-alert.exe" service start
+```
+
+La DB dans `C:\ProgramData\MonitoringAlert\` est conservée intacte entre les mises à jour.
 
 ---
 
@@ -70,16 +94,16 @@ C:\Program Files\TempMon\tempmon.exe service uninstall
 
 ```powershell
 # Collecte unique (test / debug)
-tempmon.exe collect
+monitoring-alert.exe collect
 
 # Boucle de collecte toutes les 5 minutes (même logique que le service)
-tempmon.exe watch --interval 300
+monitoring-alert.exe watch --interval 300
 
 # Rapport sur stdout
-tempmon.exe report
+monitoring-alert.exe report
 
 # Rapport dans un fichier
-tempmon.exe report -o rapport.txt
+monitoring-alert.exe report -o rapport.txt
 ```
 
 ---
@@ -87,8 +111,8 @@ tempmon.exe report -o rapport.txt
 ## Structure de la base de données
 
 ```
-C:\ProgramData\TempMon\temperatures.db   (service)
-.\temperatures.db                         (CLI)
+C:\ProgramData\MonitoringAlert\temperatures.db   (service)
+.\temperatures.db                                 (CLI)
 ```
 
 Deux tables SQLite :
@@ -132,11 +156,11 @@ Seuils d'alerte :
 ## Supervision / Journalisation
 
 Les logs du service sont visibles dans l'Observateur d'événements Windows :
-**Applications et services → TempMon**
+**Applications et services → MonitoringAlert**
 
 Ou via PowerShell :
 ```powershell
-Get-EventLog -LogName Application -Source TempMon -Newest 50
+Get-EventLog -LogName Application -Source MonitoringAlert -Newest 50
 ```
 
 ---

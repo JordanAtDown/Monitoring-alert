@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 
-pub const SERVICE_NAME: &str = "TempMon";
-pub const SERVICE_DISPLAY_NAME: &str = "TempMon - Temperature Monitor";
+pub const SERVICE_NAME: &str = "MonitoringAlert";
+pub const SERVICE_DISPLAY_NAME: &str = "Monitoring Alert - Temperature Monitor";
 pub const SERVICE_DESCRIPTION: &str =
     "Collecte les températures système toutes les 5 minutes via LibreHardwareMonitor";
-pub const SERVICE_DB_PATH: &str = r"C:\ProgramData\TempMon\temperatures.db";
+pub const SERVICE_DB_PATH: &str = r"C:\ProgramData\MonitoringAlert\temperatures.db";
 
 #[cfg(windows)]
 pub mod windows {
@@ -83,7 +83,7 @@ pub mod windows {
             "Service '{}' installed successfully.",
             SERVICE_DISPLAY_NAME
         );
-        println!("Run 'tempmon service start' to start it.");
+        println!("Run 'monitoring-alert service start' to start it.");
         Ok(())
     }
 
