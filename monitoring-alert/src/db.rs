@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::path::Path;
 
 pub fn init_db(path: &Path) -> Result<Connection> {
@@ -126,9 +126,8 @@ pub struct SensorKey {
 }
 
 pub fn get_distinct_sensors(conn: &Connection) -> Result<Vec<SensorKey>> {
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT hardware, sensor FROM readings ORDER BY hardware, sensor",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT DISTINCT hardware, sensor FROM readings ORDER BY hardware, sensor")?;
     let rows = stmt
         .query_map([], |row| {
             Ok(SensorKey {

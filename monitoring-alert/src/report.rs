@@ -58,11 +58,7 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
         "════════════════════════════════════════════════════════════════"
     )?;
 
-    let first_date = stats
-        .first_ts
-        .as_deref()
-        .map(|s| &s[..10])
-        .unwrap_or("N/A");
+    let first_date = stats.first_ts.as_deref().map(|s| &s[..10]).unwrap_or("N/A");
     let last_ts = stats.last_ts.as_deref().unwrap_or("N/A");
     writeln!(
         out,
@@ -75,10 +71,7 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
     // Category distribution (last 90 days)
     let dist = db::get_category_distribution(conn, 90).context("Failed to get distribution")?;
     let total_dist: i64 = dist.iter().map(|c| c.count).sum();
-    writeln!(
-        out,
-        "  Distribution des états (90 derniers jours) :"
-    )?;
+    writeln!(out, "  Distribution des états (90 derniers jours) :")?;
     let order = ["idle", "light", "moderate", "heavy"];
     let dist_map: HashMap<String, i64> = dist.into_iter().map(|c| (c.load_cat, c.count)).collect();
     for cat in order {
@@ -95,13 +88,7 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
             "heavy" => "Chargé    (75–100 % CPU)",
             _ => continue,
         };
-        writeln!(
-            out,
-            "    {}  {:3.0}%  {}",
-            label,
-            pct,
-            bar(pct, 28)
-        )?;
+        writeln!(out, "    {}  {:3.0}%  {}", label, pct, bar(pct, 28))?;
     }
     writeln!(out)?;
 
@@ -110,10 +97,7 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
         out,
         "────────────────────────────────────────────────────────────────"
     )?;
-    writeln!(
-        out,
-        "  ANALYSE PAR CAPTEUR — comparaison à charge égale"
-    )?;
+    writeln!(out, "  ANALYSE PAR CAPTEUR — comparaison à charge égale")?;
     writeln!(
         out,
         "────────────────────────────────────────────────────────────────"
@@ -151,12 +135,10 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
                 }
                 writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
                 for &(days, label) in WINDOWS {
-                    let curr =
-                        db::get_avg_for_window(conn, hardware, sensor_name, cat, days, 0)
-                            .context("Failed to query current window avg")?;
-                    let prev =
-                        db::get_avg_for_window(conn, hardware, sensor_name, cat, days, days)
-                            .context("Failed to query previous window avg")?;
+                    let curr = db::get_avg_for_window(conn, hardware, sensor_name, cat, days, 0)
+                        .context("Failed to query current window avg")?;
+                    let prev = db::get_avg_for_window(conn, hardware, sensor_name, cat, days, days)
+                        .context("Failed to query previous window avg")?;
                     match (curr, prev) {
                         (Some(c), Some(p)) => {
                             let delta = c - p;
@@ -170,7 +152,11 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
                             if days == 30 && delta >= 5.0 {
                                 alerts.push(format!(
                                     "  {} {}/{} [{}] → {}{:.1}°C sur {}",
-                                    if delta >= 10.0 { "🔴 CRITIQUE" } else { "⚠ ATTENTION" },
+                                    if delta >= 10.0 {
+                                        "🔴 CRITIQUE"
+                                    } else {
+                                        "⚠ ATTENTION"
+                                    },
                                     hardware,
                                     sensor_name,
                                     cat,

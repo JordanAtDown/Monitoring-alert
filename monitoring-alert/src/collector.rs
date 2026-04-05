@@ -26,13 +26,18 @@ pub fn collect_and_store(conn: &Connection) -> Result<()> {
         .unwrap_or("idle")
         .to_string();
 
-    let snapshot_id =
-        db::insert_snapshot(conn, &ts, data.cpu_load, data.gpu_load, &cat)
-            .context("Failed to insert snapshot")?;
+    let snapshot_id = db::insert_snapshot(conn, &ts, data.cpu_load, data.gpu_load, &cat)
+        .context("Failed to insert snapshot")?;
 
     for reading in &data.temperatures {
-        db::insert_reading(conn, snapshot_id, &reading.hardware, &reading.sensor, reading.value)
-            .context("Failed to insert reading")?;
+        db::insert_reading(
+            conn,
+            snapshot_id,
+            &reading.hardware,
+            &reading.sensor,
+            reading.value,
+        )
+        .context("Failed to insert reading")?;
     }
 
     println!(
