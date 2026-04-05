@@ -1,0 +1,14 @@
+# =============================================================
+#  MonitoringAlert — configuration
+#
+#  Editez ce fichier AVANT de lancer install.bat
+#  Ce fichier sera copié dans C:\ProgramData\MonitoringAlert\
+# =============================================================
+
+# Dossier où sera installé l'exécutable monitoring-alert.exe
+# Exemple : "D:\\Apps\\MonitoringAlert"
+install_dir = "C:\\Program Files\\MonitoringAlert"
+
+# Chemin complet de la base de données de températures
+# Exemple : "D:\\Backup\\MonitoringAlert\\temperatures.db"
+db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
