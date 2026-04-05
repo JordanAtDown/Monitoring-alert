@@ -189,7 +189,7 @@ Get-EventLog -LogName Application -Source MonitoringAlert -Newest 50
 
 ## Développement / Compilation
 
-Voir [CLAUDE.md](../CLAUDE.md) pour les conventions de contribution.
+Voir [CLAUDE.md](CLAUDE.md) pour les conventions de contribution.
 
 ```powershell
 # Prérequis : Rust + MSVC toolchain
