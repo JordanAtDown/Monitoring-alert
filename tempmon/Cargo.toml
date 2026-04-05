@@ -1,0 +1,31 @@
+[package]
+name = "tempmon"
+version = "0.1.0"
+edition = "2021"
+description = "Long-term temperature monitoring Windows service"
+license = "MIT"
+authors = []
+
+[[bin]]
+name = "tempmon"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+wmi = "0.13"
+windows-service = "0.7"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1

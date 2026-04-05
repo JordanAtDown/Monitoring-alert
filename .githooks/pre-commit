@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# TempMon pre-commit hook
+# Activate with: git config core.hooksPath .githooks
+set -euo pipefail
+
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+RESET='\033[0m'
+
+info()    { echo -e "${BOLD}[pre-commit]${RESET} $*"; }
+success() { echo -e "${GREEN}[pre-commit] ✓ $*${RESET}"; }
+fail()    { echo -e "${RED}[pre-commit] ✗ $*${RESET}"; exit 1; }
+warn()    { echo -e "${YELLOW}[pre-commit] ⚠ $*${RESET}"; }
+
+CARGO_MANIFEST="tempmon/Cargo.toml"
+CARGO_ARGS="--manifest-path ${CARGO_MANIFEST}"
+
+# ─── 1. Format check ────────────────────────────────────────────────────────
+info "Checking code formatting (cargo fmt)..."
+if ! cargo fmt ${CARGO_ARGS} -- --check 2>&1; then
+    fail "Code is not formatted. Run: cargo fmt --manifest-path ${CARGO_MANIFEST}"
+fi
+success "Formatting OK"
+
+# ─── 2. Clippy (deny warnings) ───────────────────────────────────────────────
+info "Running Clippy linter..."
+if ! cargo clippy ${CARGO_ARGS} --all-targets --all-features -- -D warnings 2>&1; then
+    fail "Clippy reported warnings or errors. Fix them before committing."
+fi
+success "Clippy OK"
+
+# ─── 3. Tests ────────────────────────────────────────────────────────────────
+info "Running tests..."
+if ! cargo test ${CARGO_ARGS} 2>&1; then
+    fail "Tests failed. Fix them before committing."
+fi
+success "Tests OK"
+
+echo ""
+success "All pre-commit checks passed."

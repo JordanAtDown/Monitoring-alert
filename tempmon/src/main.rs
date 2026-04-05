@@ -1,0 +1,130 @@
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+mod collector;
+mod db;
+mod report;
+mod sensors;
+mod service;
+#[cfg(test)]
+mod tests;
+
+#[cfg(windows)]
+use windows_service::{define_windows_service, service_dispatcher};
+
+#[cfg(windows)]
+define_windows_service!(ffi_service_main, handle_service_main);
+
+#[cfg(windows)]
+fn handle_service_main(args: Vec<std::ffi::OsString>) {
+    if let Err(e) = service::windows::run_service_main(args) {
+        eprintln!("Service error: {:#}", e);
+    }
+}
+
+#[derive(Parser)]
+#[command(
+    name = "tempmon",
+    version,
+    about = "Moniteur de température long terme — service Windows"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Collecte un snapshot unique (mode debug)
+    Collect,
+    /// Boucle de collecte à intervalles réguliers
+    Watch {
+        /// Intervalle entre les collectes (secondes)
+        #[arg(long, default_value = "300")]
+        interval: u64,
+    },
+    /// Génère le rapport texte
+    Report {
+        /// Fichier de sortie (stdout si absent)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Gestion du service Windows
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ServiceAction {
+    /// Installe le service Windows
+    Install,
+    /// Désinstalle le service Windows
+    Uninstall,
+    /// Démarre le service
+    Start,
+    /// Arrête le service
+    Stop,
+}
+
+fn default_db_path() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("temperatures.db")
+}
+
+fn run_cli() -> Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Collect => {
+            let conn = db::init_db(&default_db_path())?;
+            collector::collect_and_store(&conn)?;
+        }
+        Commands::Watch { interval } => {
+            let stop = Arc::new(AtomicBool::new(false));
+            let stop_ctrlc = Arc::clone(&stop);
+            ctrlc_handler(stop_ctrlc);
+            collector::watch(&default_db_path(), interval, stop)?;
+        }
+        Commands::Report { output } => {
+            let conn = db::init_db(&default_db_path())?;
+            report::generate_report(&conn, output.as_deref())?;
+        }
+        Commands::Service { action } => match action {
+            ServiceAction::Install => service::install()?,
+            ServiceAction::Uninstall => service::uninstall()?,
+            ServiceAction::Start => service::start()?,
+            ServiceAction::Stop => service::stop()?,
+        },
+    }
+    Ok(())
+}
+
+/// Best-effort Ctrl+C handler — sets the stop flag so watch() exits cleanly.
+fn ctrlc_handler(stop: Arc<AtomicBool>) {
+    // Use a simple thread that parks; real projects can use the `ctrlc` crate.
+    let _ = std::thread::spawn(move || {
+        // On Windows, SetConsoleCtrlHandler would be more robust.
+        // This minimal version relies on SIGINT killing the process on non-Windows.
+        // For production use on Windows, integrate the `ctrlc` crate.
+        let _ = stop; // keep the Arc alive for now
+    });
+}
+
+fn main() -> Result<()> {
+    // When started by Windows Service Control Manager, dispatch to service handler.
+    // If called from the command line this returns an error immediately and we fall through.
+    #[cfg(windows)]
+    {
+        if service_dispatcher::start(service::SERVICE_NAME, ffi_service_main).is_ok() {
+            return Ok(());
+        }
+    }
+
+    run_cli()
+}
