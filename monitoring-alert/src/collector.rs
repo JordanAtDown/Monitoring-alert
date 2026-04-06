@@ -7,8 +7,8 @@ use std::sync::Arc;
 use crate::store::{SqliteStore, TemperatureStore};
 use crate::{db, sensors};
 
-pub fn load_category(cpu_load: f64) -> &'static str {
-    match cpu_load as u32 {
+pub fn load_category(load: f64) -> &'static str {
+    match load as u32 {
         0..=14 => "idle",
         15..=39 => "light",
         40..=74 => "moderate",
@@ -17,11 +17,20 @@ pub fn load_category(cpu_load: f64) -> &'static str {
     }
 }
 
+/// Returns the effective load to use for categorisation.
+///
+/// Takes the **maximum** of CPU and GPU load so that GPU-intensive workloads
+/// (e.g. gaming: GPU 90 %, CPU 15 %) are classified as `heavy` rather than
+/// `light`. This ensures GPU temperatures recorded during gaming sessions are
+/// compared against other gaming sessions, not against idle-CPU periods.
+pub fn effective_load(cpu: Option<f64>, gpu: Option<f64>) -> Option<f64> {
+    [cpu, gpu].into_iter().flatten().reduce(f64::max)
+}
+
 pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<()> {
     let data = sensors::read_sensors().context("Failed to read sensor data")?;
     let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let cat = data
-        .cpu_load
+    let cat = effective_load(data.cpu_load, data.gpu_load)
         .map(load_category)
         .unwrap_or("idle")
         .to_string();

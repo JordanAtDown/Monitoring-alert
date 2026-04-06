@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod collector_tests {
-    use crate::collector::load_category;
+    use crate::collector::{effective_load, load_category};
+
+    // ── load_category boundaries ──────────────────────────────
 
     #[test]
     fn idle_lower_bound() {
@@ -32,6 +34,50 @@ mod collector_tests {
     fn heavy_range() {
         assert_eq!(load_category(75.0), "heavy");
         assert_eq!(load_category(100.0), "heavy");
+    }
+
+    // ── effective_load — max(cpu, gpu) ────────────────────────
+
+    /// Gaming scenario: GPU 90 %, CPU 15 %.
+    /// Without the fix this would return 15 % → "light".
+    /// With the fix it returns 90 % → "heavy".
+    #[test]
+    fn effective_load_gpu_dominates_gaming_scenario() {
+        let load = effective_load(Some(15.0), Some(90.0));
+        assert_eq!(load, Some(90.0));
+        assert_eq!(load_category(load.unwrap()), "heavy");
+    }
+
+    /// CPU-heavy workload: CPU 85 %, GPU 10 %.
+    #[test]
+    fn effective_load_cpu_dominates() {
+        let load = effective_load(Some(85.0), Some(10.0));
+        assert_eq!(load, Some(85.0));
+        assert_eq!(load_category(load.unwrap()), "heavy");
+    }
+
+    /// CPU only (no discrete GPU).
+    #[test]
+    fn effective_load_cpu_only() {
+        assert_eq!(effective_load(Some(50.0), None), Some(50.0));
+    }
+
+    /// GPU only (integrated GPU, CPU load unavailable).
+    #[test]
+    fn effective_load_gpu_only() {
+        assert_eq!(effective_load(None, Some(80.0)), Some(80.0));
+    }
+
+    /// No sensor data available → None → categorised as "idle".
+    #[test]
+    fn effective_load_none_falls_back_to_idle() {
+        assert_eq!(effective_load(None, None), None);
+    }
+
+    /// Both at same value → either is fine.
+    #[test]
+    fn effective_load_equal_values() {
+        assert_eq!(effective_load(Some(40.0), Some(40.0)), Some(40.0));
     }
 }
 
@@ -358,6 +404,180 @@ mod integration_tests {
         assert!(
             s.body.contains("stables"),
             "no prev data → should be stable, got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénarios GPU-heavy (effective_load = max(cpu, gpu)) ──
+    //
+    // Ces tests valident que les sessions gaming (GPU 90 %, CPU 15 %)
+    // sont stockées en catégorie "heavy" et non "light".
+    // Avant le fix, la catégorie était déterminée par le seul cpu_load,
+    // ce qui rendait les températures GPU de gaming comparées à des
+    // périodes à charge CPU légère — baseline incorrecte.
+
+    /// Gaming récent plus chaud qu'avant : détection correcte du drift GPU.
+    ///
+    /// Sessions gaming = catégorie "heavy" grâce à effective_load.
+    /// Les températures GPU actuelles (heavy) sont comparées aux températures
+    /// GPU passées (heavy) : même contexte de charge → delta fiable.
+    #[test]
+    fn gpu_heavy_drift_detected() {
+        let store = make_store();
+        // Sessions gaming récentes : GPU Junction 83°C, catégorie heavy
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            1,
+            31,
+            83.0,
+        );
+        // Sessions gaming il y a 30-60j : GPU Junction 71°C, catégorie heavy
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            31,
+            61,
+            71.0,
+        );
+
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
+        // Δ = +12°C sur sessions à charge identique → alerte critique
+        assert!(
+            s.body.contains("1 alerte"),
+            "GPU drift should be detected, got: {:?}",
+            s.body
+        );
+        assert!(
+            s.body.contains("12.0"),
+            "should show +12.0°C delta, got: {:?}",
+            s.body
+        );
+    }
+
+    /// Sans le fix, un scénario gaming serait stocké en "light" (cpu_load=15%).
+    /// Les données "light" n'auraient pas de période précédente "light" gaming →
+    /// pas de comparaison possible → drift non détecté.
+    /// Ce test prouve que stocker en "heavy" permet la comparaison.
+    #[test]
+    fn gpu_heavy_drift_not_visible_in_wrong_category() {
+        let store = make_store();
+        // GPU chaud pendant des sessions "heavy" (gaming)
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            1,
+            31,
+            83.0,
+        );
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            31,
+            61,
+            71.0,
+        );
+        // Mais on insère aussi des données "light" (navigation web) stables
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "light",
+            1,
+            31,
+            45.0,
+        );
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "light",
+            31,
+            61,
+            44.0,
+        );
+
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
+        // La catégorie "light" est stable → n'écrase pas l'alerte "heavy"
+        assert!(
+            s.body.contains("1 alerte"),
+            "heavy drift should still be detected alongside stable light sessions: {:?}",
+            s.body
+        );
+    }
+
+    /// CPU et GPU tous les deux en drift simultané (machine de rendu 3D).
+    #[test]
+    fn cpu_and_gpu_both_drift_two_alerts() {
+        let store = make_store();
+        // CPU Package en drift sous charge heavy
+        seed_window(&store, "CPU", "CPU Package", "heavy", 1, 31, 92.0);
+        seed_window(&store, "CPU", "CPU Package", "heavy", 31, 61, 80.0);
+        // GPU Junction en drift sous charge heavy
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            1,
+            31,
+            88.0,
+        );
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            31,
+            61,
+            74.0,
+        );
+
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("2 alertes"),
+            "both CPU and GPU drifts should be detected: {:?}",
+            s.body
+        );
+    }
+
+    /// Sessions gaming stables : GPU chaud mais pas de drift → pas d'alerte.
+    #[test]
+    fn gpu_heavy_stable_no_alert() {
+        let store = make_store();
+        // GPU chaud pendant gaming mais stable dans le temps
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            1,
+            31,
+            78.0,
+        );
+        seed_window(
+            &store,
+            "GPU",
+            "GPU Junction Temperature",
+            "heavy",
+            31,
+            61,
+            77.0,
+        );
+
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
+        // Δ = +1°C → stable, même sous charge GPU lourde
+        assert!(
+            s.body.contains("stables"),
+            "stable GPU temp should not trigger alert: {:?}",
             s.body
         );
     }
