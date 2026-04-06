@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Les températures GPU en session de jeu étaient comparées à des périodes
   de faible charge CPU au lieu d'autres sessions GPU-intensives
+- **Notifications manquées si le PC était éteint** : les tâches planifiées
+  sont désormais créées avec `StartWhenAvailable` via `Register-Tasks.ps1`
+  (PowerShell). `schtasks.exe` n'expose pas cette option — les rapports sont
+  maintenant envoyés dès la prochaine ouverture de session si l'heure prévue
+  a été ratée
 
 ## [0.1.0] — 2026-04-06
 
