@@ -8,6 +8,7 @@ setlocal EnableDelayedExpansion
 ::    C:\ProgramData\MonitoringAlert\config.toml  (cle install_dir)
 ::
 ::  Le fichier config.toml et la base de donnees sont preserves.
+::  Les taches planifiees sont resynchronisees avec la config.
 :: ============================================================
 
 :: --- Vérification des droits admin ---
@@ -41,12 +42,12 @@ echo  Dossier d'installation : !INSTALL_DIR!
 echo.
 
 :: --- 1. Arrêt du service ---
-echo [1/4] Arret du service...
+echo [1/5] Arret du service...
 "!INSTALL_DIR!\%EXE_NAME%" service stop >nul 2>&1
 timeout /t 3 /nobreak >nul
 
 :: --- 2. Récupération de l'URL du binaire depuis GitHub ---
-echo [2/4] Recuperation de la derniere release sur GitHub...
+echo [2/5] Recuperation de la derniere release sur GitHub...
 for /f "usebackq delims=" %%u in (
     `powershell -NoProfile -Command ^
         "(Invoke-RestMethod -Uri '%API_URL%').assets | " ^
@@ -57,28 +58,110 @@ for /f "usebackq delims=" %%u in (
 if "!DOWNLOAD_URL!"=="" (
     echo [ERREUR] Impossible de trouver l'asset 'monitoring-alert.exe' dans la derniere release.
     echo         Verifiez que la release GitHub contient bien cet asset.
-    goto :restart
+    goto :resync
 )
 echo        URL : !DOWNLOAD_URL!
 
 :: --- 3. Téléchargement et remplacement de l'exécutable ---
-echo [3/4] Telechargement...
+echo [3/5] Telechargement...
 curl -L --fail --silent --show-error -o "%TMP_EXE%" "!DOWNLOAD_URL!"
 if %errorLevel% neq 0 (
     echo [ERREUR] Le telechargement a echoue.
-    goto :restart
+    goto :resync
 )
 copy /Y "%TMP_EXE%" "!INSTALL_DIR!\%EXE_NAME%" >nul
 del /f /q "%TMP_EXE%" >nul 2>&1
 echo        Executable mis a jour dans !INSTALL_DIR!
 
 :: --- 4. Redémarrage du service ---
-:restart
-echo [4/4] Redemarrage du service...
+:resync
+echo [4/5] Redemarrage du service...
 "!INSTALL_DIR!\%EXE_NAME%" service start
 if %errorLevel% neq 0 (
     echo [ERREUR] Le redemarrage du service a echoue. Verifiez les logs.
-    exit /b 1
+)
+
+:: --- 5. Resynchronisation des tâches planifiées ---
+echo [5/5] Resynchronisation des taches planifiees depuis config.toml...
+
+:: Lecture des paramètres de rapport
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'daily_report_enabled\s*=\s*(\w+)') { $Matches[1] } else { 'true' }"`
+) do set "DAILY_ENABLED=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'daily_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
+) do set "DAILY_TIME=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'weekly_report_enabled\s*=\s*(\w+)') { $Matches[1] } else { 'false' }"`
+) do set "WEEKLY_ENABLED=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'weekly_report_day\s*=\s*""([^""]+)""') { $Matches[1] } else { 'MON' }"`
+) do set "WEEKLY_DAY=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'weekly_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
+) do set "WEEKLY_TIME=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'monthly_report_enabled\s*=\s*(\w+)') { $Matches[1] } else { 'false' }"`
+) do set "MONTHLY_ENABLED=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'monthly_report_day\s*=\s*(\d+)') { $Matches[1] } else { '1' }"`
+) do set "MONTHLY_DAY=%%v"
+
+for /f "usebackq delims=" %%v in (
+    `powershell -NoProfile -Command ^
+        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
+        "if ($c -match 'monthly_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
+) do set "MONTHLY_TIME=%%v"
+
+:: Suppression des tâches existantes
+schtasks /delete /tn "MonitoringAlert\RapportJournalier"   /f >nul 2>&1
+schtasks /delete /tn "MonitoringAlert\RapportHebdomadaire" /f >nul 2>&1
+schtasks /delete /tn "MonitoringAlert\RapportMensuel"      /f >nul 2>&1
+
+:: Recréation selon la config actuelle
+if /i "!DAILY_ENABLED!"=="true" (
+    schtasks /create /tn "MonitoringAlert\RapportJournalier" ^
+        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --daily" ^
+        /sc DAILY /st !DAILY_TIME! /ru "%USERNAME%" /f >nul
+    echo        Rapport journalier : !DAILY_TIME! chaque jour
+) else (
+    echo        Rapport journalier desactive
+)
+if /i "!WEEKLY_ENABLED!"=="true" (
+    schtasks /create /tn "MonitoringAlert\RapportHebdomadaire" ^
+        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --weekly" ^
+        /sc WEEKLY /d !WEEKLY_DAY! /st !WEEKLY_TIME! /ru "%USERNAME%" /f >nul
+    echo        Rapport hebdomadaire : !WEEKLY_DAY! a !WEEKLY_TIME!
+) else (
+    echo        Rapport hebdomadaire desactive
+)
+if /i "!MONTHLY_ENABLED!"=="true" (
+    schtasks /create /tn "MonitoringAlert\RapportMensuel" ^
+        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --monthly" ^
+        /sc MONTHLY /d !MONTHLY_DAY! /st !MONTHLY_TIME! /ru "%USERNAME%" /f >nul
+    echo        Rapport mensuel : jour !MONTHLY_DAY! a !MONTHLY_TIME!
+) else (
+    echo        Rapport mensuel desactive
 )
 
 echo.

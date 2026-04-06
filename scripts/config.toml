@@ -12,3 +12,25 @@ install_dir = "C:\\Program Files\\MonitoringAlert"
 # Chemin complet de la base de données de températures
 # Exemple : "D:\\Backup\\MonitoringAlert\\temperatures.db"
 db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
+
+# Intervalle de collecte du service (en secondes, minimum 60)
+# Défaut : 300 (toutes les 5 minutes)
+collect_interval_secs = 300
+
+# =============================================================
+#  Rapports automatiques via notifications Windows
+# =============================================================
+
+# Rapport journalier
+daily_report_enabled = true
+daily_report_time    = "08:00"    # HH:MM (24h)
+
+# Rapport hebdomadaire
+weekly_report_enabled = false
+weekly_report_day     = "MON"     # MON TUE WED THU FRI SAT SUN
+weekly_report_time    = "08:00"
+
+# Rapport mensuel
+monthly_report_enabled = false
+monthly_report_day     = 1        # 1-28
+monthly_report_time    = "08:00"
