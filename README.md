@@ -131,7 +131,7 @@ monthly_report_time    = "08:00"
 | `install_dir` | chemin | `C:\Program Files\MonitoringAlert` | Dossier de l'exécutable |
 | `db_path` | chemin | `C:\ProgramData\MonitoringAlert\temperatures.db` | Chemin de la base SQLite |
 | `collect_interval_secs` | entier ≥ 60 | `300` | Intervalle entre deux collectes (secondes) |
-| `retention_days` | entier ≥ 180 | `180` | Durée de rétention des données (jours) |
+| `retention_days` | entier ≥ 180 | `365` | Durée de rétention des données (jours) |
 | `daily_report_enabled` | booléen | `true` | Activer le rapport journalier |
 | `daily_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport journalier |
 | `weekly_report_enabled` | booléen | `false` | Activer le rapport hebdomadaire |
@@ -382,9 +382,10 @@ Estimation de la taille avec 10 sondes et une collecte toutes les 5 min :
 
 Le service purge automatiquement les données anciennes **au démarrage puis toutes les
 24 h**. La durée de rétention est contrôlée par `retention_days` dans `config.toml`
-(défaut : 180 jours, minimum : 180 jours). La valeur minimale de 180 jours est
-imposée car l'algorithme de détection compare une fenêtre courante de 90 jours à la
-fenêtre précédente de 90 jours.
+(défaut : 365 jours, minimum : 180 jours). Le défaut d'un an permet de voir les
+effets saisonniers (été/hiver) et l'évolution long terme. La valeur minimale de
+180 jours est imposée car l'algorithme compare une fenêtre courante de 90 jours à
+la fenêtre précédente de 90 jours.
 
 ---
 

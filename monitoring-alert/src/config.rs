@@ -90,7 +90,7 @@ impl AppConfig {
 
         let collect_interval_secs = raw.collect_interval_secs.unwrap_or(300).max(60);
         // Minimum 180 days to cover the full 90-day current + 90-day reference window.
-        let retention_days = raw.retention_days.unwrap_or(180).max(180);
+        let retention_days = raw.retention_days.unwrap_or(365).max(180);
 
         let weekly_day = raw
             .weekly_report_day
@@ -138,7 +138,7 @@ impl AppConfig {
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join("temperatures.db"),
             collect_interval_secs: 300,
-            retention_days: 180,
+            retention_days: 365,
             schedule: ScheduleConfig::default(),
         }
     }
