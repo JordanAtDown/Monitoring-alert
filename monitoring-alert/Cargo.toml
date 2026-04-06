@@ -21,6 +21,7 @@ toml = "0.8"
 [target.'cfg(windows)'.dependencies]
 wmi = "0.13"
 windows-service = "0.7"
+windows = { version = "0.52", features = ["Data_Xml_Dom", "UI_Notifications"] }
 
 [dev-dependencies]
 tempfile = "3"

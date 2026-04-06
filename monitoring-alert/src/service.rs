@@ -172,9 +172,9 @@ pub mod windows {
             })
             .context("Failed to set service status Running")?;
 
-        let db_path = crate::config::AppConfig::load().db_path;
-
-        let result = crate::collector::watch(&db_path, 300, stop_flag);
+        let config = crate::config::AppConfig::load();
+        let result =
+            crate::collector::watch(&config.db_path, config.collect_interval_secs, stop_flag);
 
         // Report Stopped
         let exit_code = match &result {

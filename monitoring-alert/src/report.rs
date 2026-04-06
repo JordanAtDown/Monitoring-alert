@@ -5,6 +5,78 @@ use std::io::Write;
 
 use crate::db;
 
+// ──────────────────────────────────────────────────────────────
+// Compact summary for toast notifications
+// ──────────────────────────────────────────────────────────────
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub enum ReportPeriod {
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct SummaryReport {
+    pub title: String,
+    pub body: String,
+}
+
+/// Generate a one-line summary suitable for a Windows toast notification.
+///
+/// Checks the 30-day window across all sensors (idle + heavy load categories).
+/// Returns an alert body if any sensor delta ≥ 5 °C, otherwise "✓ stable".
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn generate_summary(conn: &Connection, period: ReportPeriod) -> Result<SummaryReport> {
+    let sensors = db::get_distinct_sensors(conn).context("Failed to get distinct sensors")?;
+
+    // Worst delta per sensor name (deduplicates idle/heavy for the same sensor)
+    let mut worst: HashMap<String, f64> = HashMap::new();
+
+    for s in &sensors {
+        for &cat in &["idle", "heavy"] {
+            let curr = db::get_avg_for_window(conn, &s.hardware, &s.sensor, cat, 30, 0)
+                .context("Failed to query current window avg")?;
+            let prev = db::get_avg_for_window(conn, &s.hardware, &s.sensor, cat, 30, 30)
+                .context("Failed to query previous window avg")?;
+            if let (Some(c), Some(p)) = (curr, prev) {
+                let delta = c - p;
+                if delta >= 5.0 {
+                    let entry = worst.entry(s.sensor.clone()).or_insert(delta);
+                    if delta > *entry {
+                        *entry = delta;
+                    }
+                }
+            }
+        }
+    }
+
+    let title = match period {
+        ReportPeriod::Daily => "MonitoringAlert — Rapport Journalier",
+        ReportPeriod::Weekly => "MonitoringAlert — Rapport Hebdomadaire",
+        ReportPeriod::Monthly => "MonitoringAlert — Rapport Mensuel",
+    }
+    .to_string();
+
+    let body = if worst.is_empty() {
+        "✓ Toutes les températures stables".to_string()
+    } else {
+        let mut alerts: Vec<(String, f64)> = worst.into_iter().collect();
+        // Sort worst delta first
+        alerts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let n = alerts.len();
+        let (ref name, delta) = alerts[0];
+        let sign = if delta >= 0.0 { "+" } else { "" };
+        if n == 1 {
+            format!("⚠ 1 alerte — {}: {}{:.1}°C sur 30j", name, sign, delta)
+        } else {
+            format!("⚠ {} alertes — {}: {}{:.1}°C sur 30j", n, name, sign, delta)
+        }
+    };
+
+    Ok(SummaryReport { title, body })
+}
+
 const WINDOWS: &[(u32, &str)] = &[(1, "24h"), (7, "7j"), (30, "30j"), (90, "90j")];
 const DISPLAY_CATS: &[&str] = &["idle", "heavy"];
 
