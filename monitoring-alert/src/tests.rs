@@ -117,38 +117,31 @@ mod db_tests {
 
 #[cfg(test)]
 mod report_tests {
-    use crate::{db, report};
+    use crate::{
+        db, report,
+        store::{SqliteStore, TemperatureStore},
+    };
 
-    fn in_memory_conn() -> rusqlite::Connection {
-        let conn = rusqlite::Connection::open_in_memory().expect("in-memory DB");
-        conn.execute_batch(
-            "CREATE TABLE snapshots (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 ts TEXT NOT NULL, cpu_load REAL, gpu_load REAL, load_cat TEXT NOT NULL
-             );
-             CREATE TABLE readings (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
-                 hardware TEXT NOT NULL, sensor TEXT NOT NULL, value REAL NOT NULL
-             );",
-        )
-        .expect("schema");
-        conn
+    fn make_store() -> SqliteStore {
+        SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).expect("init store"))
     }
 
     #[test]
     fn report_on_empty_db_does_not_panic() {
-        let conn = in_memory_conn();
-        report::generate_report(&conn, None).expect("report on empty db");
+        let store = make_store();
+        report::generate_report(&store, None).expect("report on empty db");
     }
 
     #[test]
     fn report_with_data_does_not_panic() {
-        let conn = in_memory_conn();
-        let snap = db::insert_snapshot(&conn, "2024-01-01T00:00:00", Some(5.0), None, "idle")
+        let store = make_store();
+        let snap = store
+            .insert_snapshot("2024-01-01T00:00:00", Some(5.0), None, "idle")
             .expect("insert");
-        db::insert_reading(&conn, snap, "AMDCPU", "CPU Package", 38.0).expect("reading");
-        report::generate_report(&conn, None).expect("report with data");
+        store
+            .insert_reading(snap, "AMDCPU", "CPU Package", 38.0)
+            .expect("reading");
+        report::generate_report(&store, None).expect("report with data");
     }
 }
 
@@ -160,8 +153,10 @@ mod report_tests {
 // get_avg_for_window + generate_summary aggregation pipeline.
 #[cfg(test)]
 mod integration_tests {
-    use crate::{db, report};
-    use rusqlite::Connection;
+    use crate::{
+        db, report,
+        store::{SqliteStore, TemperatureStore},
+    };
 
     /// Returns an ISO-8601 UTC timestamp N days in the past.
     fn ts_days_ago(days: i64) -> String {
@@ -170,16 +165,15 @@ mod integration_tests {
             .to_string()
     }
 
-    /// Opens an in-memory DB with the full schema (via db::init_db with ":memory:").
-    fn make_conn() -> Connection {
-        let path = std::path::Path::new(":memory:");
-        db::init_db(path).expect("init in-memory db")
+    /// Opens an in-memory store with the full schema.
+    fn make_store() -> SqliteStore {
+        SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).expect("init in-memory db"))
     }
 
     /// Inserts one snapshot + one reading per day across [days_start, days_end).
     /// days_start=1 means yesterday; days_end=31 covers the last 30 days.
     fn seed_window(
-        conn: &Connection,
+        store: &dyn TemperatureStore,
         hardware: &str,
         sensor: &str,
         load_cat: &str,
@@ -189,9 +183,12 @@ mod integration_tests {
     ) {
         for day in days_start..days_end {
             let ts = ts_days_ago(day);
-            let snap =
-                db::insert_snapshot(conn, &ts, Some(5.0), None, load_cat).expect("insert snapshot");
-            db::insert_reading(conn, snap, hardware, sensor, temp).expect("insert reading");
+            let snap = store
+                .insert_snapshot(&ts, Some(5.0), None, load_cat)
+                .expect("insert snapshot");
+            store
+                .insert_reading(snap, hardware, sensor, temp)
+                .expect("insert reading");
         }
     }
 
@@ -199,15 +196,15 @@ mod integration_tests {
 
     #[test]
     fn daily_title() {
-        let conn = make_conn();
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let store = make_store();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(s.title.contains("Journalier"), "titre daily: {:?}", s.title);
     }
 
     #[test]
     fn weekly_title() {
-        let conn = make_conn();
-        let s = report::generate_summary(&conn, report::ReportPeriod::Weekly).unwrap();
+        let store = make_store();
+        let s = report::generate_summary(&store, report::ReportPeriod::Weekly).unwrap();
         assert!(
             s.title.contains("Hebdomadaire"),
             "titre weekly: {:?}",
@@ -217,8 +214,8 @@ mod integration_tests {
 
     #[test]
     fn monthly_title() {
-        let conn = make_conn();
-        let s = report::generate_summary(&conn, report::ReportPeriod::Monthly).unwrap();
+        let store = make_store();
+        let s = report::generate_summary(&store, report::ReportPeriod::Monthly).unwrap();
         assert!(s.title.contains("Mensuel"), "titre monthly: {:?}", s.title);
     }
 
@@ -226,13 +223,13 @@ mod integration_tests {
 
     #[test]
     fn stable_no_alert() {
-        let conn = make_conn();
+        let store = make_store();
         // curr window [1..31): avg 45°C
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 45.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 45.0);
         // prev window [31..61): avg 44°C
-        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 44.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 31, 61, 44.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(
             s.body.contains("stables"),
             "should be stable, got: {:?}",
@@ -244,11 +241,11 @@ mod integration_tests {
 
     #[test]
     fn single_warning() {
-        let conn = make_conn();
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 55.0);
-        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 49.0);
+        let store = make_store();
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 55.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 31, 61, 49.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(
             s.body.contains("1 alerte"),
             "should have 1 alert, got: {:?}",
@@ -265,11 +262,11 @@ mod integration_tests {
 
     #[test]
     fn critical_threshold() {
-        let conn = make_conn();
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 65.0);
-        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 53.0);
+        let store = make_store();
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 65.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 31, 61, 53.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(
             s.body.contains("1 alerte"),
             "should have 1 alert, got: {:?}",
@@ -286,15 +283,15 @@ mod integration_tests {
 
     #[test]
     fn multiple_sensors_one_alert() {
-        let conn = make_conn();
+        let store = make_store();
         // CPU: Δ+6°C → alerte
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 55.0);
-        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 49.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 55.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 31, 61, 49.0);
         // GPU: Δ+1°C → stable
-        seed_window(&conn, "GPU", "GPU Temperature", "idle", 1, 31, 71.0);
-        seed_window(&conn, "GPU", "GPU Temperature", "idle", 31, 61, 70.0);
+        seed_window(&store, "GPU", "GPU Temperature", "idle", 1, 31, 71.0);
+        seed_window(&store, "GPU", "GPU Temperature", "idle", 31, 61, 70.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(
             s.body.contains("1 alerte"),
             "should have 1 alert, got: {:?}",
@@ -306,15 +303,15 @@ mod integration_tests {
 
     #[test]
     fn multiple_sensors_two_alerts() {
-        let conn = make_conn();
+        let store = make_store();
         // CPU: Δ+6°C
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 55.0);
-        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 49.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 55.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 31, 61, 49.0);
         // GPU: Δ+7°C (pire delta → doit apparaître en 1er dans le corps)
-        seed_window(&conn, "GPU", "GPU Temperature", "idle", 1, 31, 77.0);
-        seed_window(&conn, "GPU", "GPU Temperature", "idle", 31, 61, 70.0);
+        seed_window(&store, "GPU", "GPU Temperature", "idle", 1, 31, 77.0);
+        seed_window(&store, "GPU", "GPU Temperature", "idle", 31, 61, 70.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(
             s.body.contains("2 alertes"),
             "should have 2 alerts, got: {:?}",
@@ -332,15 +329,15 @@ mod integration_tests {
 
     #[test]
     fn load_cat_isolation() {
-        let conn = make_conn();
+        let store = make_store();
         // idle: Δ+3°C → pas d'alerte
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 43.0);
-        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 40.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 43.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 31, 61, 40.0);
         // heavy: Δ+8°C → alerte
-        seed_window(&conn, "CPU", "CPU Package", "heavy", 1, 31, 78.0);
-        seed_window(&conn, "CPU", "CPU Package", "heavy", 31, 61, 70.0);
+        seed_window(&store, "CPU", "CPU Package", "heavy", 1, 31, 78.0);
+        seed_window(&store, "CPU", "CPU Package", "heavy", 31, 61, 70.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         assert!(
             s.body.contains("1 alerte"),
             "should have 1 alert (heavy only), got: {:?}",
@@ -352,11 +349,11 @@ mod integration_tests {
 
     #[test]
     fn no_previous_data() {
-        let conn = make_conn();
+        let store = make_store();
         // Seulement les 30 derniers jours — aucune fenêtre précédente
-        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 65.0);
+        seed_window(&store, "CPU", "CPU Package", "idle", 1, 31, 65.0);
 
-        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        let s = report::generate_summary(&store, report::ReportPeriod::Daily).unwrap();
         // Sans période précédente il n'y a pas de delta → stable
         assert!(
             s.body.contains("stables"),

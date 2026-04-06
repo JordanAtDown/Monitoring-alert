@@ -9,7 +9,28 @@ use windows::{
 
 pub const TOAST_APP_ID: &str = "MonitoringAlert.TemperatureMonitor";
 
-pub fn send_toast(title: &str, body: &str) -> Result<()> {
+// ──────────────────────────────────────────────────────────────
+// ReportSender implementation
+// ──────────────────────────────────────────────────────────────
+
+/// Windows toast notification sender.
+///
+/// Requires the AUMID `MonitoringAlert.TemperatureMonitor` to be
+/// registered in `HKCU\Software\Classes\AppUserModelId\` (done by
+/// `install.bat`).
+pub struct ToastSender;
+
+impl crate::reporter::ReportSender for ToastSender {
+    fn send(&self, title: &str, body: &str) -> Result<()> {
+        send_toast(title, body)
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// WinRT implementation (internal)
+// ──────────────────────────────────────────────────────────────
+
+fn send_toast(title: &str, body: &str) -> Result<()> {
     let xml = build_toast_xml(title, body);
     let doc = XmlDocument::new().context("XmlDocument::new")?;
     doc.LoadXml(&HSTRING::from(xml)).context("LoadXml")?;

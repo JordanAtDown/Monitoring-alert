@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
-use rusqlite::Connection;
 use std::collections::HashMap;
 use std::io::Write;
 
-use crate::db;
+use crate::store::TemperatureStore;
 
 // ──────────────────────────────────────────────────────────────
 // Compact summary for toast notifications
@@ -27,17 +26,24 @@ pub struct SummaryReport {
 /// Checks the 30-day window across all sensors (idle + heavy load categories).
 /// Returns an alert body if any sensor delta ≥ 5 °C, otherwise "✓ stable".
 #[cfg_attr(not(windows), allow(dead_code))]
-pub fn generate_summary(conn: &Connection, period: ReportPeriod) -> Result<SummaryReport> {
-    let sensors = db::get_distinct_sensors(conn).context("Failed to get distinct sensors")?;
+pub fn generate_summary(
+    store: &dyn TemperatureStore,
+    period: ReportPeriod,
+) -> Result<SummaryReport> {
+    let sensors = store
+        .get_distinct_sensors()
+        .context("Failed to get distinct sensors")?;
 
     // Worst delta per sensor name (deduplicates idle/heavy for the same sensor)
     let mut worst: HashMap<String, f64> = HashMap::new();
 
     for s in &sensors {
         for &cat in &["idle", "heavy"] {
-            let curr = db::get_avg_for_window(conn, &s.hardware, &s.sensor, cat, 30, 0)
+            let curr = store
+                .get_avg_for_window(&s.hardware, &s.sensor, cat, 30, 0)
                 .context("Failed to query current window avg")?;
-            let prev = db::get_avg_for_window(conn, &s.hardware, &s.sensor, cat, 30, 30)
+            let prev = store
+                .get_avg_for_window(&s.hardware, &s.sensor, cat, 30, 30)
                 .context("Failed to query previous window avg")?;
             if let (Some(c), Some(p)) = (curr, prev) {
                 let delta = c - p;
@@ -110,9 +116,13 @@ fn bar(pct: f64, width: usize) -> String {
     "█".repeat(filled)
 }
 
-pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
-    let stats = db::get_overall_stats(conn).context("Failed to get overall stats")?;
-    let sensors = db::get_distinct_sensors(conn).context("Failed to get distinct sensors")?;
+pub fn generate_report(store: &dyn TemperatureStore, output: Option<&str>) -> Result<()> {
+    let stats = store
+        .get_overall_stats()
+        .context("Failed to get overall stats")?;
+    let sensors = store
+        .get_distinct_sensors()
+        .context("Failed to get distinct sensors")?;
 
     let now = chrono::Local::now();
     let now_str = now.format("%d/%m/%Y %H:%M").to_string();
@@ -141,7 +151,9 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
     writeln!(out)?;
 
     // Category distribution (last 90 days)
-    let dist = db::get_category_distribution(conn, 90).context("Failed to get distribution")?;
+    let dist = store
+        .get_category_distribution(90)
+        .context("Failed to get distribution")?;
     let total_dist: i64 = dist.iter().map(|c| c.count).sum();
     writeln!(out, "  Distribution des états (90 derniers jours) :")?;
     let order = ["idle", "light", "moderate", "heavy"];
@@ -197,7 +209,8 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
             writeln!(out, "  │  {}", sensor_name)?;
             for &cat in DISPLAY_CATS {
                 let has_data = WINDOWS.iter().any(|&(days, _)| {
-                    db::get_avg_for_window(conn, hardware, sensor_name, cat, days, 0)
+                    store
+                        .get_avg_for_window(hardware, sensor_name, cat, days, 0)
                         .ok()
                         .flatten()
                         .is_some()
@@ -207,9 +220,11 @@ pub fn generate_report(conn: &Connection, output: Option<&str>) -> Result<()> {
                 }
                 writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
                 for &(days, label) in WINDOWS {
-                    let curr = db::get_avg_for_window(conn, hardware, sensor_name, cat, days, 0)
+                    let curr = store
+                        .get_avg_for_window(hardware, sensor_name, cat, days, 0)
                         .context("Failed to query current window avg")?;
-                    let prev = db::get_avg_for_window(conn, hardware, sensor_name, cat, days, days)
+                    let prev = store
+                        .get_avg_for_window(hardware, sensor_name, cat, days, days)
                         .context("Failed to query previous window avg")?;
                     match (curr, prev) {
                         (Some(c), Some(p)) => {

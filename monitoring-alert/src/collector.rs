@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use chrono::Local;
-use rusqlite::Connection;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::store::{SqliteStore, TemperatureStore};
 use crate::{db, sensors};
 
 pub fn load_category(cpu_load: f64) -> &'static str {
@@ -17,7 +17,7 @@ pub fn load_category(cpu_load: f64) -> &'static str {
     }
 }
 
-pub fn collect_and_store(conn: &Connection) -> Result<()> {
+pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<()> {
     let data = sensors::read_sensors().context("Failed to read sensor data")?;
     let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let cat = data
@@ -26,18 +26,19 @@ pub fn collect_and_store(conn: &Connection) -> Result<()> {
         .unwrap_or("idle")
         .to_string();
 
-    let snapshot_id = db::insert_snapshot(conn, &ts, data.cpu_load, data.gpu_load, &cat)
+    let snapshot_id = store
+        .insert_snapshot(&ts, data.cpu_load, data.gpu_load, &cat)
         .context("Failed to insert snapshot")?;
 
     for reading in &data.temperatures {
-        db::insert_reading(
-            conn,
-            snapshot_id,
-            &reading.hardware,
-            &reading.sensor,
-            reading.value,
-        )
-        .context("Failed to insert reading")?;
+        store
+            .insert_reading(
+                snapshot_id,
+                &reading.hardware,
+                &reading.sensor,
+                reading.value,
+            )
+            .context("Failed to insert reading")?;
     }
 
     println!(
@@ -54,6 +55,7 @@ pub fn collect_and_store(conn: &Connection) -> Result<()> {
 
 pub fn watch(db_path: &Path, interval_secs: u64, stop: Arc<AtomicBool>) -> Result<()> {
     let conn = db::init_db(db_path).context("Failed to open database")?;
+    let store = SqliteStore::new(conn);
     println!(
         "Starting watch loop every {}s. Press Ctrl+C to stop.",
         interval_secs
@@ -63,7 +65,7 @@ pub fn watch(db_path: &Path, interval_secs: u64, stop: Arc<AtomicBool>) -> Resul
             println!("Stop signal received, exiting watch loop.");
             break;
         }
-        if let Err(e) = collect_and_store(&conn) {
+        if let Err(e) = collect_and_store(&store) {
             eprintln!("Collection error: {:#}", e);
         }
         // Sleep in small increments to remain responsive to stop signals

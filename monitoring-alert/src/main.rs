@@ -15,8 +15,10 @@ mod db;
 #[cfg(windows)]
 mod notification;
 mod report;
+mod reporter;
 mod sensors;
 mod service;
+mod store;
 #[cfg(test)]
 mod tests;
 
@@ -106,8 +108,8 @@ fn run_cli() -> Result<()> {
 
     match cli.command {
         Commands::Collect => {
-            let conn = db::init_db(&db_path)?;
-            collector::collect_and_store(&conn)?;
+            let store = store::SqliteStore::new(db::init_db(&db_path)?);
+            collector::collect_and_store(&store)?;
         }
         Commands::Watch { interval } => {
             let stop = Arc::new(AtomicBool::new(false));
@@ -116,8 +118,8 @@ fn run_cli() -> Result<()> {
             collector::watch(&db_path, interval, stop)?;
         }
         Commands::Report { output } => {
-            let conn = db::init_db(&db_path)?;
-            report::generate_report(&conn, output.as_deref())?;
+            let store = store::SqliteStore::new(db::init_db(&db_path)?);
+            report::generate_report(&store, output.as_deref())?;
         }
         Commands::Service { action } => match action {
             ServiceAction::Install => service::install()?,
@@ -136,9 +138,10 @@ fn run_cli() -> Result<()> {
             } else {
                 anyhow::bail!("Spécifiez --daily, --weekly ou --monthly");
             };
-            let conn = db::init_db(&db_path)?;
-            let summary = report::generate_summary(&conn, period)?;
-            notification::send_toast(&summary.title, &summary.body)?;
+            let store = store::SqliteStore::new(db::init_db(&db_path)?);
+            let summary = report::generate_summary(&store, period)?;
+            let sender: Box<dyn reporter::ReportSender> = Box::new(notification::ToastSender);
+            sender.send(&summary.title, &summary.body)?;
         }
     }
     Ok(())
