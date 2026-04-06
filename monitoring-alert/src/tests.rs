@@ -151,3 +151,217 @@ mod report_tests {
         report::generate_report(&conn, None).expect("report with data");
     }
 }
+
+// ──────────────────────────────────────────────────────────────
+// Integration tests — generate_summary() aggregation algorithm
+// ──────────────────────────────────────────────────────────────
+// These tests simulate real data collection by inserting rows
+// with dynamic UTC timestamps, exercising the full
+// get_avg_for_window + generate_summary aggregation pipeline.
+#[cfg(test)]
+mod integration_tests {
+    use crate::{db, report};
+    use rusqlite::Connection;
+
+    /// Returns an ISO-8601 UTC timestamp N days in the past.
+    fn ts_days_ago(days: i64) -> String {
+        (chrono::Utc::now() - chrono::TimeDelta::days(days))
+            .format("%Y-%m-%dT%H:%M:%S")
+            .to_string()
+    }
+
+    /// Opens an in-memory DB with the full schema (via db::init_db with ":memory:").
+    fn make_conn() -> Connection {
+        let path = std::path::Path::new(":memory:");
+        db::init_db(path).expect("init in-memory db")
+    }
+
+    /// Inserts one snapshot + one reading per day across [days_start, days_end).
+    /// days_start=1 means yesterday; days_end=31 covers the last 30 days.
+    fn seed_window(
+        conn: &Connection,
+        hardware: &str,
+        sensor: &str,
+        load_cat: &str,
+        days_start: i64,
+        days_end: i64,
+        temp: f64,
+    ) {
+        for day in days_start..days_end {
+            let ts = ts_days_ago(day);
+            let snap =
+                db::insert_snapshot(conn, &ts, Some(5.0), None, load_cat).expect("insert snapshot");
+            db::insert_reading(conn, snap, hardware, sensor, temp).expect("insert reading");
+        }
+    }
+
+    // ── Titre des trois périodes ──────────────────────────────
+
+    #[test]
+    fn daily_title() {
+        let conn = make_conn();
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(s.title.contains("Journalier"), "titre daily: {:?}", s.title);
+    }
+
+    #[test]
+    fn weekly_title() {
+        let conn = make_conn();
+        let s = report::generate_summary(&conn, report::ReportPeriod::Weekly).unwrap();
+        assert!(
+            s.title.contains("Hebdomadaire"),
+            "titre weekly: {:?}",
+            s.title
+        );
+    }
+
+    #[test]
+    fn monthly_title() {
+        let conn = make_conn();
+        let s = report::generate_summary(&conn, report::ReportPeriod::Monthly).unwrap();
+        assert!(s.title.contains("Mensuel"), "titre monthly: {:?}", s.title);
+    }
+
+    // ── Scénario 1 : température stable (Δ < 5°C) ────────────
+
+    #[test]
+    fn stable_no_alert() {
+        let conn = make_conn();
+        // curr window [1..31): avg 45°C
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 45.0);
+        // prev window [31..61): avg 44°C
+        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 44.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("stables"),
+            "should be stable, got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénario 2 : alerte simple (Δ = +6°C) ─────────────────
+
+    #[test]
+    fn single_warning() {
+        let conn = make_conn();
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 55.0);
+        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 49.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("1 alerte"),
+            "should have 1 alert, got: {:?}",
+            s.body
+        );
+        assert!(
+            s.body.contains("+6.0"),
+            "should show +6.0°C delta, got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénario 3 : seuil critique (Δ = +12°C) ──────────────
+
+    #[test]
+    fn critical_threshold() {
+        let conn = make_conn();
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 65.0);
+        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 53.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("1 alerte"),
+            "should have 1 alert, got: {:?}",
+            s.body
+        );
+        assert!(
+            s.body.contains("12.0"),
+            "should show 12.0°C delta, got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénario 4 : deux capteurs, une seule alerte ──────────
+
+    #[test]
+    fn multiple_sensors_one_alert() {
+        let conn = make_conn();
+        // CPU: Δ+6°C → alerte
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 55.0);
+        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 49.0);
+        // GPU: Δ+1°C → stable
+        seed_window(&conn, "GPU", "GPU Temperature", "idle", 1, 31, 71.0);
+        seed_window(&conn, "GPU", "GPU Temperature", "idle", 31, 61, 70.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("1 alerte"),
+            "should have 1 alert, got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénario 5 : deux capteurs, deux alertes ─────────────
+
+    #[test]
+    fn multiple_sensors_two_alerts() {
+        let conn = make_conn();
+        // CPU: Δ+6°C
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 55.0);
+        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 49.0);
+        // GPU: Δ+7°C (pire delta → doit apparaître en 1er dans le corps)
+        seed_window(&conn, "GPU", "GPU Temperature", "idle", 1, 31, 77.0);
+        seed_window(&conn, "GPU", "GPU Temperature", "idle", 31, 61, 70.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("2 alertes"),
+            "should have 2 alerts, got: {:?}",
+            s.body
+        );
+        // Le capteur avec le pire delta (GPU, +7°C) doit être mentionné
+        assert!(
+            s.body.contains("GPU Temperature"),
+            "GPU Temperature should be the leading alert, got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénario 6 : isolation par catégorie de charge ────────
+
+    #[test]
+    fn load_cat_isolation() {
+        let conn = make_conn();
+        // idle: Δ+3°C → pas d'alerte
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 43.0);
+        seed_window(&conn, "CPU", "CPU Package", "idle", 31, 61, 40.0);
+        // heavy: Δ+8°C → alerte
+        seed_window(&conn, "CPU", "CPU Package", "heavy", 1, 31, 78.0);
+        seed_window(&conn, "CPU", "CPU Package", "heavy", 31, 61, 70.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        assert!(
+            s.body.contains("1 alerte"),
+            "should have 1 alert (heavy only), got: {:?}",
+            s.body
+        );
+    }
+
+    // ── Scénario 7 : pas de données précédentes ───────────────
+
+    #[test]
+    fn no_previous_data() {
+        let conn = make_conn();
+        // Seulement les 30 derniers jours — aucune fenêtre précédente
+        seed_window(&conn, "CPU", "CPU Package", "idle", 1, 31, 65.0);
+
+        let s = report::generate_summary(&conn, report::ReportPeriod::Daily).unwrap();
+        // Sans période précédente il n'y a pas de delta → stable
+        assert!(
+            s.body.contains("stables"),
+            "no prev data → should be stable, got: {:?}",
+            s.body
+        );
+    }
+}
