@@ -7,7 +7,7 @@ use serde::Deserialize;
 // Schedule configuration (cross-platform — used by tests too)
 // ──────────────────────────────────────────────────────────────
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[allow(dead_code)]
 pub struct ScheduleConfig {
     pub daily_enabled: bool,
     pub daily_time: String, // "HH:MM"
@@ -43,7 +43,7 @@ pub struct AppConfig {
     /// Sensor collection interval in seconds (min 60, default 300).
     #[cfg_attr(not(windows), allow(dead_code))]
     pub collect_interval_secs: u64,
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[allow(dead_code)]
     pub schedule: ScheduleConfig,
 }
 

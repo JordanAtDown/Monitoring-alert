@@ -11,9 +11,8 @@ pub const SERVICE_DESCRIPTION: &str =
 #[cfg(windows)]
 pub mod windows {
     use super::*;
-    use anyhow::{bail, Context};
+    use anyhow::Context;
     use std::ffi::OsString;
-    use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
