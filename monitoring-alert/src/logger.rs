@@ -1,37 +1,55 @@
 use anyhow::Result;
-use simplelog::{
-    ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode, WriteLogger,
-};
-use std::fs::OpenOptions;
 use std::path::Path;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-/// Initialise le logger : sortie console (Info) + fichier en mode append (Info).
+/// Initialise le logger :
+/// - Console (stderr) avec couleurs
+/// - Fichier avec rotation quotidienne dans le répertoire de `log_path`,
+///   nommé d'après `log_path` (ex. `monitoring-alert.log`)
 ///
-/// Crée le répertoire parent si nécessaire. Peut être appelé une seule fois ;
-/// les appels suivants retournent une erreur que l'on peut ignorer silencieusement.
-pub fn init(log_path: &Path) -> Result<()> {
-    if let Some(parent) = log_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| anyhow::anyhow!("Cannot create log directory: {}", e))?;
-        }
-    }
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-        .map_err(|e| anyhow::anyhow!("Cannot open log file {}: {}", log_path.display(), e))?;
+/// `level` accepte : `"error"`, `"warn"`, `"info"` (défaut), `"debug"`, `"trace"`.
+/// La rotation produit des fichiers du type `monitoring-alert.log.2026-04-06`.
+///
+/// Le guard du writer non-bloquant est leaké intentionnellement — acceptable
+/// pour un service/daemon qui s'exécute jusqu'à la fin du processus.
+pub fn init(log_path: &Path, level: &str) -> Result<()> {
+    let log_dir = log_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let file_name = log_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("monitoring-alert.log");
 
-    CombinedLogger::init(vec![
-        TermLogger::new(
-            LevelFilter::Info,
-            Config::default(),
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        ),
-        WriteLogger::new(LevelFilter::Info, Config::default(), file),
-    ])
-    .map_err(|e| anyhow::anyhow!("Logger already initialised: {}", e))?;
+    if !log_dir.as_os_str().is_empty() {
+        std::fs::create_dir_all(log_dir)
+            .map_err(|e| anyhow::anyhow!("Cannot create log directory: {}", e))?;
+    }
+
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, file_name);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    // Keep the guard alive for the lifetime of the process.
+    Box::leak(Box::new(guard));
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::new(level))
+        .with(
+            fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_target(false)
+                .with_ansi(true),
+        )
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking)
+                .with_target(false)
+                .with_ansi(false),
+        )
+        .try_init()
+        .map_err(|e| anyhow::anyhow!("Logger already initialised: {}", e))?;
 
     Ok(())
 }

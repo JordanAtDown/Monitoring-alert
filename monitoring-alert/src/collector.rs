@@ -54,14 +54,14 @@ pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<usize> {
 
     let n = data.temperatures.len();
     if n == 0 {
-        log::warn!(
+        tracing::warn!(
             "[{}] Snapshot #{} — no temperature sensors detected. \
              Is LibreHardwareMonitor running with WMI support enabled?",
             ts,
             snapshot_id
         );
     } else {
-        log::info!(
+        tracing::info!(
             "[{}] Snapshot #{} — CPU: {:.1}%, GPU: {:.1}%, cat: {}, sensors: {}",
             ts,
             snapshot_id,
@@ -86,7 +86,7 @@ pub fn watch(
 ) -> Result<()> {
     let conn = db::init_db(db_path).context("Failed to open database")?;
     let store = SqliteStore::new(conn);
-    log::info!(
+    tracing::info!(
         "Watch loop started — interval: {}s, retention: {} days.",
         interval_secs,
         retention_days
@@ -99,19 +99,19 @@ pub fn watch(
 
     loop {
         if stop.load(Ordering::SeqCst) {
-            log::info!("Stop signal received — exiting watch loop.");
+            tracing::info!("Stop signal received — exiting watch loop.");
             break;
         }
 
         if iterations.is_multiple_of(purge_every) {
             match store.purge_old_data(retention_days) {
                 Ok(0) => {}
-                Ok(n) => log::info!(
+                Ok(n) => tracing::info!(
                     "Purged {} snapshot(s) older than {} days.",
                     n,
                     retention_days
                 ),
-                Err(e) => log::warn!("Purge error: {:#}", e),
+                Err(e) => tracing::warn!("Purge error: {:#}", e),
             }
         }
 
@@ -119,7 +119,7 @@ pub fn watch(
             Ok(0) => {
                 empty_streak += 1;
                 if empty_streak == EMPTY_ALERT_THRESHOLD {
-                    log::error!(
+                    tracing::error!(
                         "No temperature readings for {} consecutive collections \
                          (~{} min) — ensure LibreHardwareMonitor is running.",
                         EMPTY_ALERT_THRESHOLD,
@@ -131,14 +131,14 @@ pub fn watch(
             }
             Ok(_) => {
                 if empty_streak > 0 {
-                    log::info!(
+                    tracing::info!(
                         "Temperature readings restored after {} empty collection(s).",
                         empty_streak
                     );
                 }
                 empty_streak = 0;
             }
-            Err(e) => log::error!("Collection error: {:#}", e),
+            Err(e) => tracing::error!("Collection error: {:#}", e),
         }
 
         iterations += 1;

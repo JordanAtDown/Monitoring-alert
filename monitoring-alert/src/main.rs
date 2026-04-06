@@ -33,7 +33,7 @@ define_windows_service!(ffi_service_main, handle_service_main);
 #[cfg(windows)]
 fn handle_service_main(args: Vec<std::ffi::OsString>) {
     if let Err(e) = service::windows::run_service_main(args) {
-        log::error!("Service error: {:#}", e);
+        tracing::error!("Service error: {:#}", e);
     }
 }
 
@@ -127,7 +127,7 @@ fn run_cli() -> Result<()> {
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .join("monitoring-alert.log");
-    let _ = logger::init(&log_path);
+    let _ = logger::init(&log_path, &cfg.log_level);
 
     match cli.command {
         Commands::Collect => {

@@ -132,6 +132,7 @@ monthly_report_time    = "08:00"
 | `db_path` | chemin | `C:\ProgramData\MonitoringAlert\temperatures.db` | Chemin de la base SQLite |
 | `collect_interval_secs` | entier ≥ 60 | `300` | Intervalle entre deux collectes (secondes) |
 | `retention_days` | entier ≥ 180 | `365` | Durée de rétention des données (jours) |
+| `log_level` | `"error"` … `"trace"` | `"info"` | Niveau de log (utiliser `"debug"` pour diagnostiquer) |
 | `daily_report_enabled` | booléen | `true` | Activer le rapport journalier |
 | `daily_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport journalier |
 | `weekly_report_enabled` | booléen | `false` | Activer le rapport hebdomadaire |
@@ -148,6 +149,7 @@ monthly_report_time    = "08:00"
 | `db_path` | Redémarrer le service : `sc stop MonitoringAlert && sc start MonitoringAlert` |
 | `collect_interval_secs` | Redémarrer le service |
 | `retention_days` | Redémarrer le service |
+| `log_level` | Redémarrer le service |
 | Paramètres de rapport | Lancer `update.bat` en tant qu'administrateur |
 
 ---

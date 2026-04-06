@@ -23,6 +23,11 @@ collect_interval_secs = 300
 # de détection compare une fenêtre de 90 jours à la fenêtre précédente (90j).
 retention_days = 365
 
+# Niveau de log : "error" | "warn" | "info" (défaut) | "debug" | "trace"
+# Passer à "debug" pour diagnostiquer un problème (collecte, capteurs, etc.)
+# Le fichier de log est dans le même répertoire que la base de données.
+log_level = "info"
+
 # =============================================================
 #  Rapports automatiques via notifications Windows
 # =============================================================

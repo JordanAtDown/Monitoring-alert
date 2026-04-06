@@ -83,8 +83,8 @@ pub mod windows {
             .update_failure_actions(failure_actions)
             .context("Failed to set failure/recovery actions")?;
 
-        log::info!("Service '{}' installed successfully.", SERVICE_DISPLAY_NAME);
-        log::info!("Run 'monitoring-alert service start' to start it.");
+        tracing::info!("Service '{}' installed successfully.", SERVICE_DISPLAY_NAME);
+        tracing::info!("Run 'monitoring-alert service start' to start it.");
         Ok(())
     }
 
@@ -107,7 +107,7 @@ pub mod windows {
         }
 
         service.delete().context("Failed to delete service")?;
-        log::info!("Service '{}' uninstalled.", SERVICE_NAME);
+        tracing::info!("Service '{}' uninstalled.", SERVICE_NAME);
         Ok(())
     }
 
@@ -120,7 +120,7 @@ pub mod windows {
         service
             .start::<&str>(&[])
             .context("Failed to start service")?;
-        log::info!("Service '{}' started.", SERVICE_NAME);
+        tracing::info!("Service '{}' started.", SERVICE_NAME);
         Ok(())
     }
 
@@ -131,7 +131,7 @@ pub mod windows {
             .open_service(SERVICE_NAME, ServiceAccess::STOP)
             .context("Failed to open service")?;
         service.stop().context("Failed to stop service")?;
-        log::info!("Service '{}' stop signal sent.", SERVICE_NAME);
+        tracing::info!("Service '{}' stop signal sent.", SERVICE_NAME);
         Ok(())
     }
 
@@ -177,8 +177,8 @@ pub mod windows {
             .parent()
             .unwrap_or(std::path::Path::new("."))
             .join("monitoring-alert.log");
-        let _ = crate::logger::init(&log_path);
-        log::info!("Service starting — db: {}", config.db_path.display());
+        let _ = crate::logger::init(&log_path, &config.log_level);
+        tracing::info!("Service starting — db: {}", config.db_path.display());
         let result = crate::collector::watch(
             &config.db_path,
             config.collect_interval_secs,
