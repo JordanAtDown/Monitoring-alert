@@ -37,34 +37,42 @@ monitoring-alert-v0.x.x\
 
 ### 2. Éditer `config.toml`
 
-```toml
-# Dossier où sera installé l'exécutable
-install_dir = "C:\\Program Files\\MonitoringAlert"
+Configurer au minimum `install_dir` et `db_path` (voir la section
+[Configuration](#configuration) pour la liste complète des options).
 
-# Chemin de la base de données de températures
-# Placer sur un lecteur sauvegardé si souhaité
-db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
+```toml
+install_dir = "C:\\Program Files\\MonitoringAlert"
+db_path     = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
 ```
 
 ### 3. Lancer `install.bat` en tant qu'administrateur
 
-Le script :
+Le script effectue les étapes suivantes :
+
 1. Copie `monitoring-alert.exe` dans `install_dir`
-2. Crée `C:\ProgramData\MonitoringAlert\`
-3. Y dépose `config.toml`, `uninstall.bat` et `update.bat`
+2. Crée `C:\ProgramData\MonitoringAlert\` et y dépose `config.toml`, `uninstall.bat`, `update.bat`
+3. Enregistre l'AUMID `MonitoringAlert.TemperatureMonitor` dans le registre (nécessaire pour les notifications toast)
 4. Enregistre et démarre le service Windows
+5. Crée les tâches planifiées de rapport selon la configuration
 
 Le dossier temporaire peut ensuite être supprimé.
 
 ### Après installation
 
 ```
-C:\Program Files\MonitoringAlert\      ← exécutable uniquement
+C:\Program Files\MonitoringAlert\
+    monitoring-alert.exe
+
 C:\ProgramData\MonitoringAlert\
-    config.toml                        ← configuration (install_dir, db_path)
-    temperatures.db                    ← base de données
-    uninstall.bat                      ← désinstallation
-    update.bat                         ← mise à jour
+    config.toml          ← toute la configuration
+    temperatures.db      ← base de données (créée au 1er démarrage)
+    uninstall.bat
+    update.bat
+
+Planificateur de tâches\MonitoringAlert\
+    RapportJournalier    ← si daily_report_enabled = true
+    RapportHebdomadaire  ← si weekly_report_enabled = true
+    RapportMensuel       ← si monthly_report_enabled = true
 ```
 
 Le service :
@@ -72,6 +80,116 @@ Le service :
 - Démarre automatiquement au démarrage de Windows
 - Se redémarre automatiquement après un crash (3 tentatives, délai 5 s)
 - Est visible dans `services.msc` ou via `sc query MonitoringAlert`
+
+---
+
+## Configuration
+
+**Fichier :** `C:\ProgramData\MonitoringAlert\config.toml`
+
+C'est le seul fichier à modifier. Toutes les options sont regroupées ici.
+
+```toml
+# =============================================================
+#  MonitoringAlert — configuration complète
+# =============================================================
+
+# Dossier d'installation de l'exécutable
+install_dir = "C:\\Program Files\\MonitoringAlert"
+
+# Chemin complet de la base de données SQLite
+# → placer sur un lecteur sauvegardé si souhaité
+db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
+
+# Intervalle de collecte du service (en secondes, minimum 60)
+# Défaut : 300 (toutes les 5 minutes)
+collect_interval_secs = 300
+
+# =============================================================
+#  Rapports automatiques via notifications Windows
+# =============================================================
+
+# Rapport journalier
+daily_report_enabled = true
+daily_report_time    = "08:00"    # HH:MM (format 24h)
+
+# Rapport hebdomadaire
+weekly_report_enabled = false
+weekly_report_day     = "MON"     # MON TUE WED THU FRI SAT SUN
+weekly_report_time    = "08:00"
+
+# Rapport mensuel
+monthly_report_enabled = false
+monthly_report_day     = 1        # 1–28
+monthly_report_time    = "08:00"
+```
+
+### Référence des clés
+
+| Clé | Type | Défaut | Description |
+|---|---|---|---|
+| `install_dir` | chemin | `C:\Program Files\MonitoringAlert` | Dossier de l'exécutable |
+| `db_path` | chemin | `C:\ProgramData\MonitoringAlert\temperatures.db` | Chemin de la base SQLite |
+| `collect_interval_secs` | entier ≥ 60 | `300` | Intervalle entre deux collectes (secondes) |
+| `daily_report_enabled` | booléen | `true` | Activer le rapport journalier |
+| `daily_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport journalier |
+| `weekly_report_enabled` | booléen | `false` | Activer le rapport hebdomadaire |
+| `weekly_report_day` | `"MON"`…`"SUN"` | `"MON"` | Jour d'envoi du rapport hebdomadaire |
+| `weekly_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport hebdomadaire |
+| `monthly_report_enabled` | booléen | `false` | Activer le rapport mensuel |
+| `monthly_report_day` | entier 1–28 | `1` | Jour du mois d'envoi du rapport mensuel |
+| `monthly_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport mensuel |
+
+### Appliquer les changements
+
+| Modification | Action |
+|---|---|
+| `db_path` | Redémarrer le service : `sc stop MonitoringAlert && sc start MonitoringAlert` |
+| `collect_interval_secs` | Redémarrer le service |
+| Paramètres de rapport | Lancer `update.bat` en tant qu'administrateur |
+
+---
+
+## Notifications de rapport
+
+Les rapports sont envoyés sous forme de **notifications toast Windows** à l'heure
+configurée. Ils comparent les températures des 30 derniers jours par rapport aux
+30 jours précédents, à charge identique (idle et heavy séparément).
+
+**Exemple de notification :**
+```
+MonitoringAlert — Rapport Journalier
+⚠ 2 alertes — GPU Temperature: +7.0°C sur 30j
+```
+
+Ou si tout va bien :
+```
+MonitoringAlert — Rapport Journalier
+✓ Toutes les températures stables
+```
+
+### Fonctionnement technique
+
+Le service Windows tourne en session SYSTEM (Session 0) et ne peut pas afficher
+de notifications à l'écran. `install.bat` crée donc des **tâches planifiées Windows**
+qui s'exécutent dans la session de l'utilisateur connecté et appellent :
+
+```powershell
+monitoring-alert.exe notify --daily    # rapport journalier
+monitoring-alert.exe notify --weekly   # rapport hebdomadaire
+monitoring-alert.exe notify --monthly  # rapport mensuel
+```
+
+Ces tâches sont visibles dans le **Planificateur de tâches** sous
+`Bibliothèque\MonitoringAlert`.
+
+### Déclencher manuellement une notification
+
+```powershell
+monitoring-alert.exe notify --daily
+monitoring-alert.exe notify --weekly
+monitoring-alert.exe notify --monthly
+```
 
 ---
 
@@ -84,6 +202,8 @@ Le script :
 2. Télécharge la dernière release depuis GitHub
 3. Remplace l'exécutable
 4. Redémarre le service
+5. **Resynchronise les tâches planifiées** avec la configuration actuelle de `config.toml`
+   (active, désactive ou met à jour les horaires selon les valeurs courantes)
 
 `config.toml` et `temperatures.db` sont conservés intacts.
 
@@ -94,23 +214,11 @@ Le script :
 Lancer `uninstall.bat` (dans `C:\ProgramData\MonitoringAlert\`) **en tant qu'administrateur**.
 
 Le script :
-1. Arrête et supprime le service
+1. Arrête et supprime le service Windows
 2. Supprime le dossier d'installation (exe)
-3. Demande confirmation avant de supprimer `C:\ProgramData\MonitoringAlert\` (DB + config)
-
----
-
-## Configuration
-
-`C:\ProgramData\MonitoringAlert\config.toml` est le seul fichier à modifier.
-
-| Clé | Description | Défaut |
-|---|---|---|
-| `install_dir` | Dossier de l'exécutable | `C:\Program Files\MonitoringAlert` |
-| `db_path` | Chemin complet de la base SQLite | `C:\ProgramData\MonitoringAlert\temperatures.db` |
-
-Pour appliquer un nouveau `db_path` : modifier le fichier et redémarrer le service
-(`sc stop MonitoringAlert && sc start MonitoringAlert`).
+3. Supprime les tâches planifiées de rapport
+4. Supprime l'AUMID du registre
+5. Demande confirmation avant de supprimer `C:\ProgramData\MonitoringAlert\` (DB + config)
 
 ---
 
@@ -123,24 +231,26 @@ monitoring-alert.exe collect
 # Boucle de collecte (même logique que le service)
 monitoring-alert.exe watch --interval 300
 
-# Rapport sur stdout
+# Rapport détaillé sur stdout
 monitoring-alert.exe report
 
 # Rapport dans un fichier
 monitoring-alert.exe report -o rapport.txt
 
+# Envoyer une notification toast manuellement
+monitoring-alert.exe notify --daily
+monitoring-alert.exe notify --weekly
+monitoring-alert.exe notify --monthly
+
 # Utiliser une DB spécifique (override config.toml)
 monitoring-alert.exe --db "D:\autre\temperatures.db" report
+
+# Gestion du service
+monitoring-alert.exe service install
+monitoring-alert.exe service start
+monitoring-alert.exe service stop
+monitoring-alert.exe service uninstall
 ```
-
----
-
-## Structure de la base de données
-
-Deux tables SQLite :
-
-- **`snapshots`** — un enregistrement par mesure (timestamp, charge CPU/GPU, catégorie)
-- **`readings`** — une ligne par capteur par snapshot (matériel, capteur, valeur °C)
 
 ---
 
@@ -155,6 +265,15 @@ Le rapport compare les **moyennes à charge identique** sur 4 fenêtres :
 | 30j | 30 derniers jours | 30j précédents |
 | 90j | 90 derniers jours | 90j précédents |
 
+Les catégories de charge sont analysées séparément :
+
+| Catégorie | Charge CPU |
+|---|---|
+| `idle` | 0–14 % |
+| `light` | 15–39 % |
+| `moderate` | 40–74 % |
+| `heavy` | 75–100 % |
+
 Seuils d'alerte :
 
 | Delta | Statut |
@@ -164,6 +283,15 @@ Seuils d'alerte :
 | ≥ 2 °C | ↑ légère hausse |
 | ≤ −2 °C | ↓ amélioration |
 | autre | ✓ stable |
+
+---
+
+## Structure de la base de données
+
+Deux tables SQLite :
+
+- **`snapshots`** — un enregistrement par mesure (timestamp, charge CPU/GPU, catégorie de charge)
+- **`readings`** — une ligne par capteur par snapshot (matériel, nom du capteur, valeur °C)
 
 ---
 
@@ -198,3 +326,13 @@ rustup target add x86_64-pc-windows-msvc
 # Build release
 cargo build --release --target x86_64-pc-windows-msvc
 ```
+
+Pour créer une nouvelle release :
+
+```bash
+./scripts/release.sh 0.2.0
+```
+
+Le script met à jour `Cargo.toml` et `CHANGELOG.md`, exécute les tests, crée
+le tag annoté et pousse vers `origin`. GitHub Actions se charge ensuite de
+compiler le binaire et de publier la release.
