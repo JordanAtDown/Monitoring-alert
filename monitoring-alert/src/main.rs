@@ -4,9 +4,16 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+#[cfg(windows)]
+use clap::Args;
+#[cfg(windows)]
+use report::ReportPeriod;
+
 mod collector;
 mod config;
 mod db;
+#[cfg(windows)]
+mod notification;
 mod report;
 mod sensors;
 mod service;
@@ -62,6 +69,23 @@ enum Commands {
         #[command(subcommand)]
         action: ServiceAction,
     },
+    #[cfg(windows)]
+    /// Envoie un rapport toast (appelé par les tâches planifiées)
+    Notify(NotifyArgs),
+}
+
+#[cfg(windows)]
+#[derive(Args)]
+struct NotifyArgs {
+    /// Rapport journalier
+    #[arg(long, conflicts_with_all = ["weekly", "monthly"])]
+    daily: bool,
+    /// Rapport hebdomadaire
+    #[arg(long, conflicts_with_all = ["daily", "monthly"])]
+    weekly: bool,
+    /// Rapport mensuel
+    #[arg(long, conflicts_with_all = ["daily", "weekly"])]
+    monthly: bool,
 }
 
 #[derive(Subcommand)]
@@ -101,6 +125,21 @@ fn run_cli() -> Result<()> {
             ServiceAction::Start => service::start()?,
             ServiceAction::Stop => service::stop()?,
         },
+        #[cfg(windows)]
+        Commands::Notify(args) => {
+            let period = if args.daily {
+                ReportPeriod::Daily
+            } else if args.weekly {
+                ReportPeriod::Weekly
+            } else if args.monthly {
+                ReportPeriod::Monthly
+            } else {
+                anyhow::bail!("Spécifiez --daily, --weekly ou --monthly");
+            };
+            let conn = db::init_db(&db_path)?;
+            let summary = report::generate_summary(&conn, period)?;
+            notification::send_toast(&summary.title, &summary.body)?;
+        }
     }
     Ok(())
 }
