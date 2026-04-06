@@ -143,6 +143,15 @@ pub fn get_distinct_sensors(conn: &Connection) -> Result<Vec<SensorKey>> {
     Ok(result)
 }
 
+/// Compacts the database file, reclaiming space freed by DELETE operations.
+///
+/// Must be called on an idle connection (no active transactions).
+pub fn vacuum(conn: &Connection) -> Result<()> {
+    conn.execute_batch("VACUUM")
+        .context("Failed to vacuum database")?;
+    Ok(())
+}
+
 /// Deletes snapshots (and their readings) older than `days` days.
 /// Returns the number of snapshots removed.
 pub fn purge_old_snapshots(conn: &Connection, days: u32) -> Result<usize> {

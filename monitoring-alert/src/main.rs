@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use store::TemperatureStore as _;
 
 #[cfg(windows)]
 use clap::Args;
@@ -12,6 +13,7 @@ use report::ReportPeriod;
 mod collector;
 mod config;
 mod db;
+mod logger;
 #[cfg(windows)]
 mod notification;
 mod report;
@@ -31,7 +33,7 @@ define_windows_service!(ffi_service_main, handle_service_main);
 #[cfg(windows)]
 fn handle_service_main(args: Vec<std::ffi::OsString>) {
     if let Err(e) = service::windows::run_service_main(args) {
-        eprintln!("Service error: {:#}", e);
+        log::error!("Service error: {:#}", e);
     }
 }
 
@@ -71,6 +73,11 @@ enum Commands {
         #[command(subcommand)]
         action: ServiceAction,
     },
+    /// Maintenance de la base de données
+    Db {
+        #[command(subcommand)]
+        action: DbAction,
+    },
     #[cfg(windows)]
     /// Envoie un rapport toast (appelé par les tâches planifiées)
     Notify(NotifyArgs),
@@ -102,9 +109,25 @@ enum ServiceAction {
     Stop,
 }
 
+#[derive(Subcommand)]
+enum DbAction {
+    /// Affiche les statistiques de la base de données
+    Stats,
+    /// Compacte la base de données et libère l'espace disque (à faire après une purge)
+    Vacuum,
+}
+
 fn run_cli() -> Result<()> {
     let cli = Cli::parse();
-    let db_path = cli.db.unwrap_or_else(|| config::AppConfig::load().db_path);
+    let cfg = config::AppConfig::load();
+    let db_path = cli.db.unwrap_or_else(|| cfg.db_path.clone());
+
+    // Init logger — log file next to the database.
+    let log_path = db_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("monitoring-alert.log");
+    let _ = logger::init(&log_path);
 
     match cli.command {
         Commands::Collect => {
@@ -115,8 +138,7 @@ fn run_cli() -> Result<()> {
             let stop = Arc::new(AtomicBool::new(false));
             let stop_ctrlc = Arc::clone(&stop);
             ctrlc_handler(stop_ctrlc);
-            let retention_days = config::AppConfig::load().retention_days;
-            collector::watch(&db_path, interval, retention_days, stop)?;
+            collector::watch(&db_path, interval, cfg.retention_days, stop)?;
         }
         Commands::Report { output } => {
             let store = store::SqliteStore::new(db::init_db(&db_path)?);
@@ -127,6 +149,40 @@ fn run_cli() -> Result<()> {
             ServiceAction::Uninstall => service::uninstall()?,
             ServiceAction::Start => service::start()?,
             ServiceAction::Stop => service::stop()?,
+        },
+        Commands::Db { action } => match action {
+            DbAction::Stats => {
+                let store = store::SqliteStore::new(db::init_db(&db_path)?);
+                let stats = store.get_overall_stats()?;
+                let size_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
+                println!("Base de données : {}", db_path.display());
+                println!(
+                    "Taille sur disque : {:.1} MB",
+                    size_bytes as f64 / 1_048_576.0
+                );
+                println!("Snapshots : {}", stats.total_snapshots);
+                println!(
+                    "Première mesure : {}",
+                    stats.first_ts.as_deref().unwrap_or("—")
+                );
+                println!(
+                    "Dernière mesure : {}",
+                    stats.last_ts.as_deref().unwrap_or("—")
+                );
+            }
+            DbAction::Vacuum => {
+                let size_before = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
+                let conn = db::init_db(&db_path)?;
+                db::vacuum(&conn)?;
+                let size_after = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
+                let freed = size_before.saturating_sub(size_after);
+                println!(
+                    "Vacuum terminé — avant : {:.1} MB, après : {:.1} MB, libéré : {:.1} MB",
+                    size_before as f64 / 1_048_576.0,
+                    size_after as f64 / 1_048_576.0,
+                    freed as f64 / 1_048_576.0,
+                );
+            }
         },
         #[cfg(windows)]
         Commands::Notify(args) => {
@@ -150,18 +206,12 @@ fn run_cli() -> Result<()> {
 
 /// Best-effort Ctrl+C handler — sets the stop flag so watch() exits cleanly.
 fn ctrlc_handler(stop: Arc<AtomicBool>) {
-    // Use a simple thread that parks; real projects can use the `ctrlc` crate.
     let _ = std::thread::spawn(move || {
-        // On Windows, SetConsoleCtrlHandler would be more robust.
-        // This minimal version relies on SIGINT killing the process on non-Windows.
-        // For production use on Windows, integrate the `ctrlc` crate.
-        let _ = stop; // keep the Arc alive for now
+        let _ = stop;
     });
 }
 
 fn main() -> Result<()> {
-    // When started by Windows Service Control Manager, dispatch to service handler.
-    // If called from the command line this returns an error immediately and we fall through.
     #[cfg(windows)]
     {
         if service_dispatcher::start(service::SERVICE_NAME, ffi_service_main).is_ok() {

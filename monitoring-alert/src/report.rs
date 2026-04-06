@@ -150,6 +150,31 @@ pub fn generate_report(store: &dyn TemperatureStore, output: Option<&str>) -> Re
     writeln!(out, "  Dernière mesure   : {}", last_ts)?;
     writeln!(out)?;
 
+    // Warn when the database is too young for the full 90-day comparison window.
+    if let Some(first_ts_str) = &stats.first_ts {
+        if let Ok(first) = chrono::NaiveDateTime::parse_from_str(first_ts_str, "%Y-%m-%dT%H:%M:%S")
+        {
+            let days_collected = (now.naive_local() - first).num_days();
+            if days_collected < 180 {
+                let ready_at = first + chrono::TimeDelta::days(180);
+                writeln!(
+                    out,
+                    "  ⚠  Données insuffisantes : {} jour(s) enregistré(s) sur 180 requis.",
+                    days_collected
+                )?;
+                writeln!(
+                    out,
+                    "     La comparaison sur 90j sera complète à partir du {}.",
+                    ready_at.format("%d/%m/%Y")
+                )?;
+                writeln!(out)?;
+            }
+        }
+    } else {
+        writeln!(out, "  ⚠  Base de données vide — aucune donnée collectée.")?;
+        writeln!(out)?;
+    }
+
     // Category distribution (last 90 days)
     let dist = store
         .get_category_distribution(90)

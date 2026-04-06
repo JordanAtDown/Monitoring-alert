@@ -27,7 +27,9 @@ pub fn effective_load(cpu: Option<f64>, gpu: Option<f64>) -> Option<f64> {
     [cpu, gpu].into_iter().flatten().reduce(f64::max)
 }
 
-pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<()> {
+/// Collects one snapshot and persists it.
+/// Returns the number of temperature readings stored (0 means no sensors detected).
+pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<usize> {
     let data = sensors::read_sensors().context("Failed to read sensor data")?;
     let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let cat = effective_load(data.cpu_load, data.gpu_load)
@@ -50,17 +52,31 @@ pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<()> {
             .context("Failed to insert reading")?;
     }
 
-    println!(
-        "[{}] Snapshot #{} — CPU: {:.1}%, GPU: {:.1}%, cat: {}, temps: {}",
-        ts,
-        snapshot_id,
-        data.cpu_load.unwrap_or(0.0),
-        data.gpu_load.unwrap_or(0.0),
-        cat,
-        data.temperatures.len()
-    );
-    Ok(())
+    let n = data.temperatures.len();
+    if n == 0 {
+        log::warn!(
+            "[{}] Snapshot #{} — no temperature sensors detected. \
+             Is LibreHardwareMonitor running with WMI support enabled?",
+            ts,
+            snapshot_id
+        );
+    } else {
+        log::info!(
+            "[{}] Snapshot #{} — CPU: {:.1}%, GPU: {:.1}%, cat: {}, sensors: {}",
+            ts,
+            snapshot_id,
+            data.cpu_load.unwrap_or(0.0),
+            data.gpu_load.unwrap_or(0.0),
+            cat,
+            n
+        );
+    }
+    Ok(n)
 }
+
+/// Number of consecutive empty collections before escalating to an error.
+/// At the default 300s interval this corresponds to ~1 hour.
+const EMPTY_ALERT_THRESHOLD: u32 = 12;
 
 pub fn watch(
     db_path: &Path,
@@ -70,33 +86,63 @@ pub fn watch(
 ) -> Result<()> {
     let conn = db::init_db(db_path).context("Failed to open database")?;
     let store = SqliteStore::new(conn);
-    println!(
-        "Starting watch loop every {}s (retention: {} days). Press Ctrl+C to stop.",
-        interval_secs, retention_days
+    log::info!(
+        "Watch loop started — interval: {}s, retention: {} days.",
+        interval_secs,
+        retention_days
     );
+
     // Run purge once at startup, then every 24 h.
     let purge_every = (86400 / interval_secs).max(1);
     let mut iterations: u64 = 0;
+    let mut empty_streak: u32 = 0;
+
     loop {
         if stop.load(Ordering::SeqCst) {
-            println!("Stop signal received, exiting watch loop.");
+            log::info!("Stop signal received — exiting watch loop.");
             break;
         }
+
         if iterations.is_multiple_of(purge_every) {
             match store.purge_old_data(retention_days) {
                 Ok(0) => {}
-                Ok(n) => println!(
+                Ok(n) => log::info!(
                     "Purged {} snapshot(s) older than {} days.",
-                    n, retention_days
+                    n,
+                    retention_days
                 ),
-                Err(e) => eprintln!("Purge error: {:#}", e),
+                Err(e) => log::warn!("Purge error: {:#}", e),
             }
         }
-        if let Err(e) = collect_and_store(&store) {
-            eprintln!("Collection error: {:#}", e);
+
+        match collect_and_store(&store) {
+            Ok(0) => {
+                empty_streak += 1;
+                if empty_streak == EMPTY_ALERT_THRESHOLD {
+                    log::error!(
+                        "No temperature readings for {} consecutive collections \
+                         (~{} min) — ensure LibreHardwareMonitor is running.",
+                        EMPTY_ALERT_THRESHOLD,
+                        EMPTY_ALERT_THRESHOLD as u64 * interval_secs / 60
+                    );
+                    // Reset so the error re-fires after another full streak, not every loop.
+                    empty_streak = 0;
+                }
+            }
+            Ok(_) => {
+                if empty_streak > 0 {
+                    log::info!(
+                        "Temperature readings restored after {} empty collection(s).",
+                        empty_streak
+                    );
+                }
+                empty_streak = 0;
+            }
+            Err(e) => log::error!("Collection error: {:#}", e),
         }
+
         iterations += 1;
-        // Sleep in small increments to remain responsive to stop signals
+        // Sleep in small increments to remain responsive to stop signals.
         let mut elapsed = 0u64;
         while elapsed < interval_secs {
             if stop.load(Ordering::SeqCst) {
