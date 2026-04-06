@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build & Publish
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            monitoring-alert/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('monitoring-alert/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build release binary
+        working-directory: monitoring-alert
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md \
+                  | sed '/^[[:space:]]*$/d; $a\\' | head -c 65000)
+          {
+            echo "body<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Package installer archive
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DIR="monitoring-alert-v${VERSION}-windows-x64"
+          mkdir "$DIR"
+          cp monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe "$DIR/"
+          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat "$DIR/"
+          7z a "${DIR}.zip" "$DIR/" -mx=9
+          echo "ARCHIVE=${DIR}.zip" >> "$GITHUB_ENV"
+          echo "EXE=monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "MonitoringAlert ${{ github.ref_name }}" \
+            --notes "${{ steps.notes.outputs.body }}" \
+            "$EXE#monitoring-alert.exe" \
+            "$ARCHIVE"
