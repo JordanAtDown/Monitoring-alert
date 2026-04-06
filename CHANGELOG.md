@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Rétention automatique** (`retention_days`, défaut 365 j, minimum 180 j) :
+  purge des snapshots anciens au démarrage du service puis toutes les 24 h
+- **Logging fichier** via `tracing` + `tracing-appender` : rotation quotidienne
+  dans le répertoire de la base de données (`monitoring-alert.log.YYYY-MM-DD`)
+- **Niveau de log configurable** (`log_level` dans `config.toml`) :
+  `"error"` | `"warn"` | `"info"` (défaut) | `"debug"` | `"trace"`
+- **Détection LHM absent** : warning immédiat si aucune sonde lue, escalade
+  en `error` après 12 collections consécutives vides (~1 h au rythme par défaut)
+- **`monitoring-alert db stats`** : affiche taille disque, nombre de snapshots,
+  première et dernière mesure
+- **`monitoring-alert db vacuum`** : VACUUM SQLite avec affichage avant/après en MB
+- **Avertissement données insuffisantes** dans le rapport : indique combien de
+  jours sont enregistrés sur les 180 requis et la date de disponibilité complète
+- **Charge effective** = `max(cpu_load, gpu_load)` pour la catégorisation :
+  les sessions GPU-intensives (jeu : GPU 90 %, CPU 15 %) sont désormais
+  correctement classées `heavy` et non `light`
+
+### Fixed
+- Les températures GPU en session de jeu étaient comparées à des périodes
+  de faible charge CPU au lieu d'autres sessions GPU-intensives
+
 ## [0.1.0] — 2026-04-06
 
 ### Added

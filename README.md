@@ -254,6 +254,10 @@ monitoring-alert.exe service install
 monitoring-alert.exe service start
 monitoring-alert.exe service stop
 monitoring-alert.exe service uninstall
+
+# Maintenance de la base de données
+monitoring-alert.exe db stats              # taille, nb snapshots, dates
+monitoring-alert.exe db vacuum             # compacte et libère l'espace disque
 ```
 
 ---
@@ -401,10 +405,39 @@ la fenêtre précédente de 90 jours.
 
 ## Supervision
 
-Les logs du service sont visibles dans l'Observateur d'événements Windows :
-**Applications et services → MonitoringAlert**
+### Fichier de log
 
-Ou via PowerShell :
+Le service écrit ses logs dans le même répertoire que la base de données :
+
+```
+C:\ProgramData\MonitoringAlert\monitoring-alert.log
+```
+
+Le fichier est renouvelé chaque jour (rotation quotidienne). Les anciens fichiers
+sont conservés sous la forme `monitoring-alert.log.YYYY-MM-DD`.
+
+Le niveau de log est configurable dans `config.toml` (redémarrage du service requis) :
+
+```toml
+log_level = "info"   # production normale
+log_level = "debug"  # diagnostiquer collecte, capteurs, purge…
+log_level = "trace"  # très verbeux
+```
+
+Messages à surveiller :
+
+| Message | Signification |
+|---|---|
+| `No temperature sensors detected` | LibreHardwareMonitor n'est pas lancé |
+| `No temperature readings for N consecutive collections` | LHM absent depuis ~1h |
+| `Collection error` | Erreur WMI — vérifier LHM et les droits |
+| `Purged N snapshot(s)` | Purge automatique exécutée |
+
+### Observateur d'événements Windows
+
+Les erreurs fatales du service (démarrage/arrêt anormal) apparaissent dans :
+**Observateur d'événements → Applications et services → MonitoringAlert**
+
 ```powershell
 Get-EventLog -LogName Application -Source MonitoringAlert -Newest 50
 ```
