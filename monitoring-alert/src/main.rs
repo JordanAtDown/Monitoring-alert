@@ -115,7 +115,8 @@ fn run_cli() -> Result<()> {
             let stop = Arc::new(AtomicBool::new(false));
             let stop_ctrlc = Arc::clone(&stop);
             ctrlc_handler(stop_ctrlc);
-            collector::watch(&db_path, interval, stop)?;
+            let retention_days = config::AppConfig::load().retention_days;
+            collector::watch(&db_path, interval, retention_days, stop)?;
         }
         Commands::Report { output } => {
             let store = store::SqliteStore::new(db::init_db(&db_path)?);

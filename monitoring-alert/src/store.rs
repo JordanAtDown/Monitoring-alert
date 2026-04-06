@@ -41,6 +41,10 @@ pub trait TemperatureStore {
     fn get_overall_stats(&self) -> Result<OverallStats>;
 
     fn get_category_distribution(&self, days: u32) -> Result<Vec<CategoryCount>>;
+
+    /// Delete snapshots (and their readings) older than `days` days.
+    /// Returns the number of snapshots removed.
+    fn purge_old_data(&self, days: u32) -> Result<usize>;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -101,5 +105,9 @@ impl TemperatureStore for SqliteStore {
 
     fn get_category_distribution(&self, days: u32) -> Result<Vec<CategoryCount>> {
         crate::db::get_category_distribution(&self.0, days)
+    }
+
+    fn purge_old_data(&self, days: u32) -> Result<usize> {
+        crate::db::purge_old_snapshots(&self.0, days)
     }
 }

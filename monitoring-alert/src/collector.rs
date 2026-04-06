@@ -62,21 +62,40 @@ pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<()> {
     Ok(())
 }
 
-pub fn watch(db_path: &Path, interval_secs: u64, stop: Arc<AtomicBool>) -> Result<()> {
+pub fn watch(
+    db_path: &Path,
+    interval_secs: u64,
+    retention_days: u32,
+    stop: Arc<AtomicBool>,
+) -> Result<()> {
     let conn = db::init_db(db_path).context("Failed to open database")?;
     let store = SqliteStore::new(conn);
     println!(
-        "Starting watch loop every {}s. Press Ctrl+C to stop.",
-        interval_secs
+        "Starting watch loop every {}s (retention: {} days). Press Ctrl+C to stop.",
+        interval_secs, retention_days
     );
+    // Run purge once at startup, then every 24 h.
+    let purge_every = (86400 / interval_secs).max(1);
+    let mut iterations: u64 = 0;
     loop {
         if stop.load(Ordering::SeqCst) {
             println!("Stop signal received, exiting watch loop.");
             break;
         }
+        if iterations.is_multiple_of(purge_every) {
+            match store.purge_old_data(retention_days) {
+                Ok(0) => {}
+                Ok(n) => println!(
+                    "Purged {} snapshot(s) older than {} days.",
+                    n, retention_days
+                ),
+                Err(e) => eprintln!("Purge error: {:#}", e),
+            }
+        }
         if let Err(e) = collect_and_store(&store) {
             eprintln!("Collection error: {:#}", e);
         }
+        iterations += 1;
         // Sleep in small increments to remain responsive to stop signals
         let mut elapsed = 0u64;
         while elapsed < interval_secs {

@@ -43,6 +43,9 @@ pub struct AppConfig {
     /// Sensor collection interval in seconds (min 60, default 300).
     #[cfg_attr(not(windows), allow(dead_code))]
     pub collect_interval_secs: u64,
+    /// How many days of data to keep (default 180 — covers the 90-day
+    /// current window + 90-day reference window used by drift detection).
+    pub retention_days: u32,
     #[allow(dead_code)]
     pub schedule: ScheduleConfig,
 }
@@ -57,6 +60,7 @@ struct RawConfig {
     db_path: Option<String>,
     install_dir: Option<String>,
     collect_interval_secs: Option<u64>,
+    retention_days: Option<u32>,
     daily_report_enabled: Option<bool>,
     daily_report_time: Option<String>,
     weekly_report_enabled: Option<bool>,
@@ -85,6 +89,8 @@ impl AppConfig {
             .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData\MonitoringAlert\temperatures.db"));
 
         let collect_interval_secs = raw.collect_interval_secs.unwrap_or(300).max(60);
+        // Minimum 180 days to cover the full 90-day current + 90-day reference window.
+        let retention_days = raw.retention_days.unwrap_or(180).max(180);
 
         let weekly_day = raw
             .weekly_report_day
@@ -114,6 +120,7 @@ impl AppConfig {
         AppConfig {
             db_path,
             collect_interval_secs,
+            retention_days,
             schedule,
         }
     }
@@ -131,6 +138,7 @@ impl AppConfig {
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join("temperatures.db"),
             collect_interval_secs: 300,
+            retention_days: 180,
             schedule: ScheduleConfig::default(),
         }
     }

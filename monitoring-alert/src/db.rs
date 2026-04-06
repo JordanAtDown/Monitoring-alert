@@ -143,6 +143,26 @@ pub fn get_distinct_sensors(conn: &Connection) -> Result<Vec<SensorKey>> {
     Ok(result)
 }
 
+/// Deletes snapshots (and their readings) older than `days` days.
+/// Returns the number of snapshots removed.
+pub fn purge_old_snapshots(conn: &Connection, days: u32) -> Result<usize> {
+    let cutoff = format!("-{} days", days);
+    conn.execute(
+        "DELETE FROM readings WHERE snapshot_id IN (
+             SELECT id FROM snapshots WHERE datetime(ts) < datetime('now', ?1)
+         )",
+        params![cutoff],
+    )
+    .context("Failed to purge old readings")?;
+    let removed = conn
+        .execute(
+            "DELETE FROM snapshots WHERE datetime(ts) < datetime('now', ?1)",
+            params![cutoff],
+        )
+        .context("Failed to purge old snapshots")?;
+    Ok(removed)
+}
+
 pub fn get_avg_for_window(
     conn: &Connection,
     hardware: &str,
