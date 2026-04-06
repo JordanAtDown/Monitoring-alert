@@ -184,6 +184,9 @@ monitoring-alert.exe notify --weekly   # rapport hebdomadaire
 monitoring-alert.exe notify --monthly  # rapport mensuel
 ```
 
+Les tâches sont créées avec **`StartWhenAvailable`** : si le PC était éteint à
+l'heure prévue, la notification est envoyée dès la prochaine ouverture de session.
+
 Ces tâches sont visibles dans le **Planificateur de tâches** sous
 `Bibliothèque\MonitoringAlert`.
 

@@ -55,10 +55,12 @@ if exist "!INSTALL_DIR!" (
 
 :: --- 3. Suppression des tâches planifiées ---
 echo [3/5] Suppression des taches planifiees de rapport...
-schtasks /delete /tn "MonitoringAlert\RapportJournalier"   /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert\RapportHebdomadaire" /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert\RapportMensuel"      /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert"                     /f >nul 2>&1
+powershell -NoProfile -Command ^
+    "foreach ($n in 'RapportJournalier','RapportHebdomadaire','RapportMensuel') {" ^
+    "  Unregister-ScheduledTask -TaskPath '\MonitoringAlert\' -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue" ^
+    "}"
+schtasks /delete /tn "MonitoringAlert" /f >nul 2>&1
+if exist "%DATA_DIR%\Register-Tasks.ps1" del /f /q "%DATA_DIR%\Register-Tasks.ps1"
 echo        Taches planifiees supprimees.
 
 :: --- 4. Suppression de l'AUMID du registre ---

@@ -125,10 +125,11 @@ if %errorLevel% neq 0 (
 echo [2/6] Creation du dossier de donnees "%DATA_DIR%"...
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
-echo        Copie de config.toml, uninstall.bat, update.bat...
-copy /Y "%CONFIG_FILE%"                 "%DATA_DIR%\config.toml"   >nul
-copy /Y "%SCRIPT_DIR%uninstall.bat"     "%DATA_DIR%\uninstall.bat" >nul
-copy /Y "%SCRIPT_DIR%update.bat"        "%DATA_DIR%\update.bat"    >nul
+echo        Copie de config.toml, Register-Tasks.ps1, uninstall.bat, update.bat...
+copy /Y "%CONFIG_FILE%"                    "%DATA_DIR%\config.toml"          >nul
+copy /Y "%SCRIPT_DIR%Register-Tasks.ps1"   "%DATA_DIR%\Register-Tasks.ps1"   >nul
+copy /Y "%SCRIPT_DIR%uninstall.bat"        "%DATA_DIR%\uninstall.bat"        >nul
+copy /Y "%SCRIPT_DIR%update.bat"           "%DATA_DIR%\update.bat"           >nul
 
 :: --- 3. Enregistrement de l'AUMID pour les notifications toast ---
 echo [3/6] Enregistrement de l'AUMID pour les notifications...
@@ -151,29 +152,13 @@ if %errorLevel% neq 0 (
 )
 
 :: --- 6. Création des tâches planifiées de rapport ---
-echo [6/6] Creation des taches planifiees de rapport...
-schtasks /delete /tn "MonitoringAlert\RapportJournalier"   /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert\RapportHebdomadaire" /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert\RapportMensuel"      /f >nul 2>&1
-
-if /i "!DAILY_ENABLED!"=="true" (
-    schtasks /create /tn "MonitoringAlert\RapportJournalier" ^
-        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --daily" ^
-        /sc DAILY /st !DAILY_TIME! /ru "%USERNAME%" /f >nul
-    echo        Rapport journalier : !DAILY_TIME! chaque jour
-)
-if /i "!WEEKLY_ENABLED!"=="true" (
-    schtasks /create /tn "MonitoringAlert\RapportHebdomadaire" ^
-        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --weekly" ^
-        /sc WEEKLY /d !WEEKLY_DAY! /st !WEEKLY_TIME! /ru "%USERNAME%" /f >nul
-    echo        Rapport hebdomadaire : !WEEKLY_DAY! a !WEEKLY_TIME!
-)
-if /i "!MONTHLY_ENABLED!"=="true" (
-    schtasks /create /tn "MonitoringAlert\RapportMensuel" ^
-        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --monthly" ^
-        /sc MONTHLY /d !MONTHLY_DAY! /st !MONTHLY_TIME! /ru "%USERNAME%" /f >nul
-    echo        Rapport mensuel : jour !MONTHLY_DAY! a !MONTHLY_TIME!
-)
+echo [6/6] Creation des taches planifiees de rapport (StartWhenAvailable)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" ^
+    -ExePath "!INSTALL_DIR!\%EXE_NAME%" ^
+    -Username "%USERNAME%" ^
+    -DailyEnabled "!DAILY_ENABLED!"   -DailyTime "!DAILY_TIME!" ^
+    -WeeklyEnabled "!WEEKLY_ENABLED!" -WeeklyDay "!WEEKLY_DAY!" -WeeklyTime "!WEEKLY_TIME!" ^
+    -MonthlyEnabled "!MONTHLY_ENABLED!" -MonthlyDay "!MONTHLY_DAY!" -MonthlyTime "!MONTHLY_TIME!"
 
 echo.
 echo Installation terminee. Le service MonitoringAlert est actif.

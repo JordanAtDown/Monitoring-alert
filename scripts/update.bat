@@ -133,36 +133,12 @@ for /f "usebackq delims=" %%v in (
         "if ($c -match 'monthly_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
 ) do set "MONTHLY_TIME=%%v"
 
-:: Suppression des tâches existantes
-schtasks /delete /tn "MonitoringAlert\RapportJournalier"   /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert\RapportHebdomadaire" /f >nul 2>&1
-schtasks /delete /tn "MonitoringAlert\RapportMensuel"      /f >nul 2>&1
-
-:: Recréation selon la config actuelle
-if /i "!DAILY_ENABLED!"=="true" (
-    schtasks /create /tn "MonitoringAlert\RapportJournalier" ^
-        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --daily" ^
-        /sc DAILY /st !DAILY_TIME! /ru "%USERNAME%" /f >nul
-    echo        Rapport journalier : !DAILY_TIME! chaque jour
-) else (
-    echo        Rapport journalier desactive
-)
-if /i "!WEEKLY_ENABLED!"=="true" (
-    schtasks /create /tn "MonitoringAlert\RapportHebdomadaire" ^
-        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --weekly" ^
-        /sc WEEKLY /d !WEEKLY_DAY! /st !WEEKLY_TIME! /ru "%USERNAME%" /f >nul
-    echo        Rapport hebdomadaire : !WEEKLY_DAY! a !WEEKLY_TIME!
-) else (
-    echo        Rapport hebdomadaire desactive
-)
-if /i "!MONTHLY_ENABLED!"=="true" (
-    schtasks /create /tn "MonitoringAlert\RapportMensuel" ^
-        /tr "\"!INSTALL_DIR!\%EXE_NAME%\" notify --monthly" ^
-        /sc MONTHLY /d !MONTHLY_DAY! /st !MONTHLY_TIME! /ru "%USERNAME%" /f >nul
-    echo        Rapport mensuel : jour !MONTHLY_DAY! a !MONTHLY_TIME!
-) else (
-    echo        Rapport mensuel desactive
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" ^
+    -ExePath "!INSTALL_DIR!\%EXE_NAME%" ^
+    -Username "%USERNAME%" ^
+    -DailyEnabled "!DAILY_ENABLED!"   -DailyTime "!DAILY_TIME!" ^
+    -WeeklyEnabled "!WEEKLY_ENABLED!" -WeeklyDay "!WEEKLY_DAY!" -WeeklyTime "!WEEKLY_TIME!" ^
+    -MonthlyEnabled "!MONTHLY_ENABLED!" -MonthlyDay "!MONTHLY_DAY!" -MonthlyTime "!MONTHLY_TIME!"
 
 echo.
 echo Mise a jour terminee.
