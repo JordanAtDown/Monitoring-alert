@@ -116,7 +116,12 @@ fn bar(pct: f64, width: usize) -> String {
     "█".repeat(filled)
 }
 
-pub fn generate_report(store: &dyn TemperatureStore, output: Option<&str>) -> Result<()> {
+/// Writes the full temperature report to `writer`.
+/// Extracted for testability — `generate_report` delegates to this.
+pub fn generate_report_to_writer(
+    store: &dyn TemperatureStore,
+    writer: &mut impl Write,
+) -> Result<()> {
     let stats = store
         .get_overall_stats()
         .context("Failed to get overall stats")?;
@@ -323,7 +328,14 @@ pub fn generate_report(store: &dyn TemperatureStore, output: Option<&str>) -> Re
     )?;
 
     let text = String::from_utf8(out).context("Report contains invalid UTF-8")?;
+    write!(writer, "{}", text)?;
+    Ok(())
+}
 
+pub fn generate_report(store: &dyn TemperatureStore, output: Option<&str>) -> Result<()> {
+    let mut buf: Vec<u8> = Vec::new();
+    generate_report_to_writer(store, &mut buf)?;
+    let text = String::from_utf8(buf).context("Report contains invalid UTF-8")?;
     match output {
         Some(path) => {
             std::fs::write(path, &text)
