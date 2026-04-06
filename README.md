@@ -267,7 +267,7 @@ Le rapport compare les **moyennes à charge identique** sur 4 fenêtres :
 
 Les catégories de charge sont analysées séparément :
 
-| Catégorie | Charge CPU |
+| Catégorie | Charge effective |
 |---|---|
 | `idle` | 0–14 % |
 | `light` | 15–39 % |
@@ -283,6 +283,81 @@ Seuils d'alerte :
 | ≥ 2 °C | ↑ légère hausse |
 | ≤ −2 °C | ↓ amélioration |
 | autre | ✓ stable |
+
+---
+
+## Algorithme de détection de dérive thermique
+
+### 1. Collecte des données
+
+À chaque intervalle (par défaut 300 s), le service lit via WMI (LibreHardwareMonitor) :
+- toutes les sondes de température disponibles (CPU, GPU, chipset, stockage…)
+- la charge CPU (%) et la charge GPU (%)
+
+Un **snapshot** est enregistré en base avec l'horodatage, les charges CPU/GPU et la
+catégorie de charge calculée. Chaque lecture de sonde constitue une ligne **reading**
+liée au snapshot.
+
+### 2. Catégorisation de la charge — charge effective
+
+La catégorie est calculée à partir de la **charge effective** :
+
+```
+charge_effective = max(charge_cpu, charge_gpu)
+```
+
+Pourquoi `max` et non `cpu` seul ? Un scénario de jeu typique présente GPU 90 % /
+CPU 15 %. Si l'on utilisait uniquement la charge CPU, le snapshot serait classé
+`light` et les températures GPU enregistrées pendant cette session seraient comparées
+à des périodes de navigation web au lieu d'autres sessions de jeu — la comparaison
+serait sans sens.
+
+En prenant le maximum, les sessions à fort usage GPU sont correctement classées
+`heavy` et comparées exclusivement à d'autres sessions `heavy`.
+
+| Catégorie | Charge effective |
+|---|---|
+| `idle` | 0–14 % |
+| `light` | 15–39 % |
+| `moderate` | 40–74 % |
+| `heavy` | 75–100 % |
+
+### 3. Agrégation par fenêtre temporelle
+
+Pour chaque fenêtre d'analyse (24 h, 7 j, 30 j, 90 j), on calcule :
+
+```
+moyenne_courante  = AVG(temp)  WHERE timestamp ∈ [now - W,     now[
+                                 AND load_cat   = <catégorie>
+                                 AND hardware   = <matériel>
+                                 AND sensor     = <sonde>
+
+moyenne_reference = AVG(temp)  WHERE timestamp ∈ [now - 2W,    now - W[
+                                 AND load_cat   = <catégorie>
+                                 AND hardware   = <matériel>
+                                 AND sensor     = <sonde>
+```
+
+Si l'une des deux fenêtres ne contient aucune donnée pour un couple
+(matériel, sonde, catégorie), la comparaison est ignorée pour ce couple.
+
+### 4. Calcul du delta et seuils d'alerte
+
+```
+delta = moyenne_courante − moyenne_reference
+```
+
+| Delta | Statut | Interprétation |
+|---|---|---|
+| ≥ 10 °C | 🔴 CRITIQUE | Dérive majeure — nettoyer d'urgence |
+| ≥ 5 °C | ⚠ ATTENTION | Dérive notable à surveiller |
+| ≥ 2 °C | ↑ légère hausse | Tendance ascendante |
+| ≤ −2 °C | ↓ amélioration | Refroidissement ou charge réduite |
+| autre | ✓ stable | Aucune dérive significative |
+
+Une **alerte** est déclenchée si `delta ≥ 5 °C` (ATTENTION ou CRITIQUE).
+Le rapport liste les alertes par delta décroissant et inclut toutes les fenêtres
+d'analyse.
 
 ---
 
