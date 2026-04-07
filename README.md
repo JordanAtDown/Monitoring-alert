@@ -198,6 +198,36 @@ monitoring-alert.exe notify --weekly
 monitoring-alert.exe notify --monthly
 ```
 
+### Tester les toasts sans données (`notify-dry-run`)
+
+Envoie des messages fictifs qui répliquent chaque variante possible du toast,
+sans accéder à la base de données. Utile pour vérifier que l'AUMID est bien
+enregistré et que les toasts s'affichent correctement.
+
+```powershell
+# Tous les scénarios en séquence (pause de 4 s entre chaque)
+monitoring-alert.exe notify-dry-run
+
+# Scénario précis
+monitoring-alert.exe notify-dry-run --scenario stable
+monitoring-alert.exe notify-dry-run --scenario attention
+monitoring-alert.exe notify-dry-run --scenario critique
+monitoring-alert.exe notify-dry-run --scenario multi
+
+# Avec titre hebdomadaire ou mensuel
+monitoring-alert.exe notify-dry-run --scenario all --period weekly
+```
+
+| Scénario | Corps du toast |
+|---|---|
+| `stable` | `✓ Toutes les températures stables` |
+| `attention` | `⚠ 1 alerte — CPU Package: +6.0°C sur 30j` |
+| `critique` | `⚠ 1 alerte — GPU Junction Temperature: +12.0°C sur 30j` |
+| `multi` | `⚠ 3 alertes — GPU Junction Temperature: +12.0°C sur 30j` |
+
+Le titre est suffixé `[TEST: <scénario>]` pour distinguer les toasts de test
+des vrais rapports dans le centre de notifications.
+
 ---
 
 ## Mise à jour
@@ -248,6 +278,14 @@ monitoring-alert.exe report -o rapport.txt
 monitoring-alert.exe notify --daily
 monitoring-alert.exe notify --weekly
 monitoring-alert.exe notify --monthly
+
+# Tester les toasts sans données (dry-run)
+monitoring-alert.exe notify-dry-run                          # envoie les 4 scénarios en séquence
+monitoring-alert.exe notify-dry-run --scenario stable        # ✓ Toutes les températures stables
+monitoring-alert.exe notify-dry-run --scenario attention     # ⚠ 1 alerte — seuil ATTENTION
+monitoring-alert.exe notify-dry-run --scenario critique      # ⚠ 1 alerte — seuil CRITIQUE
+monitoring-alert.exe notify-dry-run --scenario multi         # ⚠ 3 alertes
+monitoring-alert.exe notify-dry-run --scenario all --period weekly  # titre hebdomadaire
 
 # Utiliser une DB spécifique (override config.toml)
 monitoring-alert.exe --db "D:\autre\temperatures.db" report

@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les sessions GPU-intensives (jeu : GPU 90 %, CPU 15 %) sont désormais
   correctement classées `heavy` et non `light`
 
+- **`monitoring-alert notify-dry-run`** : envoie des toasts fictifs pour tester
+  l'implémentation (AUMID, affichage) sans avoir besoin de données ;
+  scénarios disponibles : `stable`, `attention`, `critique`, `multi`, `all`
+  (4 s de pause entre chaque) ; `--period daily|weekly|monthly` contrôle le titre
+
 ### Fixed
 - Les températures GPU en session de jeu étaient comparées à des périodes
   de faible charge CPU au lieu d'autres sessions GPU-intensives
