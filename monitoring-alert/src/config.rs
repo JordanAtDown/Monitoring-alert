@@ -43,7 +43,7 @@ pub struct AppConfig {
     /// Sensor collection interval in seconds (min 60, default 300).
     #[cfg_attr(not(windows), allow(dead_code))]
     pub collect_interval_secs: u64,
-    /// How many days of data to keep (default 365, enforced minimum 180).
+    /// How many days of data to keep (default 365, enforced minimum 360).
     pub retention_days: u32,
     /// tracing log level: "error", "warn", "info" (default), "debug", "trace".
     pub log_level: String,
@@ -93,8 +93,8 @@ impl AppConfig {
             .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData\MonitoringAlert\temperatures.db"));
 
         let collect_interval_secs = raw.collect_interval_secs.unwrap_or(300).max(60);
-        // Minimum 180 days to cover the full 90-day current + 90-day reference window.
-        let retention_days = raw.retention_days.unwrap_or(365).max(180);
+        // Minimum 360 days to cover the full 180-day current + 180-day reference window.
+        let retention_days = raw.retention_days.unwrap_or(365).max(360);
 
         let log_level = raw
             .log_level

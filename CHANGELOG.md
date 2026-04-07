@@ -8,8 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Rétention automatique** (`retention_days`, défaut 365 j, minimum 180 j) :
-  purge des snapshots anciens au démarrage du service puis toutes les 24 h
+- **Fenêtre d'analyse 180j** : comparaison saisonnière (été N vs été N−1) dans le
+  rapport détaillé — détecte le vieillissement progressif du matériel
+- **Section « Recommandation Maintenance »** dans le rapport, basée sur le pire
+  delta observé toutes sondes confondues :
+  - Δ 180j ≥ +10 °C → 🔴 Inspection matérielle urgente (changer pâte, inspecter ventilateurs)
+  - Δ 90j ≥ +8 °C  → ⚠ Maintenance préventive recommandée (nettoyage + vérification)
+  - Δ 30j ≥ +5 °C  → ⚠ Nettoyage conseillé
+  - Sinon          → ✓ Aucune action requise
+- **Rétention automatique** (`retention_days`, défaut 365 j, minimum 360 j) :
+  purge des snapshots anciens au démarrage du service puis toutes les 24 h ;
+  le minimum est passé de 180 à 360 j pour couvrir la fenêtre saisonnière 180j
+  (180j courant + 180j référence)
 - **Logging fichier** via `tracing` + `tracing-appender` : rotation quotidienne
   dans le répertoire de la base de données (`monitoring-alert.log.YYYY-MM-DD`)
 - **Niveau de log configurable** (`log_level` dans `config.toml`) :
@@ -20,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   première et dernière mesure
 - **`monitoring-alert db vacuum`** : VACUUM SQLite avec affichage avant/après en MB
 - **Avertissement données insuffisantes** dans le rapport : indique combien de
-  jours sont enregistrés sur les 180 requis et la date de disponibilité complète
+  jours sont enregistrés sur les 360 requis, avec dates de disponibilité graduées
+  (90j puis 180j)
 - **Charge effective** = `max(cpu_load, gpu_load)` pour la catégorisation :
   les sessions GPU-intensives (jeu : GPU 90 %, CPU 15 %) sont désormais
   correctement classées `heavy` et non `light`
@@ -45,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Load categorisation: `idle` (0–14 %), `light` (15–39 %), `moderate` (40–74 %), `heavy` (75–100 %)
 - SQLite storage via `rusqlite` with `bundled` feature — no external DLL required
 - Configurable collection interval: `collect_interval_secs` in `config.toml` (min 60 s, default 300 s)
-- Text report: per-sensor trend analysis over 4 windows (24h, 7j, 30j, 90j) with delta alerting (≥ 5 °C triggers summary)
+- Text report: per-sensor trend analysis over 4 windows (24h, 7j, 30j, 90j) with delta alerting (≥ 5 °C triggers summary) — extended to 5 windows (+ 180j) in [Unreleased]
 - Scheduled toast notifications (daily / weekly / monthly) via Windows Scheduled Tasks
   - Works around Session 0 isolation: tasks run in the logged-in user's session
   - AUMID `MonitoringAlert.TemperatureMonitor` registered in HKCU by `install.bat`

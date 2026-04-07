@@ -131,7 +131,7 @@ monthly_report_time    = "08:00"
 | `install_dir` | chemin | `C:\Program Files\MonitoringAlert` | Dossier de l'exécutable |
 | `db_path` | chemin | `C:\ProgramData\MonitoringAlert\temperatures.db` | Chemin de la base SQLite |
 | `collect_interval_secs` | entier ≥ 60 | `300` | Intervalle entre deux collectes (secondes) |
-| `retention_days` | entier ≥ 180 | `365` | Durée de rétention des données (jours) |
+| `retention_days` | entier ≥ 360 | `365` | Durée de rétention des données (jours) |
 | `log_level` | `"error"` … `"trace"` | `"info"` | Niveau de log (utiliser `"debug"` pour diagnostiquer) |
 | `daily_report_enabled` | booléen | `true` | Activer le rapport journalier |
 | `daily_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport journalier |
@@ -267,14 +267,15 @@ monitoring-alert.exe db vacuum             # compacte et libère l'espace disque
 
 ## Lecture du rapport
 
-Le rapport compare les **moyennes à charge identique** sur 4 fenêtres :
+Le rapport compare les **moyennes à charge identique** sur 5 fenêtres :
 
-| Fenêtre | Période courante | Période de référence |
-|---|---|---|
-| 24h | dernières 24h | 24h précédentes |
-| 7j | 7 derniers jours | 7j précédents |
-| 30j | 30 derniers jours | 30j précédents |
-| 90j | 90 derniers jours | 90j précédents |
+| Fenêtre | Période courante | Période de référence | Signal typique |
+|---|---|---|---|
+| 24h | dernières 24h | 24h précédentes | Pic ponctuel, ventilateur bloqué |
+| 7j | 7 derniers jours | 7j précédents | Début d'encrassement |
+| 30j | 30 derniers jours | 30j précédents | Poussière, pâte qui sèche |
+| 90j | 90 derniers jours | 90j précédents | Tendance saisonnière courte |
+| 180j | 180 derniers jours | 180j précédents | Dérive annuelle, vieillissement matériel |
 
 Les catégories de charge sont analysées séparément :
 
@@ -335,7 +336,7 @@ En prenant le maximum, les sessions à fort usage GPU sont correctement classée
 
 ### 3. Agrégation par fenêtre temporelle
 
-Pour chaque fenêtre d'analyse (24 h, 7 j, 30 j, 90 j), on calcule :
+Pour chaque fenêtre d'analyse (24 h, 7 j, 30 j, 90 j, 180 j), on calcule :
 
 ```
 moyenne_courante  = AVG(temp)  WHERE timestamp ∈ [now - W,     now[
@@ -391,10 +392,10 @@ Estimation de la taille avec 10 sondes et une collecte toutes les 5 min :
 
 Le service purge automatiquement les données anciennes **au démarrage puis toutes les
 24 h**. La durée de rétention est contrôlée par `retention_days` dans `config.toml`
-(défaut : 365 jours, minimum : 180 jours). Le défaut d'un an permet de voir les
-effets saisonniers (été/hiver) et l'évolution long terme. La valeur minimale de
-180 jours est imposée car l'algorithme compare une fenêtre courante de 90 jours à
-la fenêtre précédente de 90 jours.
+(défaut : 365 jours, minimum : 360 jours). Le défaut d'un an permet d'activer
+immédiatement la fenêtre saisonnière 180j. La valeur minimale de 360 jours est
+imposée car l'algorithme compare une fenêtre courante de 180 jours à la fenêtre
+précédente de 180 jours.
 
 ---
 

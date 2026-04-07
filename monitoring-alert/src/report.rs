@@ -83,7 +83,7 @@ pub fn generate_summary(
     Ok(SummaryReport { title, body })
 }
 
-const WINDOWS: &[(u32, &str)] = &[(1, "24h"), (7, "7j"), (30, "30j"), (90, "90j")];
+const WINDOWS: &[(u32, &str)] = &[(1, "24h"), (7, "7j"), (30, "30j"), (90, "90j"), (180, "180j")];
 const DISPLAY_CATS: &[&str] = &["idle", "heavy"];
 
 fn delta_status(delta: f64) -> &'static str {
@@ -155,22 +155,30 @@ pub fn generate_report_to_writer(
     writeln!(out, "  Dernière mesure   : {}", last_ts)?;
     writeln!(out)?;
 
-    // Warn when the database is too young for the full 90-day comparison window.
+    // Warn when the database is too young for the full 180-day comparison window.
     if let Some(first_ts_str) = &stats.first_ts {
         if let Ok(first) = chrono::NaiveDateTime::parse_from_str(first_ts_str, "%Y-%m-%dT%H:%M:%S")
         {
             let days_collected = (now.naive_local() - first).num_days();
-            if days_collected < 180 {
-                let ready_at = first + chrono::TimeDelta::days(180);
+            if days_collected < 360 {
                 writeln!(
                     out,
-                    "  ⚠  Données insuffisantes : {} jour(s) enregistré(s) sur 180 requis.",
+                    "  ⚠  Données insuffisantes : {} jour(s) enregistré(s) sur 360 requis.",
                     days_collected
                 )?;
+                if days_collected < 180 {
+                    let ready_90j = first + chrono::TimeDelta::days(180);
+                    writeln!(
+                        out,
+                        "     Comparaison 90j disponible le {}.",
+                        ready_90j.format("%d/%m/%Y")
+                    )?;
+                }
+                let ready_180j = first + chrono::TimeDelta::days(360);
                 writeln!(
                     out,
-                    "     La comparaison sur 90j sera complète à partir du {}.",
-                    ready_at.format("%d/%m/%Y")
+                    "     Comparaison 180j (saisonnière) complète le {}.",
+                    ready_180j.format("%d/%m/%Y")
                 )?;
                 writeln!(out)?;
             }
@@ -231,6 +239,14 @@ pub fn generate_report_to_writer(
 
     let mut alerts: Vec<String> = Vec::with_capacity(8);
 
+    // Track worst positive delta per window for the maintenance recommendation.
+    // Tuple: (delta °C, "Hardware/Sensor" label). Initialised to NEG_INFINITY so any
+    // real delta (even negative) wins the first comparison — conditions below only
+    // trigger on positive thresholds so a negative peak never fires a recommendation.
+    let mut peak_30: (f64, String) = (f64::NEG_INFINITY, String::new());
+    let mut peak_90: (f64, String) = (f64::NEG_INFINITY, String::new());
+    let mut peak_180: (f64, String) = (f64::NEG_INFINITY, String::new());
+
     for hardware in &hw_sorted {
         writeln!(out, "  ┌─ {} ─", hardware)?;
         writeln!(out, "  │")?;
@@ -262,6 +278,19 @@ pub fn generate_report_to_writer(
                                 "  │  │  moy. {:4}   {:5.1} °C  vs préc.  {:5.1} °C  ({}{:.1}°C)  {}",
                                 label, c, p, sign, delta, status
                             )?;
+                            // Update maintenance peaks (worst positive delta wins).
+                            let peak = match days {
+                                30 => Some(&mut peak_30),
+                                90 => Some(&mut peak_90),
+                                180 => Some(&mut peak_180),
+                                _ => None,
+                            };
+                            if let Some(pk) = peak {
+                                if delta > pk.0 {
+                                    pk.0 = delta;
+                                    pk.1 = format!("{}/{}", hardware, sensor_name);
+                                }
+                            }
                             if days == 30 && delta >= 5.0 {
                                 alerts.push(format!(
                                     "  {} {}/{} [{}] → {}{:.1}°C sur {}",
@@ -318,11 +347,67 @@ pub fn generate_report_to_writer(
         for alert in &alerts {
             writeln!(out, "{}", alert)?;
         }
-        writeln!(out)?;
-        writeln!(out, "  💡 Causes possibles :")?;
-        writeln!(out, "     → Poussière dans les filtres / radiateurs")?;
-        writeln!(out, "     → Pâte thermique à renouveler (> 2–3 ans)")?;
-        writeln!(out, "     → Ventilateur défaillant ou encrassé")?;
+    }
+    writeln!(
+        out,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+
+    // ── Maintenance recommendation ─────────────────────────────
+    writeln!(
+        out,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    writeln!(out, "  RECOMMANDATION MAINTENANCE")?;
+    writeln!(
+        out,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+
+    if peak_180.0 >= 10.0 {
+        writeln!(out, "  🔴 Inspection matérielle urgente")?;
+        writeln!(
+            out,
+            "     Dérive de +{:.1}°C sur 180j détectée — {} ",
+            peak_180.0, peak_180.1
+        )?;
+        writeln!(out, "     → Remplacer la pâte thermique (vieillissement)")?;
+        writeln!(
+            out,
+            "     → Inspecter les ventilateurs (roulements, encrassement)"
+        )?;
+        writeln!(out, "     → Nettoyer radiateurs et filtres à poussière")?;
+        writeln!(
+            out,
+            "     → Envisager le remplacement si le matériel a > 5 ans"
+        )?;
+    } else if peak_90.0 >= 8.0 {
+        writeln!(out, "  ⚠  Maintenance préventive recommandée")?;
+        writeln!(
+            out,
+            "     Dérive de +{:.1}°C sur 90j détectée — {}",
+            peak_90.0, peak_90.1
+        )?;
+        writeln!(out, "     → Nettoyer les filtres et radiateurs")?;
+        writeln!(out, "     → Vérifier l'état des ventilateurs")?;
+        writeln!(out, "     → Envisager le renouvellement de la pâte thermique")?;
+    } else if peak_30.0 >= 5.0 {
+        writeln!(out, "  ⚠  Nettoyage conseillé")?;
+        writeln!(
+            out,
+            "     Dérive de +{:.1}°C sur 30j détectée — {}",
+            peak_30.0, peak_30.1
+        )?;
+        writeln!(out, "     → Nettoyer les filtres à poussière")?;
+        writeln!(
+            out,
+            "     → Vérifier que les ventilateurs tournent librement"
+        )?;
+    } else {
+        writeln!(
+            out,
+            "  ✓  Aucune action requise — comportement thermique stable."
+        )?;
     }
     writeln!(
         out,

@@ -17,10 +17,10 @@ db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
 # Défaut : 300 (toutes les 5 minutes)
 collect_interval_secs = 300
 
-# Durée de rétention des données (en jours, minimum 180)
+# Durée de rétention des données (en jours, minimum 360)
 # Les snapshots plus anciens sont purgés automatiquement au démarrage
-# du service puis toutes les 24h. La valeur minimale est 180 car l'algorithme
-# de détection compare une fenêtre de 90 jours à la fenêtre précédente (90j).
+# du service puis toutes les 24h. La valeur minimale est 360 car l'algorithme
+# compare une fenêtre de 180 jours (saisonnière) à la fenêtre précédente (180j).
 retention_days = 365
 
 # Niveau de log : "error" | "warn" | "info" (défaut) | "debug" | "trace"

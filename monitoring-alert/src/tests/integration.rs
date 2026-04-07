@@ -323,6 +323,49 @@ fn cpu_and_gpu_both_drift_two_alerts() {
     assert!(s.body.contains("2 alertes"), "{:?}", s.body);
 }
 
+// ── Scénarios saisonniers (fenêtre 180j) ─────────────────────
+
+/// Été plus chaud que l'hiver précédent : Δ+11°C sur 180j → alerte saisonnière.
+/// Utilise generate_summary (fenêtre 30j) : le drift 180j n'y apparaît pas,
+/// mais le rapport complet doit afficher "Inspection matérielle urgente".
+#[test]
+fn seasonal_180j_drift_shows_in_full_report() {
+    use crate::report;
+    let store = make_store();
+    // Courant 180j : 75°C — référence 180j : 64°C → Δ+11°C
+    seed(&store, "CPU", "CPU Package", "idle", 1, 181, 75.0);
+    seed(&store, "CPU", "CPU Package", "idle", 181, 361, 64.0);
+
+    let mut buf = Vec::new();
+    report::generate_report_to_writer(&store, &mut buf).unwrap();
+    let output = String::from_utf8(buf).unwrap();
+
+    assert!(
+        output.contains("Inspection matérielle urgente"),
+        "Δ+11°C on 180j should show inspection urgente in full report, got:\n{}",
+        output
+    );
+}
+
+/// Températures saisonnières stables (Δ < 2°C sur 180j) → aucune action.
+#[test]
+fn seasonal_180j_stable_no_maintenance() {
+    use crate::report;
+    let store = make_store();
+    seed(&store, "CPU", "CPU Package", "idle", 1, 181, 46.0);
+    seed(&store, "CPU", "CPU Package", "idle", 181, 361, 45.0); // Δ+1°C
+
+    let mut buf = Vec::new();
+    report::generate_report_to_writer(&store, &mut buf).unwrap();
+    let output = String::from_utf8(buf).unwrap();
+
+    assert!(
+        output.contains("Aucune action requise"),
+        "Δ+1°C on 180j should show no maintenance needed, got:\n{}",
+        output
+    );
+}
+
 /// Sessions gaming stables : GPU chaud mais pas de drift → pas d'alerte.
 #[test]
 fn gpu_heavy_stable_no_alert() {
