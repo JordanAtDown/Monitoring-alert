@@ -83,7 +83,13 @@ pub fn generate_summary(
     Ok(SummaryReport { title, body })
 }
 
-const WINDOWS: &[(u32, &str)] = &[(1, "24h"), (7, "7j"), (30, "30j"), (90, "90j"), (180, "180j")];
+const WINDOWS: &[(u32, &str)] = &[
+    (1, "24h"),
+    (7, "7j"),
+    (30, "30j"),
+    (90, "90j"),
+    (180, "180j"),
+];
 const DISPLAY_CATS: &[&str] = &["idle", "heavy"];
 
 fn delta_status(delta: f64) -> &'static str {
@@ -390,7 +396,10 @@ pub fn generate_report_to_writer(
         )?;
         writeln!(out, "     → Nettoyer les filtres et radiateurs")?;
         writeln!(out, "     → Vérifier l'état des ventilateurs")?;
-        writeln!(out, "     → Envisager le renouvellement de la pâte thermique")?;
+        writeln!(
+            out,
+            "     → Envisager le renouvellement de la pâte thermique"
+        )?;
     } else if peak_30.0 >= 5.0 {
         writeln!(out, "  ⚠  Nettoyage conseillé")?;
         writeln!(

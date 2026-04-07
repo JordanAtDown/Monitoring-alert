@@ -136,9 +136,8 @@ pub mod windows {
     }
 
     pub fn status() -> Result<()> {
-        let manager =
-            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
-                .context("Failed to open Service Manager")?;
+        let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+            .context("Failed to open Service Manager")?;
         match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
             Err(_) => println!("Service {} — ⛔ Non installé", SERVICE_NAME),
             Ok(service) => {

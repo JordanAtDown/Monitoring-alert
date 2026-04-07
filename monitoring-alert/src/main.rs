@@ -256,14 +256,8 @@ fn run_cli() -> Result<()> {
 
             // Each scenario mirrors an exact output that generate_summary can produce.
             let scenarios: &[(&str, &str)] = &[
-                (
-                    "stable",
-                    "✓ Toutes les températures stables",
-                ),
-                (
-                    "attention",
-                    "⚠ 1 alerte — CPU Package: +6.0°C sur 30j",
-                ),
+                ("stable", "✓ Toutes les températures stables"),
+                ("attention", "⚠ 1 alerte — CPU Package: +6.0°C sur 30j"),
                 (
                     "critique",
                     "⚠ 1 alerte — GPU Junction Temperature: +12.0°C sur 30j",
@@ -311,10 +305,7 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
 
     // ── 1. Configuration ──────────────────────────────────────
     println!("  ✓  Configuration chargée");
-    println!(
-        "     DB         : {}",
-        db_path.display()
-    );
+    println!("     DB         : {}", db_path.display());
     println!(
         "     Intervalle : {} s  —  Rétention : {} j  —  Log : {}",
         cfg.collect_interval_secs, cfg.retention_days, cfg.log_level
@@ -328,7 +319,10 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
             println!("  ✗  Base de données inaccessible");
             println!("     Erreur : {}", e);
             if let Some(parent) = db_path.parent() {
-                println!("     → Vérifiez que le répertoire {} existe", parent.display());
+                println!(
+                    "     → Vérifiez que le répertoire {} existe",
+                    parent.display()
+                );
             }
         }
         Ok(conn) => {
@@ -424,7 +418,10 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
     if issues == 0 {
         println!("  Tout est opérationnel. ✓");
     } else {
-        println!("  {} problème(s) détecté(s) — voir les ✗ ci-dessus.", issues);
+        println!(
+            "  {} problème(s) détecté(s) — voir les ✗ ci-dessus.",
+            issues
+        );
     }
 }
 
