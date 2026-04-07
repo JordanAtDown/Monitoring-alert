@@ -1,6 +1,6 @@
 [package]
 name = "monitoring-alert"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Long-term temperature monitoring Windows service"
 license = "MIT"

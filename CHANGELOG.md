@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-04-07
+
 ### Added
 - **Fenêtre d'analyse 180j** : comparaison saisonnière (été N vs été N−1) dans le
   rapport détaillé — détecte le vieillissement progressif du matériel
@@ -35,7 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Charge effective** = `max(cpu_load, gpu_load)` pour la catégorisation :
   les sessions GPU-intensives (jeu : GPU 90 %, CPU 15 %) sont désormais
   correctement classées `heavy` et non `light`
-
 - **`monitoring-alert check`** : diagnostic pré-démarrage en 5 points —
   configuration, base de données, service (installé + actif), LHM/WMI
   (connexion + sondes), AUMID registre (toasts disponibles) ; affiche
@@ -85,5 +86,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/jordanatdown/monitoring-alert/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/jordanatdown/monitoring-alert/releases/tag/v0.1.0
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/JordanAtDown/monitoring-alert/releases/tag/v0.1.0
