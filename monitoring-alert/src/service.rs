@@ -135,6 +135,53 @@ pub mod windows {
         Ok(())
     }
 
+    pub fn status() -> Result<()> {
+        let manager =
+            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+                .context("Failed to open Service Manager")?;
+        match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+            Err(_) => println!("Service {} — ⛔ Non installé", SERVICE_NAME),
+            Ok(service) => {
+                let st = service
+                    .query_status()
+                    .context("Failed to query service status")?;
+                let (icon, label) = match st.current_state {
+                    ServiceState::Running => ("✓ ", "En cours d'exécution"),
+                    ServiceState::Stopped => ("⛔", "Arrêté"),
+                    ServiceState::StartPending => ("⏳", "Démarrage en cours…"),
+                    ServiceState::StopPending => ("⏳", "Arrêt en cours…"),
+                    ServiceState::Paused => ("⏸ ", "En pause"),
+                    _ => ("? ", "État inconnu"),
+                };
+                print!("Service {} — {} {}", SERVICE_NAME, icon, label);
+                if let Some(pid) = st.process_id {
+                    print!("  (PID {})", pid);
+                }
+                println!();
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns `(is_installed, is_running)` — used by the `check` command.
+    pub fn check_state() -> (bool, bool) {
+        let Ok(manager) =
+            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+        else {
+            return (false, false);
+        };
+        match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+            Err(_) => (false, false),
+            Ok(service) => {
+                let running = service
+                    .query_status()
+                    .map(|s| s.current_state == ServiceState::Running)
+                    .unwrap_or(false);
+                (true, running)
+            }
+        }
+    }
+
     /// Called by `ffi_service_main` — runs the actual service logic.
     pub fn run_service_main(_args: Vec<OsString>) -> Result<()> {
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -222,6 +269,10 @@ pub fn start() -> Result<()> {
 pub fn stop() -> Result<()> {
     anyhow::bail!("Windows service management is only supported on Windows")
 }
+#[cfg(not(windows))]
+pub fn status() -> Result<()> {
+    anyhow::bail!("Windows service management is only supported on Windows")
+}
 
 #[cfg(windows)]
-pub use windows::{install, start, stop, uninstall};
+pub use windows::{check_state, install, start, status, stop, uninstall};

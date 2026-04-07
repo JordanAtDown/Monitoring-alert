@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les sessions GPU-intensives (jeu : GPU 90 %, CPU 15 %) sont désormais
   correctement classées `heavy` et non `light`
 
+- **`monitoring-alert check`** : diagnostic pré-démarrage en 5 points —
+  configuration, base de données, service (installé + actif), LHM/WMI
+  (connexion + sondes), AUMID registre (toasts disponibles) ; affiche
+  les actions correctives pour chaque point en échec
+- **`monitoring-alert service status`** : état du service SCM avec PID si actif
 - **`monitoring-alert notify-dry-run`** : envoie des toasts fictifs pour tester
   l'implémentation (AUMID, affichage) sans avoir besoin de données ;
   scénarios disponibles : `stable`, `attention`, `critique`, `multi`, `all`

@@ -68,6 +68,8 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Vérifie la configuration, la base de données, le service et LHM
+    Check,
     /// Gestion du service Windows
     Service {
         #[command(subcommand)]
@@ -147,6 +149,8 @@ enum ServiceAction {
     Start,
     /// Arrête le service
     Stop,
+    /// Affiche l'état du service (installé, actif, PID)
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -187,7 +191,11 @@ fn run_cli() -> Result<()> {
             ServiceAction::Uninstall => service::uninstall()?,
             ServiceAction::Start => service::start()?,
             ServiceAction::Stop => service::stop()?,
+            ServiceAction::Status => service::status()?,
         },
+        Commands::Check => {
+            run_check(&db_path, &cfg);
+        }
         Commands::Db { action } => match action {
             DbAction::Stats => {
                 let store = store::SqliteStore::new(db::init_db(&db_path)?);
@@ -292,6 +300,141 @@ fn run_cli() -> Result<()> {
     }
     Ok(())
 }
+
+fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
+    const SEP: &str = "════════════════════════════════════════════════════════════════";
+    println!("Vérifications pré-démarrage");
+    println!("{}", SEP);
+    println!();
+
+    let mut issues: u32 = 0;
+
+    // ── 1. Configuration ──────────────────────────────────────
+    println!("  ✓  Configuration chargée");
+    println!(
+        "     DB         : {}",
+        db_path.display()
+    );
+    println!(
+        "     Intervalle : {} s  —  Rétention : {} j  —  Log : {}",
+        cfg.collect_interval_secs, cfg.retention_days, cfg.log_level
+    );
+    println!();
+
+    // ── 2. Base de données ────────────────────────────────────
+    match db::init_db(db_path) {
+        Err(e) => {
+            issues += 1;
+            println!("  ✗  Base de données inaccessible");
+            println!("     Erreur : {}", e);
+            if let Some(parent) = db_path.parent() {
+                println!("     → Vérifiez que le répertoire {} existe", parent.display());
+            }
+        }
+        Ok(conn) => {
+            let store = store::SqliteStore::new(conn);
+            let (snapshots, size_mb) = store
+                .get_overall_stats()
+                .map(|s| s.total_snapshots)
+                .unwrap_or(0)
+                .pipe(|n| {
+                    let mb = std::fs::metadata(db_path)
+                        .map(|m| m.len() as f64 / 1_048_576.0)
+                        .unwrap_or(0.0);
+                    (n, mb)
+                });
+            println!(
+                "  ✓  Base de données accessible  ({:.1} MB — {} snapshot(s))",
+                size_mb, snapshots
+            );
+        }
+    }
+    println!();
+
+    // ── 3. Service Windows ────────────────────────────────────
+    #[cfg(windows)]
+    {
+        let (installed, running) = service::check_state();
+        if !installed {
+            issues += 1;
+            println!("  ✗  Service non installé");
+            println!("     → Lancez install.bat en tant qu'administrateur");
+        } else if running {
+            println!("  ✓  Service installé et actif");
+        } else {
+            issues += 1;
+            println!("  ⚠  Service installé mais arrêté");
+            println!("     → monitoring-alert.exe service start");
+        }
+        println!();
+    }
+
+    // ── 4. LibreHardwareMonitor / WMI ────────────────────────
+    #[cfg(windows)]
+    {
+        match sensors::read_sensors() {
+            Ok(data) if !data.temperatures.is_empty() => {
+                println!(
+                    "  ✓  LibreHardwareMonitor WMI accessible  ({} sonde(s) de température)",
+                    data.temperatures.len()
+                );
+            }
+            Ok(_) => {
+                issues += 1;
+                println!("  ⚠  LibreHardwareMonitor accessible mais aucune sonde trouvée");
+                println!("     → Vérifiez que LHM surveille bien votre matériel");
+            }
+            Err(e) => {
+                issues += 1;
+                println!("  ✗  LibreHardwareMonitor WMI inaccessible");
+                println!("     Erreur : {}", e);
+                println!("     → Lancez LHM en tant qu'administrateur");
+                println!("     → Activez Options › WMI Provider dans LHM");
+            }
+        }
+        println!();
+    }
+
+    // ── 5. AUMID (toast notifications) ───────────────────────
+    #[cfg(windows)]
+    {
+        let key = format!(
+            "HKCU\\Software\\Classes\\AppUserModelId\\{}",
+            notification::TOAST_APP_ID
+        );
+        let aumid_ok = std::process::Command::new("reg")
+            .args(["query", &key])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if aumid_ok {
+            println!("  ✓  AUMID enregistré — notifications toast disponibles");
+            println!("     → Testez avec : monitoring-alert.exe notify-dry-run");
+        } else {
+            issues += 1;
+            println!("  ✗  AUMID non enregistré — les toasts ne fonctionneront pas");
+            println!("     → Lancez install.bat en tant qu'administrateur");
+        }
+        println!();
+    }
+
+    // ── Bilan ─────────────────────────────────────────────────
+    println!("{}", SEP);
+    if issues == 0 {
+        println!("  Tout est opérationnel. ✓");
+    } else {
+        println!("  {} problème(s) détecté(s) — voir les ✗ ci-dessus.", issues);
+    }
+}
+
+// Helper to thread a value through a closure without a let binding.
+trait Pipe: Sized {
+    fn pipe<R>(self, f: impl FnOnce(Self) -> R) -> R {
+        f(self)
+    }
+}
+impl<T> Pipe for T {}
 
 fn main() -> Result<()> {
     #[cfg(windows)]

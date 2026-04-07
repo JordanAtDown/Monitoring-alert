@@ -295,6 +295,10 @@ monitoring-alert.exe service install
 monitoring-alert.exe service start
 monitoring-alert.exe service stop
 monitoring-alert.exe service uninstall
+monitoring-alert.exe service status        # état du service (installé, actif, PID)
+
+# Vérification pré-démarrage
+monitoring-alert.exe check                 # config, DB, service, LHM, AUMID
 
 # Maintenance de la base de données
 monitoring-alert.exe db stats              # taille, nb snapshots, dates
@@ -446,6 +450,53 @@ précédente de 180 jours.
 ---
 
 ## Supervision
+
+### Vérification pré-démarrage (`check`)
+
+La commande `check` effectue un diagnostic complet de l'installation sans avoir
+besoin de données existantes :
+
+```powershell
+monitoring-alert.exe check
+```
+
+Exemple de sortie :
+
+```
+Vérifications pré-démarrage
+════════════════════════════════════════════════════════════════
+
+  ✓  Configuration chargée
+     DB         : C:\ProgramData\MonitoringAlert\temperatures.db
+     Intervalle : 300 s  —  Rétention : 365 j  —  Log : info
+
+  ✓  Base de données accessible  (0.0 MB — 0 snapshot(s))
+
+  ✓  Service installé et actif
+
+  ✓  LibreHardwareMonitor WMI accessible  (12 sonde(s) de température)
+
+  ✓  AUMID enregistré — notifications toast disponibles
+     → Testez avec : monitoring-alert.exe notify-dry-run
+
+════════════════════════════════════════════════════════════════
+  Tout est opérationnel. ✓
+```
+
+| Vérification | Ce qui est testé | Action si ✗ |
+|---|---|---|
+| Configuration | Valeurs chargées depuis `config.toml` | Vérifier le fichier de config |
+| Base de données | Ouverture + accès en écriture | Vérifier que le répertoire existe |
+| Service | Installé + en cours d'exécution | `service install` puis `service start` |
+| LHM/WMI | Connexion `ROOT\LibreHardwareMonitor` | Lancer LHM admin + activer WMI Provider |
+| AUMID | Clé registre pour les toasts | Relancer `install.bat` admin |
+
+### État du service
+
+```powershell
+monitoring-alert.exe service status
+# → Service MonitoringAlert — ✓  En cours d'exécution  (PID 1234)
+```
 
 ### Fichier de log
 
