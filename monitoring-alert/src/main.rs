@@ -81,6 +81,9 @@ enum Commands {
     #[cfg(windows)]
     /// Envoie un rapport toast (appelé par les tâches planifiées)
     Notify(NotifyArgs),
+    #[cfg(windows)]
+    /// Envoie des toasts fictifs pour tester l'implémentation sans données
+    NotifyTest(NotifyTestArgs),
 }
 
 #[cfg(windows)]
@@ -95,6 +98,43 @@ struct NotifyArgs {
     /// Rapport mensuel
     #[arg(long, conflicts_with_all = ["daily", "weekly"])]
     monthly: bool,
+}
+
+/// Scénarios de test disponibles pour `notify-test`.
+#[cfg(windows)]
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum TestScenario {
+    /// ✓ Toutes les températures stables
+    Stable,
+    /// ⚠ 1 alerte — seuil ATTENTION (Δ+6°C sur 30j)
+    Attention,
+    /// 🔴 1 alerte — seuil CRITIQUE (Δ+12°C sur 30j)
+    Critique,
+    /// ⚠ 3 alertes — plusieurs capteurs en drift
+    Multi,
+    /// Envoie les 4 scénarios en séquence (pause de 4 s entre chaque)
+    All,
+}
+
+/// Période de rapport simulée pour `notify-test`.
+#[cfg(windows)]
+#[derive(clap::ValueEnum, Clone, Debug, Default)]
+enum TestPeriod {
+    #[default]
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+#[cfg(windows)]
+#[derive(Args)]
+struct NotifyTestArgs {
+    /// Scénario à simuler
+    #[arg(long, default_value = "all")]
+    scenario: TestScenario,
+    /// Période du titre du toast
+    #[arg(long, default_value = "daily")]
+    period: TestPeriod,
 }
 
 #[derive(Subcommand)]
@@ -197,6 +237,57 @@ fn run_cli() -> Result<()> {
             let summary = report::generate_summary(&store, period)?;
             let sender: Box<dyn reporter::ReportSender> = Box::new(notification::ToastSender);
             sender.send(&summary.title, &summary.body)?;
+        }
+        #[cfg(windows)]
+        Commands::NotifyTest(args) => {
+            let title = match args.period {
+                TestPeriod::Daily => "MonitoringAlert — Rapport Journalier",
+                TestPeriod::Weekly => "MonitoringAlert — Rapport Hebdomadaire",
+                TestPeriod::Monthly => "MonitoringAlert — Rapport Mensuel",
+            };
+
+            // Each scenario mirrors an exact output that generate_summary can produce.
+            let scenarios: &[(&str, &str)] = &[
+                (
+                    "stable",
+                    "✓ Toutes les températures stables",
+                ),
+                (
+                    "attention",
+                    "⚠ 1 alerte — CPU Package: +6.0°C sur 30j",
+                ),
+                (
+                    "critique",
+                    "⚠ 1 alerte — GPU Junction Temperature: +12.0°C sur 30j",
+                ),
+                (
+                    "multi",
+                    "⚠ 3 alertes — GPU Junction Temperature: +12.0°C sur 30j",
+                ),
+            ];
+
+            let to_send: Vec<(&str, &str)> = match args.scenario {
+                TestScenario::Stable => vec![scenarios[0]],
+                TestScenario::Attention => vec![scenarios[1]],
+                TestScenario::Critique => vec![scenarios[2]],
+                TestScenario::Multi => vec![scenarios[3]],
+                TestScenario::All => scenarios.to_vec(),
+            };
+
+            let sender: Box<dyn reporter::ReportSender> = Box::new(notification::ToastSender);
+            let count = to_send.len();
+            for (i, (label, body)) in to_send.into_iter().enumerate() {
+                let test_title = format!("{} [TEST: {}]", title, label);
+                println!("Envoi scénario «{}» : {}", label, body);
+                sender.send(&test_title, body)?;
+                // Pause between toasts so Windows has time to display each one.
+                if i + 1 < count {
+                    std::thread::sleep(std::time::Duration::from_secs(4));
+                }
+            }
+            if count > 1 {
+                println!("{} toasts envoyés.", count);
+            }
         }
     }
     Ok(())
