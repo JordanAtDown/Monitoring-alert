@@ -132,7 +132,7 @@ pub fn generate_report_to_writer(
     let now = chrono::Local::now();
     let now_str = now.format("%d/%m/%Y %H:%M").to_string();
 
-    let mut out: Vec<u8> = Vec::new();
+    let mut out: Vec<u8> = Vec::with_capacity(16 * 1024);
 
     // Header
     writeln!(
@@ -187,9 +187,12 @@ pub fn generate_report_to_writer(
     let total_dist: i64 = dist.iter().map(|c| c.count).sum();
     writeln!(out, "  Distribution des états (90 derniers jours) :")?;
     let order = ["idle", "light", "moderate", "heavy"];
-    let dist_map: HashMap<String, i64> = dist.into_iter().map(|c| (c.load_cat, c.count)).collect();
     for cat in order {
-        let cnt = dist_map.get(cat).copied().unwrap_or(0);
+        let cnt = dist
+            .iter()
+            .find(|c| c.load_cat == cat)
+            .map(|c| c.count)
+            .unwrap_or(0);
         let pct = if total_dist > 0 {
             cnt as f64 / total_dist as f64 * 100.0
         } else {
@@ -218,37 +221,26 @@ pub fn generate_report_to_writer(
     )?;
     writeln!(out)?;
 
-    // Group sensors by hardware
+    // Group sensors by hardware — consume the Vec to avoid cloning each name.
     let mut hw_map: HashMap<String, Vec<String>> = HashMap::new();
-    for s in &sensors {
-        hw_map
-            .entry(s.hardware.clone())
-            .or_default()
-            .push(s.sensor.clone());
+    for s in sensors {
+        hw_map.entry(s.hardware).or_default().push(s.sensor);
     }
-    let mut hw_sorted: Vec<String> = hw_map.keys().cloned().collect();
+    let mut hw_sorted: Vec<&String> = hw_map.keys().collect();
     hw_sorted.sort();
 
-    let mut alerts: Vec<String> = Vec::new();
+    let mut alerts: Vec<String> = Vec::with_capacity(8);
 
     for hardware in &hw_sorted {
         writeln!(out, "  ┌─ {} ─", hardware)?;
         writeln!(out, "  │")?;
-        let sensor_list = hw_map.get(hardware).cloned().unwrap_or_default();
-        for sensor_name in &sensor_list {
+        let sensor_list = hw_map.get(*hardware).map(Vec::as_slice).unwrap_or(&[]);
+        for sensor_name in sensor_list {
             writeln!(out, "  │  {}", sensor_name)?;
             for &cat in DISPLAY_CATS {
-                let has_data = WINDOWS.iter().any(|&(days, _)| {
-                    store
-                        .get_avg_for_window(hardware, sensor_name, cat, days, 0)
-                        .ok()
-                        .flatten()
-                        .is_some()
-                });
-                if !has_data {
-                    continue;
-                }
-                writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
+                // Write the category header lazily — only when the first data row is ready,
+                // so we avoid an extra round-trip to check existence.
+                let mut cat_header_written = false;
                 for &(days, label) in WINDOWS {
                     let curr = store
                         .get_avg_for_window(hardware, sensor_name, cat, days, 0)
@@ -258,6 +250,10 @@ pub fn generate_report_to_writer(
                         .context("Failed to query previous window avg")?;
                     match (curr, prev) {
                         (Some(c), Some(p)) => {
+                            if !cat_header_written {
+                                writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
+                                cat_header_written = true;
+                            }
                             let delta = c - p;
                             let sign = if delta >= 0.0 { "+" } else { "" };
                             let status = delta_status(delta);
@@ -284,6 +280,10 @@ pub fn generate_report_to_writer(
                             }
                         }
                         (Some(c), None) => {
+                            if !cat_header_written {
+                                writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
+                                cat_header_written = true;
+                            }
                             writeln!(
                                 out,
                                 "  │  │  moy. {:4}   {:5.1} °C  (pas de période précédente)",
@@ -293,7 +293,9 @@ pub fn generate_report_to_writer(
                         _ => {}
                     }
                 }
-                writeln!(out, "  │  │")?;
+                if cat_header_written {
+                    writeln!(out, "  │  │")?;
+                }
             }
         }
         writeln!(out, "  └─")?;

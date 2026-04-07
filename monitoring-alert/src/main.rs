@@ -136,8 +136,6 @@ fn run_cli() -> Result<()> {
         }
         Commands::Watch { interval } => {
             let stop = Arc::new(AtomicBool::new(false));
-            let stop_ctrlc = Arc::clone(&stop);
-            ctrlc_handler(stop_ctrlc);
             collector::watch(&db_path, interval, cfg.retention_days, stop)?;
         }
         Commands::Report { output } => {
@@ -202,13 +200,6 @@ fn run_cli() -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Best-effort Ctrl+C handler — sets the stop flag so watch() exits cleanly.
-fn ctrlc_handler(stop: Arc<AtomicBool>) {
-    let _ = std::thread::spawn(move || {
-        let _ = stop;
-    });
 }
 
 fn main() -> Result<()> {

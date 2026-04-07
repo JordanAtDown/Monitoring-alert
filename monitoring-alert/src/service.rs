@@ -144,7 +144,7 @@ pub mod windows {
             match control_event {
                 windows_service::service::ServiceControl::Stop
                 | windows_service::service::ServiceControl::Shutdown => {
-                    stop_flag_handler.store(true, Ordering::SeqCst);
+                    stop_flag_handler.store(true, Ordering::Relaxed);
                     ServiceControlHandlerResult::NoError
                 }
                 windows_service::service::ServiceControl::Interrogate => {

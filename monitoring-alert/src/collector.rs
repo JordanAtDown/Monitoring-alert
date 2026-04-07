@@ -98,7 +98,7 @@ pub fn watch(
     let mut empty_streak: u32 = 0;
 
     loop {
-        if stop.load(Ordering::SeqCst) {
+        if stop.load(Ordering::Relaxed) {
             tracing::info!("Stop signal received — exiting watch loop.");
             break;
         }
@@ -145,7 +145,7 @@ pub fn watch(
         // Sleep in small increments to remain responsive to stop signals.
         let mut elapsed = 0u64;
         while elapsed < interval_secs {
-            if stop.load(Ordering::SeqCst) {
+            if stop.load(Ordering::Relaxed) {
                 return Ok(());
             }
             std::thread::sleep(std::time::Duration::from_secs(1));
