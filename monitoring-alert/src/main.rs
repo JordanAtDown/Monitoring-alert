@@ -82,8 +82,8 @@ enum Commands {
     /// Envoie un rapport toast (appelé par les tâches planifiées)
     Notify(NotifyArgs),
     #[cfg(windows)]
-    /// Envoie des toasts fictifs pour tester l'implémentation sans données
-    NotifyTest(NotifyTestArgs),
+    /// Envoie des toasts fictifs (dry-run) pour tester l'implémentation sans données
+    NotifyDryRun(NotifyDryRunArgs),
 }
 
 #[cfg(windows)]
@@ -128,7 +128,7 @@ enum TestPeriod {
 
 #[cfg(windows)]
 #[derive(Args)]
-struct NotifyTestArgs {
+struct NotifyDryRunArgs {
     /// Scénario à simuler
     #[arg(long, default_value = "all")]
     scenario: TestScenario,
@@ -239,7 +239,7 @@ fn run_cli() -> Result<()> {
             sender.send(&summary.title, &summary.body)?;
         }
         #[cfg(windows)]
-        Commands::NotifyTest(args) => {
+        Commands::NotifyDryRun(args) => {
             let title = match args.period {
                 TestPeriod::Daily => "MonitoringAlert — Rapport Journalier",
                 TestPeriod::Weekly => "MonitoringAlert — Rapport Hebdomadaire",
