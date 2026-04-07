@@ -68,10 +68,12 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ steps.notes.outputs.body }}
         shell: bash
         run: |
+          echo "$RELEASE_NOTES" > release_notes.md
           gh release create "${{ github.ref_name }}" \
             --title "MonitoringAlert ${{ github.ref_name }}" \
-            --notes "${{ steps.notes.outputs.body }}" \
+            --notes-file release_notes.md \
             "$EXE#monitoring-alert.exe" \
             "$ARCHIVE"
