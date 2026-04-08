@@ -131,8 +131,15 @@ pub mod windows {
         let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
             .context("Failed to open Service Manager")?;
         let service = manager
-            .open_service(SERVICE_NAME, ServiceAccess::STOP)
+            .open_service(SERVICE_NAME, ServiceAccess::STOP | ServiceAccess::QUERY_STATUS)
             .context("Failed to open service")?;
+        let status = service
+            .query_status()
+            .context("Failed to query service status")?;
+        if status.current_state == ServiceState::Stopped {
+            tracing::info!("Service '{}' is already stopped.", SERVICE_NAME);
+            return Ok(());
+        }
         service.stop().context("Failed to stop service")?;
         tracing::info!("Service '{}' stop signal sent.", SERVICE_NAME);
         Ok(())

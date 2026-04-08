@@ -35,8 +35,14 @@ echo.
 
 :: --- 1. Arrêt du service ---
 echo [1/5] Arret du service...
-"!INSTALL_DIR!\%EXE_NAME%" service stop >nul 2>&1
-timeout /t 3 /nobreak >nul
+for /f "usebackq delims=" %%s in (`"!INSTALL_DIR!\%EXE_NAME%" service status 2^>nul`) do set "SVC_STATUS=%%s"
+echo !SVC_STATUS! | findstr /i "Arret\|Stopped\|Non install" >nul 2>&1
+if %errorLevel% neq 0 (
+    "!INSTALL_DIR!\%EXE_NAME%" service stop >nul 2>&1
+    timeout /t 3 /nobreak >nul
+) else (
+    echo        Service deja arrete.
+)
 
 :: --- 2. Suppression du service et de l'exécutable ---
 echo [2/5] Suppression du service Windows...
