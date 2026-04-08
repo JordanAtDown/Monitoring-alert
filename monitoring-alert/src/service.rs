@@ -131,7 +131,10 @@ pub mod windows {
         let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
             .context("Failed to open Service Manager")?;
         let service = manager
-            .open_service(SERVICE_NAME, ServiceAccess::STOP | ServiceAccess::QUERY_STATUS)
+            .open_service(
+                SERVICE_NAME,
+                ServiceAccess::STOP | ServiceAccess::QUERY_STATUS,
+            )
             .context("Failed to open service")?;
         let status = service
             .query_status()
