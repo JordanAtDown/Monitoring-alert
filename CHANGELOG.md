@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-04-08
+
+### Fixed
+- `install.bat` : les variables `install_dir` et `db_path` restaient vides —
+  CMD cassait la commande PowerShell en interprétant `""` à l'intérieur des
+  backticks `for /f` ; remplacement par `$q=[char]34` pour construire le
+  regex sans guillemets dans la ligne CMD
+
 ## [1.0.2] — 2026-04-08
 
 ### Fixed
@@ -101,7 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v0.1.0...v1.0.0
