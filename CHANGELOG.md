@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-04-08
+
+### Changed
+- Répertoire de données déplacé de `C:\ProgramData\MonitoringAlert\` vers
+  `%LOCALAPPDATA%\Programs\MonitoringAlert\` (`C:\Users\<user>\AppData\Local\Programs\MonitoringAlert\`)
+  — config.toml, scripts et base de données sont désormais dans le profil utilisateur
+
 ## [1.1.0] — 2026-04-08
 
 ### Changed
@@ -158,7 +165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.9...v1.1.0
 [1.0.9]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.7...v1.0.8

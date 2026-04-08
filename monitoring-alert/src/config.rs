@@ -81,7 +81,10 @@ const VALID_LOG_LEVELS: &[&str] = &["error", "warn", "info", "debug", "trace"];
 #[cfg(windows)]
 impl AppConfig {
     pub fn load() -> Self {
-        let config_path = PathBuf::from(r"C:\ProgramData\MonitoringAlert\config.toml");
+        let app_dir = std::env::var("LOCALAPPDATA")
+            .map(|p| PathBuf::from(p).join("Programs").join("MonitoringAlert"))
+            .unwrap_or_else(|_| PathBuf::from(r"C:\Users\Default\AppData\Local\Programs\MonitoringAlert"));
+        let config_path = app_dir.join("config.toml");
         let raw: RawConfig = std::fs::read_to_string(&config_path)
             .ok()
             .and_then(|s| toml::from_str(&s).ok())
@@ -90,7 +93,7 @@ impl AppConfig {
         let db_path = raw
             .db_path
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData\MonitoringAlert\temperatures.db"));
+            .unwrap_or_else(|| app_dir.join("temperatures.db"));
 
         let collect_interval_secs = raw.collect_interval_secs.unwrap_or(300).max(60);
         // Minimum 360 days to cover the full 180-day current + 180-day reference window.

@@ -5,7 +5,7 @@ setlocal EnableDelayedExpansion
 ::  update.bat — Met a jour MonitoringAlert depuis GitHub Releases
 ::
 ::  Lit le dossier d'installation depuis :
-::    C:\ProgramData\MonitoringAlert\config.toml  (cle install_dir)
+::    %LOCALAPPDATA%\Programs\MonitoringAlert\config.toml  (cle install_dir)
 ::
 ::  Le fichier config.toml et la base de donnees sont preserves.
 ::  Les taches planifiees sont resynchronisees avec la config.
@@ -19,7 +19,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-set "DATA_DIR=C:\ProgramData\MonitoringAlert"
+set "DATA_DIR=%LOCALAPPDATA%\Programs\MonitoringAlert"
 set "EXE_NAME=monitoring-alert.exe"
 set "CONFIG_FILE=%DATA_DIR%\config.toml"
 set "TMP_EXE=%TEMP%\monitoring-alert-update.exe"

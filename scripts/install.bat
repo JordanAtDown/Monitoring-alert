@@ -11,7 +11,7 @@ setlocal EnableDelayedExpansion
 ::    2. Lancez ce script en tant qu'Administrateur
 ::
 ::  Ce script copie ensuite config.toml, uninstall.bat et
-::  update.bat dans C:\ProgramData\MonitoringAlert\
+::  update.bat dans %LOCALAPPDATA%\Programs\MonitoringAlert\
 :: ============================================================
 
 :: --- Vérification des droits admin ---
@@ -24,7 +24,7 @@ if %errorLevel% neq 0 (
 )
 
 set "SCRIPT_DIR=%~dp0"
-set "DATA_DIR=C:\ProgramData\MonitoringAlert"
+set "DATA_DIR=%LOCALAPPDATA%\Programs\MonitoringAlert"
 set "EXE_NAME=monitoring-alert.exe"
 set "CONFIG_FILE=%SCRIPT_DIR%config.toml"
 

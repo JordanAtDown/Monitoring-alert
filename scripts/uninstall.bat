@@ -5,7 +5,7 @@ setlocal EnableDelayedExpansion
 ::  uninstall.bat — Arrete, desinstalle et nettoie MonitoringAlert
 ::
 ::  Lit le dossier d'installation depuis :
-::    C:\ProgramData\MonitoringAlert\config.toml  (cle install_dir)
+::    %LOCALAPPDATA%\Programs\MonitoringAlert\config.toml  (cle install_dir)
 :: ============================================================
 
 :: --- Vérification des droits admin ---
@@ -16,7 +16,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-set "DATA_DIR=C:\ProgramData\MonitoringAlert"
+set "DATA_DIR=%LOCALAPPDATA%\Programs\MonitoringAlert"
 set "EXE_NAME=monitoring-alert.exe"
 set "CONFIG_FILE=%DATA_DIR%\config.toml"
 
