@@ -44,8 +44,9 @@ if not exist "%SCRIPT_DIR%%EXE_NAME%" (
     exit /b 1
 )
 
-:: --- Lecture de install_dir depuis config.toml ---
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'install_dir\s*=\s*""([^""]+)""'){$matches[1]}"`) do set "INSTALL_DIR=%%v"
+:: --- Lecture de la configuration depuis config.toml ---
+:: Note: [char]34 = " — evite les conflits de guillemets dans for/f
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('install_dir\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "INSTALL_DIR=%%v"
 
 if "!INSTALL_DIR!"=="" (
     echo [ERREUR] Cle 'install_dir' introuvable dans config.toml.
@@ -53,18 +54,16 @@ if "!INSTALL_DIR!"=="" (
     exit /b 1
 )
 
-:: --- Lecture de db_path depuis config.toml ---
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'db_path\s*=\s*""([^""]+)""'){$matches[1]}"`) do set "DB_PATH=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('db_path\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "DB_PATH=%%v"
 
-:: --- Lecture des paramètres de rapport depuis config.toml ---
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'daily_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'true'}"`) do set "DAILY_ENABLED=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'daily_report_time\s*=\s*""([^""]+)""'){$matches[1]}else{'08:00'}"`) do set "DAILY_TIME=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'weekly_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'false'}"`) do set "WEEKLY_ENABLED=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'weekly_report_day\s*=\s*""([^""]+)""'){$matches[1]}else{'MON'}"`) do set "WEEKLY_DAY=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'weekly_report_time\s*=\s*""([^""]+)""'){$matches[1]}else{'08:00'}"`) do set "WEEKLY_TIME=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'monthly_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'false'}"`) do set "MONTHLY_ENABLED=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'monthly_report_day\s*=\s*(\d+)'){$matches[1]}else{'1'}"`) do set "MONTHLY_DAY=%%v"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "if((gc '%CONFIG_FILE%' -Raw) -match 'monthly_report_time\s*=\s*""([^""]+)""'){$matches[1]}else{'08:00'}"`) do set "MONTHLY_TIME=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'daily_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'true'}"`) do set "DAILY_ENABLED=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('daily_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "DAILY_TIME=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'weekly_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'false'}"`) do set "WEEKLY_ENABLED=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('weekly_report_day\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'MON'}"`) do set "WEEKLY_DAY=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('weekly_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "WEEKLY_TIME=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'monthly_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'false'}"`) do set "MONTHLY_ENABLED=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'monthly_report_day\s*=\s*(\d+)'){$matches[1]}else{'1'}"`) do set "MONTHLY_DAY=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('monthly_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "MONTHLY_TIME=%%v"
 
 echo  Dossier d'installation : !INSTALL_DIR!
 echo  Chemin DB              : !DB_PATH!
