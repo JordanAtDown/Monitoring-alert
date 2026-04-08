@@ -252,6 +252,8 @@ fn run_cli() -> Result<()> {
             let summary = report::generate_summary(&store, period)?;
             let sender: Box<dyn reporter::ReportSender> = Box::new(notification::ToastSender);
             sender.send(&summary.title, &summary.body)?;
+            // Give Windows time to dispatch the async WinRT toast before the process exits.
+            std::thread::sleep(std::time::Duration::from_secs(3));
         }
         #[cfg(windows)]
         Commands::NotifyDryRun(args) => {
@@ -294,6 +296,8 @@ fn run_cli() -> Result<()> {
                     std::thread::sleep(std::time::Duration::from_secs(4));
                 }
             }
+            // Give Windows time to dispatch the last async WinRT toast before the process exits.
+            std::thread::sleep(std::time::Duration::from_secs(3));
             if count > 1 {
                 println!("{} toasts envoyés.", count);
             }

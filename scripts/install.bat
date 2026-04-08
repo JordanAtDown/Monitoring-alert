@@ -100,6 +100,7 @@ copy /Y "%SCRIPT_DIR%update.bat"           "%DATA_DIR%\update.bat"           >nu
 echo [3/6] Enregistrement de l'AUMID pour les notifications...
 reg add "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /f >nul
 reg add "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /v "DisplayName" /t REG_SZ /d "Monitoring Alert" /f >nul
+reg add "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /v "IconUri" /t REG_SZ /d "!INSTALL_DIR!\%EXE_NAME%" /f >nul
 
 :: --- 4. Enregistrement et démarrage du service ---
 echo [4/6] Enregistrement du service Windows...
