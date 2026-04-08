@@ -83,6 +83,13 @@ if %errorLevel% neq 0 (
 echo [2/6] Creation du dossier de donnees "%DATA_DIR%"...
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
+:: Création du dossier parent de db_path s'il est différent de DATA_DIR
+if not "!DB_PATH!"=="" (
+    for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Split-Path '!DB_PATH!'"`) do (
+        if not exist "%%p" mkdir "%%p"
+    )
+)
+
 echo        Copie de config.toml, Register-Tasks.ps1, uninstall.bat, update.bat...
 copy /Y "%CONFIG_FILE%"                    "%DATA_DIR%\config.toml"          >nul
 copy /Y "%SCRIPT_DIR%Register-Tasks.ps1"   "%DATA_DIR%\Register-Tasks.ps1"   >nul
