@@ -12,7 +12,7 @@ pub fn init_db(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)
         .with_context(|| format!("Failed to open database at: {}", path.display()))?;
     conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
+        "PRAGMA journal_mode = DELETE;
          PRAGMA foreign_keys = ON;
          CREATE TABLE IF NOT EXISTS snapshots (
              id        INTEGER PRIMARY KEY AUTOINCREMENT,
