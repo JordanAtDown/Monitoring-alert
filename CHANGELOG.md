@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-04-08
+
+### Fixed
+- `uninstall.bat` et `update.bat` : erreur `{ était inattendu` — mêmes causes
+  que `install.bat` v1.0.2/1.0.3 ; réécriture de tous les blocs `for /f`
+  PowerShell en commandes sur une seule ligne avec `$q=[char]34`
+- `uninstall.bat` et `update.bat` : ajout de `pause` avant chaque `exit /b 1`
+  et en fin de script pour éviter la fermeture immédiate en cas d'erreur
+
 ## [1.0.4] — 2026-04-08
 
 ### Fixed
@@ -116,7 +125,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.1...v1.0.2

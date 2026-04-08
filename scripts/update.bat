@@ -15,6 +15,7 @@ setlocal EnableDelayedExpansion
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERREUR] Ce script doit etre execute en tant qu'Administrateur.
+    pause
     exit /b 1
 )
 
@@ -30,11 +31,7 @@ if not exist "%CONFIG_FILE%" (
     echo                 Utilisation du chemin par defaut.
     set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
 ) else (
-    for /f "usebackq delims=" %%v in (
-        `powershell -NoProfile -Command ^
-            "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-            "if ($c -match 'install_dir\s*=\s*\"([^\"]+)\"') { $Matches[1] }"`
-    ) do set "INSTALL_DIR=%%v"
+    for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('install_dir\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "INSTALL_DIR=%%v"
 )
 
 if "!INSTALL_DIR!"=="" set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
@@ -48,12 +45,7 @@ timeout /t 3 /nobreak >nul
 
 :: --- 2. Récupération de l'URL du binaire depuis GitHub ---
 echo [2/5] Recuperation de la derniere release sur GitHub...
-for /f "usebackq delims=" %%u in (
-    `powershell -NoProfile -Command ^
-        "(Invoke-RestMethod -Uri '%API_URL%').assets | " ^
-        "Where-Object { $_.name -eq 'monitoring-alert.exe' } | " ^
-        "Select-Object -ExpandProperty browser_download_url"`
-) do set "DOWNLOAD_URL=%%u"
+for /f "usebackq delims=" %%u in (`powershell -NoProfile -Command "$q=[char]34;(Invoke-RestMethod -Uri '%API_URL%').assets | Where-Object { $_.name -eq 'monitoring-alert.exe' } | Select-Object -ExpandProperty browser_download_url"`) do set "DOWNLOAD_URL=%%u"
 
 if "!DOWNLOAD_URL!"=="" (
     echo [ERREUR] Impossible de trouver l'asset 'monitoring-alert.exe' dans la derniere release.
@@ -84,54 +76,14 @@ if %errorLevel% neq 0 (
 :: --- 5. Resynchronisation des tâches planifiées ---
 echo [5/5] Resynchronisation des taches planifiees depuis config.toml...
 
-:: Lecture des paramètres de rapport
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'daily_report_enabled\s*=\s*(\w+)') { $Matches[1] } else { 'true' }"`
-) do set "DAILY_ENABLED=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'daily_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
-) do set "DAILY_TIME=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'weekly_report_enabled\s*=\s*(\w+)') { $Matches[1] } else { 'false' }"`
-) do set "WEEKLY_ENABLED=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'weekly_report_day\s*=\s*""([^""]+)""') { $Matches[1] } else { 'MON' }"`
-) do set "WEEKLY_DAY=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'weekly_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
-) do set "WEEKLY_TIME=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'monthly_report_enabled\s*=\s*(\w+)') { $Matches[1] } else { 'false' }"`
-) do set "MONTHLY_ENABLED=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'monthly_report_day\s*=\s*(\d+)') { $Matches[1] } else { '1' }"`
-) do set "MONTHLY_DAY=%%v"
-
-for /f "usebackq delims=" %%v in (
-    `powershell -NoProfile -Command ^
-        "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-        "if ($c -match 'monthly_report_time\s*=\s*""([^""]+)""') { $Matches[1] } else { '08:00' }"`
-) do set "MONTHLY_TIME=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'daily_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'true'}"`) do set "DAILY_ENABLED=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('daily_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "DAILY_TIME=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'weekly_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'false'}"`) do set "WEEKLY_ENABLED=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('weekly_report_day\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'MON'}"`) do set "WEEKLY_DAY=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('weekly_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "WEEKLY_TIME=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'monthly_report_enabled\s*=\s*(\w+)'){$matches[1]}else{'false'}"`) do set "MONTHLY_ENABLED=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'monthly_report_day\s*=\s*(\d+)'){$matches[1]}else{'1'}"`) do set "MONTHLY_DAY=%%v"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('monthly_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "MONTHLY_TIME=%%v"
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" ^
     -ExePath "!INSTALL_DIR!\%EXE_NAME%" ^
@@ -142,5 +94,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.p
 
 echo.
 echo Mise a jour terminee.
+echo.
+pause
 
 endlocal

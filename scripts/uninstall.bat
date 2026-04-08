@@ -12,6 +12,7 @@ setlocal EnableDelayedExpansion
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERREUR] Ce script doit etre execute en tant qu'Administrateur.
+    pause
     exit /b 1
 )
 
@@ -25,11 +26,7 @@ if not exist "%CONFIG_FILE%" (
     echo                 Utilisation du chemin par defaut.
     set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
 ) else (
-    for /f "usebackq delims=" %%v in (
-        `powershell -NoProfile -Command ^
-            "$c = Get-Content '%CONFIG_FILE%' -Raw; " ^
-            "if ($c -match 'install_dir\s*=\s*\"([^\"]+)\"') { $Matches[1] }"`
-    ) do set "INSTALL_DIR=%%v"
+    for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('install_dir\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "INSTALL_DIR=%%v"
 )
 
 if "!INSTALL_DIR!"=="" set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
@@ -55,10 +52,7 @@ if exist "!INSTALL_DIR!" (
 
 :: --- 3. Suppression des tâches planifiées ---
 echo [3/5] Suppression des taches planifiees de rapport...
-powershell -NoProfile -Command ^
-    "foreach ($n in 'RapportJournalier','RapportHebdomadaire','RapportMensuel') {" ^
-    "  Unregister-ScheduledTask -TaskPath '\MonitoringAlert\' -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue" ^
-    "}"
+powershell -NoProfile -Command "foreach ($n in 'RapportJournalier','RapportHebdomadaire','RapportMensuel') { Unregister-ScheduledTask -TaskPath '\MonitoringAlert\' -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue }"
 schtasks /delete /tn "MonitoringAlert" /f >nul 2>&1
 if exist "%DATA_DIR%\Register-Tasks.ps1" del /f /q "%DATA_DIR%\Register-Tasks.ps1"
 echo        Taches planifiees supprimees.
@@ -88,5 +82,7 @@ if exist "%DATA_DIR%" (
 
 echo.
 echo Desinstallation terminee.
+echo.
+pause
 
 endlocal
