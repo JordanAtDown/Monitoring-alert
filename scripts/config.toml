@@ -23,6 +23,14 @@ collect_interval_secs = 300
 # compare une fenêtre de 180 jours (saisonnière) à la fenêtre précédente (180j).
 retention_days = 365
 
+# Adresse IP du serveur HTTP de LibreHardwareMonitor (Options → Remote Web Server)
+# Défaut : "127.0.0.1" (machine locale)
+lhm_host = "127.0.0.1"
+
+# Port du serveur HTTP de LibreHardwareMonitor
+# Défaut : 8085
+lhm_port = 8085
+
 # Niveau de log : "error" | "warn" | "info" (défaut) | "debug" | "trace"
 # Passer à "debug" pour diagnostiquer un problème (collecte, capteurs, etc.)
 # Le fichier de log est dans le même répertoire que la base de données.

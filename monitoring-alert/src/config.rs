@@ -49,6 +49,12 @@ pub struct AppConfig {
     pub log_level: String,
     #[allow(dead_code)]
     pub schedule: ScheduleConfig,
+    /// LibreHardwareMonitor HTTP host (default "127.0.0.1").
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub lhm_host: String,
+    /// LibreHardwareMonitor HTTP port (default 8085).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub lhm_port: u16,
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -63,6 +69,8 @@ struct RawConfig {
     collect_interval_secs: Option<u64>,
     retention_days: Option<u32>,
     log_level: Option<String>,
+    lhm_host: Option<String>,
+    lhm_port: Option<u16>,
     daily_report_enabled: Option<bool>,
     daily_report_time: Option<String>,
     weekly_report_enabled: Option<bool>,
@@ -132,12 +140,19 @@ impl AppConfig {
         // Suppress unused-field warning for install_dir (used only by scripts)
         let _ = raw.install_dir;
 
+        let lhm_host = raw
+            .lhm_host
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let lhm_port = raw.lhm_port.unwrap_or(8085);
+
         AppConfig {
             db_path,
             collect_interval_secs,
             retention_days,
             log_level,
             schedule,
+            lhm_host,
+            lhm_port,
         }
     }
 }
@@ -157,6 +172,8 @@ impl AppConfig {
             retention_days: 365,
             log_level: "info".to_string(),
             schedule: ScheduleConfig::default(),
+            lhm_host: "127.0.0.1".to_string(),
+            lhm_port: 8085,
         }
     }
 }

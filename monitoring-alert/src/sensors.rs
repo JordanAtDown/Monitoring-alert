@@ -13,77 +13,92 @@ pub struct SnapshotData {
 }
 
 #[cfg(windows)]
-fn extract_hardware(parent: &str) -> String {
-    parent
-        .split('/')
-        .find(|s| !s.is_empty())
-        .unwrap_or("unknown")
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>()
-        .to_uppercase()
-}
-
-#[cfg(windows)]
-fn is_gpu_hardware(hardware_type: &str) -> bool {
-    let hw = hardware_type.to_uppercase();
-    hw.contains("GPU") || hw.contains("ATI") || hw.contains("NVIDIA") || hw.contains("AMD")
-}
-
-#[cfg(windows)]
-pub fn read_sensors() -> Result<SnapshotData> {
+pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
     use anyhow::Context;
     use serde::Deserialize;
-    use wmi::{COMLibrary, WMIConnection};
 
-    #[derive(Deserialize, Debug)]
-    struct WmiSensor {
-        #[serde(rename = "Name")]
-        name: String,
+    #[derive(Deserialize)]
+    struct Node {
+        #[serde(rename = "Text")]
+        text: String,
         #[serde(rename = "Value")]
-        value: f32,
-        #[serde(rename = "SensorType")]
-        sensor_type: String,
-        #[serde(rename = "Parent")]
-        parent: String,
+        value: String,
+        #[serde(rename = "ImageURL")]
+        image_url: String,
+        #[serde(rename = "Children")]
+        children: Vec<Node>,
     }
 
-    let com_lib = COMLibrary::new().context("Failed to initialize COM library")?;
-    let wmi_con =
-        WMIConnection::with_namespace_path("ROOT\\LibreHardwareMonitor", com_lib)
-            .context("Failed to connect to LibreHardwareMonitor WMI namespace. Ensure LibreHardwareMonitor is running with WMI support enabled.")?;
+    fn parse_number(s: &str) -> Option<f64> {
+        s.split_whitespace()
+            .next()?
+            .replace(',', ".")
+            .parse()
+            .ok()
+    }
 
-    let sensors: Vec<WmiSensor> = wmi_con
-        .raw_query("SELECT Name, Value, SensorType, Parent FROM Sensor")
-        .context("Failed to query WMI sensors")?;
+    fn is_gpu(text: &str) -> bool {
+        let t = text.to_uppercase();
+        t.contains("GPU") || t.contains("NVIDIA") || t.contains("AMD") || t.contains("ATI")
+    }
+
+    fn collect(
+        node: &Node,
+        hardware: &str,
+        temperatures: &mut Vec<TemperatureReading>,
+        cpu_load: &mut Option<f64>,
+        gpu_load: &mut Option<f64>,
+    ) {
+        let url = node.image_url.as_str();
+        if url.contains("temperature") {
+            if let Some(v) = parse_number(&node.value) {
+                if v > 0.0 && v < 150.0 {
+                    temperatures.push(TemperatureReading {
+                        hardware: hardware.to_string(),
+                        sensor: node.text.clone(),
+                        value: v,
+                    });
+                }
+            }
+        } else if url.contains("load") {
+            if let Some(v) = parse_number(&node.value) {
+                let name = &node.text;
+                if (name.contains("CPU Total") || name.contains("CPU Package"))
+                    && cpu_load.is_none()
+                {
+                    *cpu_load = Some(v);
+                } else if is_gpu(hardware) && name.contains("GPU Core") && gpu_load.is_none() {
+                    *gpu_load = Some(v);
+                }
+            }
+        }
+        for child in &node.children {
+            collect(child, hardware, temperatures, cpu_load, gpu_load);
+        }
+    }
+
+    let url = format!("http://{}:{}/data.json", lhm_host, lhm_port);
+    let root: Node = ureq::get(&url)
+        .call()
+        .context(
+            "Cannot reach LibreHardwareMonitor HTTP server. \
+             Ensure LHM is running and Remote Web Server is enabled (Options → Remote Web Server).",
+        )?
+        .into_json()
+        .context("Failed to parse LibreHardwareMonitor JSON response")?;
 
     let mut temperatures = Vec::new();
     let mut cpu_load: Option<f64> = None;
     let mut gpu_load: Option<f64> = None;
 
-    for s in sensors {
-        let value = s.value as f64;
-        if !(value > 0.0 && value < 150.0) {
-            continue;
-        }
-        let hardware = extract_hardware(&s.parent);
-        match s.sensor_type.as_str() {
-            "Temperature" => {
-                temperatures.push(TemperatureReading {
-                    hardware,
-                    sensor: s.name,
-                    value,
-                });
-            }
-            "Load" => {
-                if s.name.contains("CPU Total") || s.name.contains("CPU Package") {
-                    cpu_load = Some(value);
-                } else if is_gpu_hardware(&hardware) && s.name.contains("GPU Core") {
-                    gpu_load = Some(value);
-                }
-            }
-            _ => {}
-        }
+    for hw_node in &root.children {
+        collect(
+            hw_node,
+            &hw_node.text,
+            &mut temperatures,
+            &mut cpu_load,
+            &mut gpu_load,
+        );
     }
 
     Ok(SnapshotData {
@@ -94,6 +109,6 @@ pub fn read_sensors() -> Result<SnapshotData> {
 }
 
 #[cfg(not(windows))]
-pub fn read_sensors() -> Result<SnapshotData> {
-    anyhow::bail!("WMI sensor reading is only supported on Windows")
+pub fn read_sensors(_lhm_host: &str, _lhm_port: u16) -> Result<SnapshotData> {
+    anyhow::bail!("Sensor reading is only supported on Windows")
 }

@@ -242,6 +242,8 @@ pub mod windows {
             &config.db_path,
             config.collect_interval_secs,
             config.retention_days,
+            &config.lhm_host,
+            config.lhm_port,
             stop_flag,
         );
 

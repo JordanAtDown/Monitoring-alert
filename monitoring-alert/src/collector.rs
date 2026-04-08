@@ -29,8 +29,13 @@ pub fn effective_load(cpu: Option<f64>, gpu: Option<f64>) -> Option<f64> {
 
 /// Collects one snapshot and persists it.
 /// Returns the number of temperature readings stored (0 means no sensors detected).
-pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<usize> {
-    let data = sensors::read_sensors().context("Failed to read sensor data")?;
+pub fn collect_and_store(
+    store: &dyn TemperatureStore,
+    lhm_host: &str,
+    lhm_port: u16,
+) -> Result<usize> {
+    let data = sensors::read_sensors(lhm_host, lhm_port)
+        .context("Failed to read sensor data")?;
     let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let cat = effective_load(data.cpu_load, data.gpu_load)
         .map(load_category)
@@ -56,7 +61,7 @@ pub fn collect_and_store(store: &dyn TemperatureStore) -> Result<usize> {
     if n == 0 {
         tracing::warn!(
             "[{}] Snapshot #{} — no temperature sensors detected. \
-             Is LibreHardwareMonitor running with WMI support enabled?",
+             Is LibreHardwareMonitor running with Remote Web Server enabled (Options → Remote Web Server → Run)?",
             ts,
             snapshot_id
         );
@@ -82,6 +87,8 @@ pub fn watch(
     db_path: &Path,
     interval_secs: u64,
     retention_days: u32,
+    lhm_host: &str,
+    lhm_port: u16,
     stop: Arc<AtomicBool>,
 ) -> Result<()> {
     let conn = db::init_db(db_path).context("Failed to open database")?;
@@ -115,7 +122,7 @@ pub fn watch(
             }
         }
 
-        match collect_and_store(&store) {
+        match collect_and_store(&store, lhm_host, lhm_port) {
             Ok(0) => {
                 empty_streak += 1;
                 if empty_streak == EMPTY_ALERT_THRESHOLD {

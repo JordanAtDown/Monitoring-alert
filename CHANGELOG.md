@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-04-08
+
+### Changed
+- Collecte des capteurs migrée de WMI vers le **serveur HTTP** de LibreHardwareMonitor
+  (`http://lhm_host:lhm_port/data.json`) — compatible avec LHM 0.9.6+
+  qui ne propose plus l'option WMI Provider
+
+### Added
+- `lhm_host` (défaut `"127.0.0.1"`) et `lhm_port` (défaut `8085`) dans
+  `config.toml` pour configurer l'adresse du serveur HTTP LHM
+
 ## [1.2.1] — 2026-04-08
 
 ### Fixed
@@ -170,7 +181,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.9...v1.1.0
