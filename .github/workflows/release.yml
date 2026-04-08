@@ -1,79 +1,68 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_run:
+    workflows: ["Build & Test"]
+    types: [completed]
 
 permissions:
   contents: write
-
-env:
-  CARGO_TERM_COLOR: always
+  actions: read
 
 jobs:
   release:
-    name: Build & Publish
-    runs-on: windows-latest
+    name: Publish
+    runs-on: ubuntu-latest
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            monitoring-alert/target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('monitoring-alert/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build release binary
-        working-directory: monitoring-alert
-        run: cargo build --release --target x86_64-pc-windows-msvc
+          name: monitoring-alert-windows-x64
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifact/
 
       - name: Extract release notes from CHANGELOG
         id: notes
-        shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ github.event.workflow_run.head_branch }}"
+          VERSION="${VERSION#v}"
           NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md \
-                  | sed '/^[[:space:]]*$/d; $a\\' | head -c 65000)
+                  | sed '/^[[:space:]]*$/d' | head -c 65000)
           {
             echo "body<<EOF"
             echo "$NOTES"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TAG=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_ENV"
 
       - name: Package installer archive
-        shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           DIR="monitoring-alert-v${VERSION}-windows-x64"
           mkdir "$DIR"
-          cp monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe "$DIR/"
+          cp artifact/monitoring-alert.exe "$DIR/"
           cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/Register-Tasks.ps1 "$DIR/"
-          7z a "${DIR}.zip" "$DIR/" -mx=9
+          zip -r "${DIR}.zip" "$DIR/"
           echo "ARCHIVE=${DIR}.zip" >> "$GITHUB_ENV"
-          echo "EXE=monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ steps.notes.outputs.body }}
-        shell: bash
         run: |
           echo "$RELEASE_NOTES" > release_notes.md
-          gh release create "${{ github.ref_name }}" \
-            --title "MonitoringAlert ${{ github.ref_name }}" \
+          gh release create "$TAG" \
+            --title "MonitoringAlert $TAG" \
             --notes-file release_notes.md \
-            "$EXE#monitoring-alert.exe" \
+            "artifact/monitoring-alert.exe#monitoring-alert.exe" \
             "$ARCHIVE"
