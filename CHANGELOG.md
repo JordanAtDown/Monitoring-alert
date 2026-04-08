@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-04-08
+
+### Changed
+- Fichiers de log renommés de `monitoring-alert.log.YYYY-MM-DD` en
+  `monitoring-alert-YYYY-MM-DD.log` — format plus lisible et trié
+  correctement par l'explorateur Windows
+
 ## [1.0.5] — 2026-04-08
 
 ### Fixed
@@ -125,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.2...v1.0.3
