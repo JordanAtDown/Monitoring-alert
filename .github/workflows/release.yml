@@ -60,7 +60,7 @@ jobs:
           DIR="monitoring-alert-v${VERSION}-windows-x64"
           mkdir "$DIR"
           cp monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe "$DIR/"
-          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat "$DIR/"
+          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/Register-Tasks.ps1 "$DIR/"
           7z a "${DIR}.zip" "$DIR/" -mx=9
           echo "ARCHIVE=${DIR}.zip" >> "$GITHUB_ENV"
           echo "EXE=monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe" >> "$GITHUB_ENV"

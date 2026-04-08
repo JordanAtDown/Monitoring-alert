@@ -18,6 +18,8 @@ setlocal EnableDelayedExpansion
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERREUR] Ce script doit etre execute en tant qu'Administrateur.
+    echo          Clic droit sur install.bat ^> "Executer en tant qu'administrateur"
+    pause
     exit /b 1
 )
 
@@ -30,6 +32,7 @@ set "CONFIG_FILE=%SCRIPT_DIR%config.toml"
 if not exist "%CONFIG_FILE%" (
     echo [ERREUR] config.toml introuvable dans %SCRIPT_DIR%
     echo         Assurez-vous que config.toml est present dans le meme dossier que install.bat.
+    pause
     exit /b 1
 )
 
@@ -37,6 +40,7 @@ if not exist "%CONFIG_FILE%" (
 if not exist "%SCRIPT_DIR%%EXE_NAME%" (
     echo [ERREUR] %EXE_NAME% introuvable dans %SCRIPT_DIR%
     echo         Assurez-vous que monitoring-alert.exe est present dans le meme dossier.
+    pause
     exit /b 1
 )
 
@@ -49,6 +53,7 @@ for /f "usebackq delims=" %%v in (
 
 if "!INSTALL_DIR!"=="" (
     echo [ERREUR] Cle 'install_dir' introuvable dans config.toml.
+    pause
     exit /b 1
 )
 
@@ -118,6 +123,7 @@ if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
 copy /Y "%SCRIPT_DIR%%EXE_NAME%" "!INSTALL_DIR!\%EXE_NAME%" >nul
 if %errorLevel% neq 0 (
     echo [ERREUR] Impossible de copier l'executable.
+    pause
     exit /b 1
 )
 
@@ -141,6 +147,7 @@ echo [4/6] Enregistrement du service Windows...
 "!INSTALL_DIR!\%EXE_NAME%" service install
 if %errorLevel% neq 0 (
     echo [ERREUR] L'enregistrement du service a echoue.
+    pause
     exit /b 1
 )
 
@@ -148,6 +155,7 @@ echo [5/6] Demarrage du service...
 "!INSTALL_DIR!\%EXE_NAME%" service start
 if %errorLevel% neq 0 (
     echo [ERREUR] Le demarrage du service a echoue.
+    pause
     exit /b 1
 )
 
@@ -172,5 +180,7 @@ echo      uninstall.bat / update.bat
 echo.
 echo  Verification : sc query MonitoringAlert
 echo              ou services.msc
+echo.
+pause
 
 endlocal
