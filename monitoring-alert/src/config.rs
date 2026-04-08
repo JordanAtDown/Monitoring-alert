@@ -83,7 +83,9 @@ impl AppConfig {
     pub fn load() -> Self {
         let app_dir = std::env::var("LOCALAPPDATA")
             .map(|p| PathBuf::from(p).join("Programs").join("MonitoringAlert"))
-            .unwrap_or_else(|_| PathBuf::from(r"C:\Users\Default\AppData\Local\Programs\MonitoringAlert"));
+            .unwrap_or_else(|_| {
+                PathBuf::from(r"C:\Users\Default\AppData\Local\Programs\MonitoringAlert")
+            });
         let config_path = app_dir.join("config.toml");
         let raw: RawConfig = std::fs::read_to_string(&config_path)
             .ok()
