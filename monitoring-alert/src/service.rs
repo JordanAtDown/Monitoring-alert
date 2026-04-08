@@ -26,7 +26,7 @@ pub mod windows {
         service_manager::{ServiceManager, ServiceManagerAccess},
     };
 
-    pub fn install() -> Result<()> {
+    pub fn install(config_path: &std::path::Path) -> Result<()> {
         let manager =
             ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)
                 .context("Failed to open Service Manager (try running as administrator)")?;
@@ -40,7 +40,9 @@ pub mod windows {
             start_type: ServiceStartType::AutoStart,
             error_control: ServiceErrorControl::Normal,
             executable_path: exe,
-            launch_arguments: vec![],
+            // Pass the config path so the service can find it when running as SYSTEM
+            // (SYSTEM has no %LOCALAPPDATA%, so the default path resolution fails).
+            launch_arguments: vec![OsString::from(config_path)],
             dependencies: vec![],
             account_name: None,
             account_password: None,
@@ -195,7 +197,7 @@ pub mod windows {
     }
 
     /// Called by `ffi_service_main` — runs the actual service logic.
-    pub fn run_service_main(_args: Vec<OsString>) -> Result<()> {
+    pub fn run_service_main(args: Vec<OsString>) -> Result<()> {
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stop_flag_handler = Arc::clone(&stop_flag);
 
@@ -230,7 +232,12 @@ pub mod windows {
             })
             .context("Failed to set service status Running")?;
 
-        let config = crate::config::AppConfig::load();
+        // args[0] is the config path passed via launch_arguments at service install time.
+        // This allows the service (running as SYSTEM) to find the user's config.toml.
+        let config = match args.first() {
+            Some(path) => crate::config::AppConfig::load_from(std::path::Path::new(path)),
+            None => crate::config::AppConfig::load(),
+        };
         let log_path = config
             .db_path
             .parent()
@@ -268,7 +275,7 @@ pub mod windows {
 
 // Platform-agnostic stubs for non-Windows builds
 #[cfg(not(windows))]
-pub fn install() -> Result<()> {
+pub fn install(_config_path: &std::path::Path) -> Result<()> {
     anyhow::bail!("Windows service management is only supported on Windows")
 }
 #[cfg(not(windows))]

@@ -88,14 +88,37 @@ const VALID_LOG_LEVELS: &[&str] = &["error", "warn", "info", "debug", "trace"];
 
 #[cfg(windows)]
 impl AppConfig {
-    pub fn load() -> Self {
-        let app_dir = std::env::var("LOCALAPPDATA")
-            .map(|p| PathBuf::from(p).join("Programs").join("MonitoringAlert"))
+    /// Resolves the default config file path using %LOCALAPPDATA%.
+    /// Called at CLI time (user session) — do NOT call from the Windows service
+    /// (SYSTEM account has no %LOCALAPPDATA%).
+    pub fn default_config_path() -> PathBuf {
+        std::env::var("LOCALAPPDATA")
+            .map(|p| {
+                PathBuf::from(p)
+                    .join("Programs")
+                    .join("MonitoringAlert")
+                    .join("config.toml")
+            })
             .unwrap_or_else(|_| {
-                PathBuf::from(r"C:\Users\Default\AppData\Local\Programs\MonitoringAlert")
-            });
-        let config_path = app_dir.join("config.toml");
-        let raw: RawConfig = std::fs::read_to_string(&config_path)
+                PathBuf::from(
+                    r"C:\Users\Default\AppData\Local\Programs\MonitoringAlert\config.toml",
+                )
+            })
+    }
+
+    /// Loads config from the default path (CLI context only).
+    pub fn load() -> Self {
+        Self::load_from(&Self::default_config_path())
+    }
+
+    /// Loads config from an explicit path — safe to call from any context,
+    /// including the Windows service running as SYSTEM.
+    pub fn load_from(config_path: &Path) -> Self {
+        let app_dir = config_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let raw: RawConfig = std::fs::read_to_string(config_path)
             .ok()
             .and_then(|s| toml::from_str(&s).ok())
             .unwrap_or_default();
@@ -161,6 +184,12 @@ impl AppConfig {
 
 #[cfg(not(windows))]
 impl AppConfig {
+    pub fn default_config_path() -> PathBuf {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("config.toml")
+    }
+
     pub fn load() -> Self {
         AppConfig {
             db_path: std::env::current_dir()

@@ -98,10 +98,48 @@ pub fn watch(
         retention_days
     );
 
+    // ── Startup diagnostics ───────────────────────────────────
+    tracing::info!("Startup check — DB: {}", db_path.display());
+    match store.get_overall_stats() {
+        Ok(s) => tracing::info!(
+            "Startup check — DB OK ({} snapshot(s), last: {})",
+            s.total_snapshots,
+            s.last_ts.as_deref().unwrap_or("none")
+        ),
+        Err(e) => tracing::error!("Startup check — DB error: {:#}", e),
+    }
+    #[cfg(windows)]
+    match sensors::read_sensors(lhm_host, lhm_port) {
+        Ok(data) if data.temperatures.is_empty() => {
+            tracing::warn!(
+                "Startup check — LHM reachable at {}:{} but 0 temperature sensors found. \
+                 Ensure LibreHardwareMonitor is running as administrator with Remote Web Server enabled.",
+                lhm_host, lhm_port
+            );
+        }
+        Ok(data) => {
+            tracing::info!(
+                "Startup check — LHM OK at {}:{} ({} sensor(s) detected)",
+                lhm_host,
+                lhm_port,
+                data.temperatures.len()
+            );
+        }
+        Err(e) => {
+            tracing::error!(
+                "Startup check — LHM unreachable at {}:{}: {:#}. \
+                 Launch LibreHardwareMonitor as administrator and enable Options › Remote Web Server › Run.",
+                lhm_host, lhm_port, e
+            );
+        }
+    }
+    // ─────────────────────────────────────────────────────────
+
     // Run purge once at startup, then every 24 h.
     let purge_every = (86400 / interval_secs).max(1);
     let mut iterations: u64 = 0;
     let mut empty_streak: u32 = 0;
+    let mut first_run = true;
 
     loop {
         if stop.load(Ordering::Relaxed) {
@@ -119,6 +157,11 @@ pub fn watch(
                 ),
                 Err(e) => tracing::warn!("Purge error: {:#}", e),
             }
+        }
+
+        if first_run {
+            tracing::info!("First collection starting…");
+            first_run = false;
         }
 
         match collect_and_store(&store, lhm_host, lhm_port) {

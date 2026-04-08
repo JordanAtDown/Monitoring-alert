@@ -194,7 +194,10 @@ fn run_cli() -> Result<()> {
             report::generate_report(&store, output.as_deref())?;
         }
         Commands::Service { action } => match action {
-            ServiceAction::Install => service::install()?,
+            ServiceAction::Install => {
+                let config_path = config::AppConfig::default_config_path();
+                service::install(&config_path)?;
+            }
             ServiceAction::Uninstall => service::uninstall()?,
             ServiceAction::Start => service::start()?,
             ServiceAction::Stop => service::stop()?,

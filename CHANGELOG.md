@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] — 2026-04-08
+
+### Fixed
+- Service collecte maintenant correctement sous le compte SYSTEM : le chemin vers
+  `config.toml` est passé en `launch_arguments` à l'installation et relu au démarrage
+  du service — `%LOCALAPPDATA%` n'étant pas défini sous SYSTEM, la config était
+  introuvable et la collecte silencieusement ignorée
+
+### Added
+- Diagnostic de démarrage dans le watch loop : vérifie la base de données (taille,
+  nombre de snapshots) et tente une lecture LHM au lancement du service — les
+  résultats sont loggés (`info` si OK, `warn`/`error` si problème détecté)
+- Log `"First collection starting…"` au premier cycle pour confirmer que le service
+  est opérationnel
+
 ## [1.3.3] — 2026-04-08
 
 ### Fixed
@@ -214,7 +229,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.0...v1.3.1
