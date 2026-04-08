@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-04-08
+
+### Fixed
+- `service uninstall` : erreur `Accès refusé` lors du `query_status` — le handle
+  était ouvert avec `DELETE | STOP` sans `QUERY_STATUS` ; ajout de `QUERY_STATUS`
+  dans les droits d'accès demandés
+
 ## [1.0.6] — 2026-04-08
 
 ### Changed
@@ -132,7 +139,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.0.3...v1.0.4
