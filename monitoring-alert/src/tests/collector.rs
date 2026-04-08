@@ -44,7 +44,7 @@ fn heavy_upper_bound() {
 
 #[test]
 fn heavy_overflow() {
-    // Valeurs hors plage (capteur WMI défectueux) → heavy par sécurité
+    // Valeurs hors plage (capteur LHM défectueux) → heavy par sécurité
     assert_eq!(load_category(110.0), "heavy");
 }
 

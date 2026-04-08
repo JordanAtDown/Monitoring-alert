@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-04-08
+
+### Fixed
+- Collecte capteurs : utilisait `ImageURL` pour détecter le type de capteur, mais
+  les noeuds feuilles ont tous `ImageURL: "images/transparent.png"` → 0 lecture.
+  Correction : utilisation du champ `Type` (`"Temperature"`, `"Load"`, etc.)
+- Traversal de l'arbre JSON : itération démarrée sur `root.children` (= `["PC-JORDAN"]`)
+  au lieu de `root.children[0].children` (les vrais noeuds hardware CPU/GPU/…)
+- Faux positif GPU : `is_gpu("AMD Ryzen 7 5700X")` retournait `true` car "AMD" était
+  cherché dans le nom. Correction : détection via `ImageURL` du noeud hardware
+  (`images_icon/nvidia.png`, etc.)
+- Températures seuil NVMe (`Warning Temperature`, `Critical Temperature`) exclues
+  car ce sont des constantes SMART, pas des mesures réelles
+
 ## [1.3.0] — 2026-04-08
 
 ### Changed
@@ -181,7 +195,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.1.0...v1.2.0
