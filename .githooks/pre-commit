@@ -17,11 +17,11 @@ warn()    { echo -e "${YELLOW}[pre-commit] ⚠ $*${RESET}"; }
 CARGO_MANIFEST="monitoring-alert/Cargo.toml"
 CARGO_ARGS="--manifest-path ${CARGO_MANIFEST}"
 
-# ─── 1. Format check ────────────────────────────────────────────────────────
-info "Checking code formatting (cargo fmt)..."
-if ! cargo fmt ${CARGO_ARGS} -- --check 2>&1; then
-    fail "Code is not formatted. Run: cargo fmt --manifest-path ${CARGO_MANIFEST}"
-fi
+# ─── 1. Format (auto-fix + re-stage) ────────────────────────────────────────
+info "Formatting code (cargo fmt)..."
+cargo fmt ${CARGO_ARGS}
+# Re-stage any files that cargo fmt just modified
+git diff --name-only | xargs -r git add
 success "Formatting OK"
 
 # ─── 2. Clippy (deny warnings) ───────────────────────────────────────────────

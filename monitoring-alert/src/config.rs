@@ -140,9 +140,7 @@ impl AppConfig {
         // Suppress unused-field warning for install_dir (used only by scripts)
         let _ = raw.install_dir;
 
-        let lhm_host = raw
-            .lhm_host
-            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let lhm_host = raw.lhm_host.unwrap_or_else(|| "127.0.0.1".to_string());
         let lhm_port = raw.lhm_port.unwrap_or(8085);
 
         AppConfig {

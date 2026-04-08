@@ -34,8 +34,7 @@ pub fn collect_and_store(
     lhm_host: &str,
     lhm_port: u16,
 ) -> Result<usize> {
-    let data = sensors::read_sensors(lhm_host, lhm_port)
-        .context("Failed to read sensor data")?;
+    let data = sensors::read_sensors(lhm_host, lhm_port).context("Failed to read sensor data")?;
     let ts = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     let cat = effective_load(data.cpu_load, data.gpu_load)
         .map(load_category)

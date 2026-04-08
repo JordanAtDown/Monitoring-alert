@@ -35,11 +35,7 @@ pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
 
     /// Parses a French-locale number string like "49,0 °C" or "1,1 %" → 49.0 / 1.1
     fn parse_number(s: &str) -> Option<f64> {
-        s.split_whitespace()
-            .next()?
-            .replace(',', ".")
-            .parse()
-            .ok()
+        s.split_whitespace().next()?.replace(',', ".").parse().ok()
     }
 
     /// Detects GPU hardware nodes by their ImageURL (e.g. "images_icon/nvidia.png").
@@ -75,9 +71,7 @@ pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
             "Load" => {
                 if let Some(v) = parse_number(&node.value) {
                     let name = &node.text;
-                    if (name == "CPU Total" || name.contains("CPU Package"))
-                        && cpu_load.is_none()
-                    {
+                    if (name == "CPU Total" || name.contains("CPU Package")) && cpu_load.is_none() {
                         *cpu_load = Some(v);
                     } else if is_gpu && name == "GPU Core" && gpu_load.is_none() {
                         *gpu_load = Some(v);

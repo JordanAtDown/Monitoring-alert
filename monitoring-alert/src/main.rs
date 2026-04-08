@@ -180,7 +180,14 @@ fn run_cli() -> Result<()> {
         }
         Commands::Watch { interval } => {
             let stop = Arc::new(AtomicBool::new(false));
-            collector::watch(&db_path, interval, cfg.retention_days, &cfg.lhm_host, cfg.lhm_port, stop)?;
+            collector::watch(
+                &db_path,
+                interval,
+                cfg.retention_days,
+                &cfg.lhm_host,
+                cfg.lhm_port,
+                stop,
+            )?;
         }
         Commands::Report { output } => {
             let store = store::SqliteStore::new(db::init_db(&db_path)?);
@@ -380,7 +387,10 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
             }
             Err(e) => {
                 issues += 1;
-                println!("  ✗  LibreHardwareMonitor HTTP inaccessible ({}:{})", cfg.lhm_host, cfg.lhm_port);
+                println!(
+                    "  ✗  LibreHardwareMonitor HTTP inaccessible ({}:{})",
+                    cfg.lhm_host, cfg.lhm_port
+                );
                 println!("     Erreur : {}", e);
                 println!("     → Lancez LHM en tant qu'administrateur");
                 println!("     → Activez Options › Remote Web Server › Run dans LHM");
