@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `notification.rs`: `path_to_file_uri` accepte désormais `&Path` au lieu
+  de `&PathBuf` (warning Clippy `ptr_arg`)
+
+### Refactored
+- `report.rs`: extraction de `build_report_data()` partagée entre les deux
+  renderers — élimine la duplication des requêtes DB entre ASCII et Markdown
+- `report.rs`: rendu Markdown migré vers **minijinja** + template
+  `report_template.md.j2` (syntaxe Jinja2) — le code de rendu passe de
+  200 lignes de `writeln!` à un template lisible
+- `tests/report.rs`: 8 nouveaux tests (101 au total) couvrant
+  `build_report_data`, le rendu Markdown et `save_report_md`
+
 ## [1.3.15] — 2026-04-09
 
 ### Added
