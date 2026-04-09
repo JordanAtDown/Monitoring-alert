@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.16] — 2026-04-09
+
 ### Fixed
 - `notification.rs`: `path_to_file_uri` accepte désormais `&Path` au lieu
   de `&PathBuf` (warning Clippy `ptr_arg`)
@@ -339,7 +341,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.13...HEAD
+[Unreleased]: https://github.com/jordanatdown/monitoring-alert/compare/v1.3.16...HEAD
+[1.3.16]: https://github.com/jordanatdown/monitoring-alert/releases/tag/v1.3.16
 [1.3.13]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.12...v1.3.13
 [1.3.12]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.11...v1.3.12
 [1.3.11]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.10...v1.3.11
