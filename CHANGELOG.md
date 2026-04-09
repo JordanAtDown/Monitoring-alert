@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.9] — 2026-04-09
+
+### Fixed
+- `service.rs`: lecture du config path à `args[1]` au lieu de `args[0]` —
+  Windows passe le **nom du service** en `args[0]` (convention ServiceMain),
+  le premier `launch_argument` est donc à `args[1]`. En lisant `args[0]` le
+  service tentait d'ouvrir un fichier nommé `"MonitoringAlert"`, échouait
+  silencieusement, et loggait dans un répertoire inaccessible (`C:\Users\Default\…`)
+
 ## [1.3.8] — 2026-04-09
 
 ### Fixed
@@ -265,7 +274,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.8...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.9...HEAD
+[1.3.9]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.8...v1.3.9
 [1.3.8]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.7...v1.3.8
 [1.3.7]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.5...v1.3.6

@@ -232,9 +232,9 @@ pub mod windows {
             })
             .context("Failed to set service status Running")?;
 
-        // args[0] is the config path passed via launch_arguments at service install time.
-        // This allows the service (running as SYSTEM) to find the user's config.toml.
-        let config_path_arg = args.first().cloned();
+        // Windows ServiceMain convention: args[0] = service name, args[1] = first launch_argument.
+        // Our config path is stored as the first launch_argument, so it lives at args[1].
+        let config_path_arg = args.get(1).cloned();
         let config = match &config_path_arg {
             Some(path) => crate::config::AppConfig::load_from(std::path::Path::new(path)),
             None => crate::config::AppConfig::load(),
