@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.7] — 2026-04-09
+
+### Added
+- `log_dir` configurable dans `config.toml` — permet de séparer les logs de la DB
+  (défaut : même dossier que `db_path`)
+
+### Docs
+- README : remplacement complet des références WMI par HTTP/Remote Web Server
+- README : chemins mis à jour (`%LOCALAPPDATA%\Programs\MonitoringAlert\` au lieu de `C:\ProgramData\`)
+- README : ajout des clés `log_dir`, `lhm_host`, `lhm_port` dans la table de configuration
+- README : format correct des fichiers de log (`monitoring-alert-YYYY-MM-DD.log`)
+- `scripts/config.toml` : ajout de la clé `log_dir` (commentée, valeur par défaut)
+
 ## [1.3.6] — 2026-04-08
 
 ### Fixed
@@ -246,7 +259,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.6...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.7...HEAD
+[1.3.7]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.3...v1.3.4

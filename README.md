@@ -9,13 +9,16 @@ poussière, une pâte thermique dégradée ou un ventilateur défaillant.
 
 | Logiciel | Version minimale | Notes |
 |---|---|---|
-| LibreHardwareMonitor | dernière version | WMI activé (voir ci-dessous) |
+| LibreHardwareMonitor | dernière version | Remote Web Server activé (voir ci-dessous) |
 
-### Activer le support WMI dans LibreHardwareMonitor
+### Activer le Remote Web Server dans LibreHardwareMonitor
 
-1. Ouvrir LibreHardwareMonitor en tant qu'administrateur
-2. Aller dans **Options → WMI Provider** → cocher **Enable WMI Provider**
-3. Laisser LibreHardwareMonitor tourner en tâche de fond (ou configuré en service)
+1. Ouvrir LibreHardwareMonitor **en tant qu'administrateur** (requis pour lire les capteurs)
+2. Aller dans **Options → Remote Web Server** → cocher **Run**
+3. Laisser LibreHardwareMonitor tourner en tâche de fond
+
+Le serveur écoute par défaut sur `http://127.0.0.1:8085`. L'adresse et le port sont
+configurables dans `config.toml` via les clés `lhm_host` et `lhm_port`.
 
 ---
 
@@ -42,7 +45,7 @@ Configurer au minimum `install_dir` et `db_path` (voir la section
 
 ```toml
 install_dir = "C:\\Program Files\\MonitoringAlert"
-db_path     = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
+db_path     = "C:\\Users\\<VotreNom>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
 ```
 
 ### 3. Lancer `install.bat` en tant qu'administrateur
@@ -50,7 +53,7 @@ db_path     = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
 Le script effectue les étapes suivantes :
 
 1. Copie `monitoring-alert.exe` dans `install_dir`
-2. Crée `C:\ProgramData\MonitoringAlert\` et y dépose `config.toml`, `uninstall.bat`, `update.bat`
+2. Crée `%LOCALAPPDATA%\Programs\MonitoringAlert\` et y dépose `config.toml`, `uninstall.bat`, `update.bat`
 3. Enregistre l'AUMID `MonitoringAlert.TemperatureMonitor` dans le registre (nécessaire pour les notifications toast)
 4. Enregistre et démarre le service Windows
 5. Crée les tâches planifiées de rapport selon la configuration
@@ -63,9 +66,10 @@ Le dossier temporaire peut ensuite être supprimé.
 C:\Program Files\MonitoringAlert\
     monitoring-alert.exe
 
-C:\ProgramData\MonitoringAlert\
-    config.toml          ← toute la configuration
-    temperatures.db      ← base de données (créée au 1er démarrage)
+%LOCALAPPDATA%\Programs\MonitoringAlert\   (ex. C:\Users\Jordan\AppData\Local\Programs\MonitoringAlert\)
+    config.toml                ← toute la configuration
+    temperatures.db            ← base de données (créée au 1er démarrage)
+    monitoring-alert-YYYY-MM-DD.log  ← logs du service (rotation quotidienne)
     uninstall.bat
     update.bat
 
@@ -85,7 +89,7 @@ Le service :
 
 ## Configuration
 
-**Fichier :** `C:\ProgramData\MonitoringAlert\config.toml`
+**Fichier :** `%LOCALAPPDATA%\Programs\MonitoringAlert\config.toml`
 
 C'est le seul fichier à modifier. Toutes les options sont regroupées ici.
 
@@ -99,11 +103,20 @@ install_dir = "C:\\Program Files\\MonitoringAlert"
 
 # Chemin complet de la base de données SQLite
 # → placer sur un lecteur sauvegardé si souhaité
-db_path = "C:\\ProgramData\\MonitoringAlert\\temperatures.db"
+db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
+
+# Dossier des fichiers de log (défaut : même répertoire que db_path)
+# log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\logs"
 
 # Intervalle de collecte du service (en secondes, minimum 60)
 # Défaut : 300 (toutes les 5 minutes)
 collect_interval_secs = 300
+
+# Adresse IP du serveur HTTP de LibreHardwareMonitor
+lhm_host = "127.0.0.1"
+
+# Port du serveur HTTP de LibreHardwareMonitor
+lhm_port = 8085
 
 # =============================================================
 #  Rapports automatiques via notifications Windows
@@ -129,7 +142,10 @@ monthly_report_time    = "08:00"
 | Clé | Type | Défaut | Description |
 |---|---|---|---|
 | `install_dir` | chemin | `C:\Program Files\MonitoringAlert` | Dossier de l'exécutable |
-| `db_path` | chemin | `C:\ProgramData\MonitoringAlert\temperatures.db` | Chemin de la base SQLite |
+| `db_path` | chemin | même dossier que `config.toml` | Chemin de la base SQLite |
+| `log_dir` | chemin | même dossier que `db_path` | Dossier des fichiers de log |
+| `lhm_host` | chaîne | `"127.0.0.1"` | Adresse du serveur HTTP de LibreHardwareMonitor |
+| `lhm_port` | entier | `8085` | Port du serveur HTTP de LibreHardwareMonitor |
 | `collect_interval_secs` | entier ≥ 60 | `300` | Intervalle entre deux collectes (secondes) |
 | `retention_days` | entier ≥ 360 | `365` | Durée de rétention des données (jours) |
 | `log_level` | `"error"` … `"trace"` | `"info"` | Niveau de log (utiliser `"debug"` pour diagnostiquer) |
@@ -344,7 +360,7 @@ Seuils d'alerte :
 
 ### 1. Collecte des données
 
-À chaque intervalle (par défaut 300 s), le service lit via WMI (LibreHardwareMonitor) :
+À chaque intervalle (par défaut 300 s), le service interroge l'API HTTP de LibreHardwareMonitor (`http://lhm_host:lhm_port/data.json`) pour lire :
 - toutes les sondes de température disponibles (CPU, GPU, chipset, stockage…)
 - la charge CPU (%) et la charge GPU (%)
 
@@ -474,7 +490,7 @@ Vérifications pré-démarrage
 
   ✓  Service installé et actif
 
-  ✓  LibreHardwareMonitor WMI accessible  (12 sonde(s) de température)
+  ✓  LibreHardwareMonitor HTTP accessible (127.0.0.1:8085)  (12 sonde(s) de température)
 
   ✓  AUMID enregistré — notifications toast disponibles
      → Testez avec : monitoring-alert.exe notify-dry-run
@@ -488,7 +504,7 @@ Vérifications pré-démarrage
 | Configuration | Valeurs chargées depuis `config.toml` | Vérifier le fichier de config |
 | Base de données | Ouverture + accès en écriture | Vérifier que le répertoire existe |
 | Service | Installé + en cours d'exécution | `service install` puis `service start` |
-| LHM/WMI | Connexion `ROOT\LibreHardwareMonitor` | Lancer LHM admin + activer WMI Provider |
+| LHM HTTP | `GET http://lhm_host:lhm_port/data.json` | Lancer LHM admin + activer Options › Remote Web Server › Run |
 | AUMID | Clé registre pour les toasts | Relancer `install.bat` admin |
 
 ### État du service
@@ -500,14 +516,15 @@ monitoring-alert.exe service status
 
 ### Fichier de log
 
-Le service écrit ses logs dans le même répertoire que la base de données :
+Le service écrit ses logs dans le répertoire `log_dir` (par défaut, même répertoire
+que la base de données) :
 
 ```
-C:\ProgramData\MonitoringAlert\monitoring-alert.log
+%LOCALAPPDATA%\Programs\MonitoringAlert\monitoring-alert-YYYY-MM-DD.log
 ```
 
-Le fichier est renouvelé chaque jour (rotation quotidienne). Les anciens fichiers
-sont conservés sous la forme `monitoring-alert.log.YYYY-MM-DD`.
+Le fichier est renouvelé chaque jour (rotation quotidienne). Pour écrire dans un
+dossier différent, définir `log_dir` dans `config.toml`.
 
 Le niveau de log est configurable dans `config.toml` (redémarrage du service requis) :
 
@@ -521,9 +538,10 @@ Messages à surveiller :
 
 | Message | Signification |
 |---|---|
-| `No temperature sensors detected` | LibreHardwareMonitor n'est pas lancé |
+| `No temperature sensors detected` | LibreHardwareMonitor n'est pas lancé ou Remote Web Server inactif |
 | `No temperature readings for N consecutive collections` | LHM absent depuis ~1h |
-| `Collection error` | Erreur WMI — vérifier LHM et les droits |
+| `LHM unreachable at host:port` | LHM non lancé ou mauvais `lhm_host`/`lhm_port` dans config |
+| `Collection error` | Erreur HTTP — vérifier LHM et que Remote Web Server est actif |
 | `Purged N snapshot(s)` | Purge automatique exécutée |
 
 ### Observateur d'événements Windows

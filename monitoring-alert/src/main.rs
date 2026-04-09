@@ -166,11 +166,8 @@ fn run_cli() -> Result<()> {
     let cfg = config::AppConfig::load();
     let db_path = cli.db.unwrap_or_else(|| cfg.db_path.clone());
 
-    // Init logger — log file next to the database.
-    let log_path = db_path
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join("monitoring-alert.log");
+    // Init logger — directory from config (defaults to same dir as db_path).
+    let log_path = cfg.log_dir.join("monitoring-alert.log");
     let _ = logger::init(&log_path, &cfg.log_level);
 
     match cli.command {

@@ -43,6 +43,8 @@ impl Default for ScheduleConfig {
 
 pub struct AppConfig {
     pub db_path: PathBuf,
+    /// Directory where log files are written (default: same dir as db_path).
+    pub log_dir: PathBuf,
     /// Sensor collection interval in seconds (min 60, default 300).
     #[cfg_attr(not(windows), allow(dead_code))]
     pub collect_interval_secs: u64,
@@ -68,6 +70,7 @@ pub struct AppConfig {
 #[derive(Deserialize, Default)]
 struct RawConfig {
     db_path: Option<String>,
+    log_dir: Option<String>,
     install_dir: Option<String>,
     collect_interval_secs: Option<u64>,
     retention_days: Option<u32>,
@@ -131,6 +134,11 @@ impl AppConfig {
             .map(PathBuf::from)
             .unwrap_or_else(|| app_dir.join("temperatures.db"));
 
+        let log_dir = raw
+            .log_dir
+            .map(PathBuf::from)
+            .unwrap_or_else(|| db_path.parent().unwrap_or(Path::new(".")).to_path_buf());
+
         let collect_interval_secs = raw.collect_interval_secs.unwrap_or(300).max(60);
         // Minimum 360 days to cover the full 180-day current + 180-day reference window.
         let retention_days = raw.retention_days.unwrap_or(365).max(360);
@@ -171,6 +179,7 @@ impl AppConfig {
 
         AppConfig {
             db_path,
+            log_dir,
             collect_interval_secs,
             retention_days,
             log_level,
@@ -194,10 +203,16 @@ impl AppConfig {
     }
 
     pub fn load() -> Self {
+        let db_path = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("temperatures.db");
+        let log_dir = db_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
         AppConfig {
-            db_path: std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("temperatures.db"),
+            db_path,
+            log_dir,
             collect_interval_secs: 300,
             retention_days: 365,
             log_level: "info".to_string(),

@@ -239,14 +239,9 @@ pub mod windows {
             Some(path) => crate::config::AppConfig::load_from(std::path::Path::new(path)),
             None => crate::config::AppConfig::load(),
         };
-        let app_dir = config
-            .db_path
-            .parent()
-            .unwrap_or(std::path::Path::new("."))
-            .to_path_buf();
-        // Ensure the data directory exists before trying to open the log file.
-        let _ = std::fs::create_dir_all(&app_dir);
-        let log_path = app_dir.join("monitoring-alert.log");
+        // Ensure the log directory exists before trying to open the log file.
+        let _ = std::fs::create_dir_all(&config.log_dir);
+        let log_path = config.log_dir.join("monitoring-alert.log");
         if let Err(e) = crate::logger::init(&log_path, &config.log_level) {
             // Last resort: log to stderr so Windows Event Log can capture it.
             eprintln!("[monitoring-alert] logger init failed: {:#}", e);

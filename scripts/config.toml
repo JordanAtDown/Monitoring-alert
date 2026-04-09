@@ -13,6 +13,11 @@ install_dir = "C:\\Program Files\\MonitoringAlert"
 # Exemple : "D:\\Backup\\MonitoringAlert\\temperatures.db"
 db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
 
+# Dossier des fichiers de log (défaut : même répertoire que db_path)
+# Les fichiers sont nommés monitoring-alert-YYYY-MM-DD.log (rotation quotidienne)
+# Exemple : "D:\\Logs\\MonitoringAlert"
+# log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert"
+
 # Intervalle de collecte du service (en secondes, minimum 60)
 # Défaut : 300 (toutes les 5 minutes)
 collect_interval_secs = 300
@@ -33,7 +38,6 @@ lhm_port = 8085
 
 # Niveau de log : "error" | "warn" | "info" (défaut) | "debug" | "trace"
 # Passer à "debug" pour diagnostiquer un problème (collecte, capteurs, etc.)
-# Le fichier de log est dans le même répertoire que la base de données.
 log_level = "info"
 
 # =============================================================
