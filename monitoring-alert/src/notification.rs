@@ -71,7 +71,7 @@ fn build_toast_xml(title: &str, body: &str, file_uri: Option<&str>) -> String {
 }
 
 /// Converts a Windows path to a `file:///` URI (forward slashes, spaces as %20).
-fn path_to_file_uri(path: &PathBuf) -> String {
+fn path_to_file_uri(path: &std::path::Path) -> String {
     let s = path.to_string_lossy().replace('\\', "/");
     // Encode only spaces — common enough in Windows paths, other chars are fine for file URIs.
     let encoded = s.replace(' ', "%20");
