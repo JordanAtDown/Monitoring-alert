@@ -62,11 +62,20 @@ enum Commands {
         #[arg(long, default_value = "300")]
         interval: u64,
     },
-    /// Génère le rapport texte
+    /// Génère le rapport texte (ASCII)
     Report {
         /// Fichier de sortie (stdout si absent)
         #[arg(short, long)]
         output: Option<String>,
+    },
+    /// Génère le rapport Markdown et le sauvegarde dans reports_dir
+    ReportMd {
+        /// Dossier de sortie (remplace reports_dir du config)
+        #[arg(short, long)]
+        output_dir: Option<String>,
+        /// Libellé de période dans le nom de fichier (défaut: manuel)
+        #[arg(long, default_value = "manuel")]
+        label: String,
     },
     /// Vérifie la configuration, la base de données, le service et LHM
     Check,
@@ -190,6 +199,14 @@ fn run_cli() -> Result<()> {
             let store = store::SqliteStore::new(db::init_db(&db_path)?);
             report::generate_report(&store, output.as_deref())?;
         }
+        Commands::ReportMd { output_dir, label } => {
+            let store = store::SqliteStore::new(db::init_db(&db_path)?);
+            let dir = output_dir
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| cfg.reports_dir.clone());
+            let path = report::save_report_md(&store, &dir, &label)?;
+            println!("Rapport généré : {}", path.display());
+        }
         Commands::Service { action } => match action {
             ServiceAction::Install => {
                 let config_path = config::AppConfig::default_config_path();
@@ -248,9 +265,23 @@ fn run_cli() -> Result<()> {
             } else {
                 anyhow::bail!("Spécifiez --daily, --weekly ou --monthly");
             };
+            let period_label = if args.daily {
+                "journalier"
+            } else if args.weekly {
+                "hebdomadaire"
+            } else {
+                "mensuel"
+            };
             let store = store::SqliteStore::new(db::init_db(&db_path)?);
+
+            // Generate and save the Markdown report; failures are non-fatal.
+            let report_path = report::save_report_md(&store, &cfg.reports_dir, period_label)
+                .inspect_err(|e| tracing::warn!("Rapport MD non généré : {:#}", e))
+                .ok();
+
             let summary = report::generate_summary(&store, period)?;
-            let sender: Box<dyn reporter::ReportSender> = Box::new(notification::ToastSender);
+            let sender: Box<dyn reporter::ReportSender> =
+                Box::new(notification::ToastSender { report_path });
             sender.send(&summary.title, &summary.body)?;
             // Give Windows time to dispatch the async WinRT toast before the process exits.
             std::thread::sleep(std::time::Duration::from_secs(3));
@@ -285,7 +316,8 @@ fn run_cli() -> Result<()> {
                 TestScenario::All => scenarios.to_vec(),
             };
 
-            let sender: Box<dyn reporter::ReportSender> = Box::new(notification::ToastSender);
+            let sender: Box<dyn reporter::ReportSender> =
+                Box::new(notification::ToastSender { report_path: None });
             let count = to_send.len();
             for (i, (label, body)) in to_send.into_iter().enumerate() {
                 let test_title = format!("{} [TEST: {}]", title, label);
@@ -317,6 +349,7 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
     // ── 1. Configuration ──────────────────────────────────────
     println!("  ✓  Configuration chargée");
     println!("     DB         : {}", db_path.display());
+    println!("     Rapports   : {}", cfg.reports_dir.display());
     println!(
         "     Intervalle : {} s  —  Rétention : {} j  —  Log : {}",
         cfg.collect_interval_secs, cfg.retention_days, cfg.log_level

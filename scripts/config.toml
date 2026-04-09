@@ -18,6 +18,12 @@ db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\tempera
 # Exemple : "D:\\Logs\\MonitoringAlert"
 # log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert"
 
+# Dossier de sauvegarde des rapports Markdown (défaut : sous-dossier rapports/ à côté de db_path)
+# Un fichier rapport-YYYY-MM-DD-{journalier|hebdomadaire|mensuel}.md est créé à chaque notification
+# Le toast Windows est cliquable et ouvre directement ce fichier
+# Exemple : "D:\\Rapports\\MonitoringAlert"
+# reports_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\rapports"
+
 # Intervalle de collecte du service (en secondes, minimum 60)
 # Défaut : 300 (toutes les 5 minutes)
 collect_interval_secs = 300

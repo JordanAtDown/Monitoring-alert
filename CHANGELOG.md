@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.15] — 2026-04-09
+
+### Added
+- Rapport Markdown généré automatiquement à chaque notification toast
+  (`rapport-YYYY-MM-DD-{journalier|hebdomadaire|mensuel}.md`)
+- Toast cliquable : corps + bouton "Ouvrir le rapport" ouvrent le fichier
+  `.md` avec l'application par défaut (activationType=protocol, file://)
+- `config.toml` : nouvelle clé `reports_dir` (défaut : `rapports/` à côté
+  de `db_path`)
+- CLI : nouvelle sous-commande `report-md [--output-dir <dir>] [--label <label>]`
+  pour générer un rapport Markdown manuellement
+- `check` : affiche désormais le chemin `reports_dir` dans la config
+
 ## [1.3.14] — 2026-04-09
 
 ### Fixed

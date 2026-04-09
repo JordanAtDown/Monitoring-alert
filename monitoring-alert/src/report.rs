@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use crate::store::TemperatureStore;
 
@@ -426,6 +427,296 @@ pub fn generate_report_to_writer(
     let text = String::from_utf8(out).context("Report contains invalid UTF-8")?;
     write!(writer, "{}", text)?;
     Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────
+// Markdown report
+// ──────────────────────────────────────────────────────────────
+
+/// Writes the full temperature report in Markdown format to `writer`.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn generate_report_md_to_writer(
+    store: &dyn TemperatureStore,
+    writer: &mut impl Write,
+) -> Result<()> {
+    let stats = store
+        .get_overall_stats()
+        .context("Failed to get overall stats")?;
+    let sensors = store
+        .get_distinct_sensors()
+        .context("Failed to get distinct sensors")?;
+
+    let now = chrono::Local::now();
+    let now_str = now.format("%d/%m/%Y %H:%M").to_string();
+
+    let first_date = stats.first_ts.as_deref().map(|s| &s[..10]).unwrap_or("N/A");
+    let last_ts = stats.last_ts.as_deref().unwrap_or("N/A");
+
+    writeln!(writer, "# Rapport de Température — {}", now_str)?;
+    writeln!(writer)?;
+
+    // ── Résumé ────────────────────────────────────────────────
+    writeln!(writer, "## Résumé")?;
+    writeln!(writer)?;
+    writeln!(
+        writer,
+        "- **Données depuis** : {} ({} snapshots)",
+        first_date, stats.total_snapshots
+    )?;
+    writeln!(writer, "- **Dernière mesure** : {}", last_ts)?;
+    writeln!(writer)?;
+
+    // Warn when db is too young
+    if let Some(first_ts_str) = &stats.first_ts {
+        if let Ok(first) = chrono::NaiveDateTime::parse_from_str(first_ts_str, "%Y-%m-%dT%H:%M:%S")
+        {
+            let days = (now.naive_local() - first).num_days();
+            if days < 360 {
+                writeln!(
+                    writer,
+                    "> ⚠ Données insuffisantes : {} jour(s) enregistré(s) sur 360 requis.",
+                    days
+                )?;
+                if days < 180 {
+                    let ready = first + chrono::TimeDelta::days(180);
+                    writeln!(
+                        writer,
+                        "> Comparaison 90j disponible le {}.",
+                        ready.format("%d/%m/%Y")
+                    )?;
+                }
+                let ready180 = first + chrono::TimeDelta::days(360);
+                writeln!(
+                    writer,
+                    "> Comparaison 180j (saisonnière) complète le {}.",
+                    ready180.format("%d/%m/%Y")
+                )?;
+                writeln!(writer)?;
+            }
+        }
+    } else {
+        writeln!(
+            writer,
+            "> ⚠ Base de données vide — aucune donnée collectée."
+        )?;
+        writeln!(writer)?;
+    }
+
+    // ── Distribution ─────────────────────────────────────────
+    writeln!(writer, "## Distribution des états — 90 derniers jours")?;
+    writeln!(writer)?;
+    writeln!(writer, "| État | Snapshots | % |")?;
+    writeln!(writer, "|---|---|---|")?;
+    let dist = store
+        .get_category_distribution(90)
+        .context("Failed to get distribution")?;
+    let total_dist: i64 = dist.iter().map(|c| c.count).sum();
+    for cat in ["idle", "light", "moderate", "heavy"] {
+        let cnt = dist
+            .iter()
+            .find(|c| c.load_cat == cat)
+            .map(|c| c.count)
+            .unwrap_or(0);
+        let pct = if total_dist > 0 {
+            cnt as f64 / total_dist as f64 * 100.0
+        } else {
+            0.0
+        };
+        let label = match cat {
+            "idle" => "Idle (0–14 % CPU)",
+            "light" => "Léger (15–39 % CPU)",
+            "moderate" => "Modéré (40–74 % CPU)",
+            "heavy" => "Chargé (75–100 % CPU)",
+            _ => continue,
+        };
+        writeln!(writer, "| {} | {} | {:.0}% |", label, cnt, pct)?;
+    }
+    writeln!(writer)?;
+
+    // ── Analyse par capteur ───────────────────────────────────
+    writeln!(writer, "## Analyse par capteur")?;
+    writeln!(writer)?;
+
+    let mut hw_map: HashMap<String, Vec<String>> = HashMap::new();
+    for s in sensors {
+        hw_map.entry(s.hardware).or_default().push(s.sensor);
+    }
+    let mut hw_sorted: Vec<&String> = hw_map.keys().collect();
+    hw_sorted.sort();
+
+    let mut alerts: Vec<String> = Vec::new();
+    let mut peak_30: (f64, String) = (f64::NEG_INFINITY, String::new());
+    let mut peak_90: (f64, String) = (f64::NEG_INFINITY, String::new());
+    let mut peak_180: (f64, String) = (f64::NEG_INFINITY, String::new());
+
+    for hardware in &hw_sorted {
+        writeln!(writer, "### {}", hardware)?;
+        writeln!(writer)?;
+
+        let sensor_list = hw_map.get(*hardware).map(Vec::as_slice).unwrap_or(&[]);
+        for sensor_name in sensor_list {
+            for &cat in DISPLAY_CATS {
+                let mut rows: Vec<String> = Vec::new();
+                for &(days, label) in WINDOWS {
+                    let curr = store
+                        .get_avg_for_window(hardware, sensor_name, cat, days, 0)
+                        .context("Failed to query current window avg")?;
+                    let prev = store
+                        .get_avg_for_window(hardware, sensor_name, cat, days, days)
+                        .context("Failed to query previous window avg")?;
+                    match (curr, prev) {
+                        (Some(c), Some(p)) => {
+                            let delta = c - p;
+                            let sign = if delta >= 0.0 { "+" } else { "" };
+                            let status = delta_status(delta);
+                            rows.push(format!(
+                                "| {} | {:.1} °C | {:.1} °C | {}{:.1}°C | {} |",
+                                label, c, p, sign, delta, status
+                            ));
+                            let pk = match days {
+                                30 => Some(&mut peak_30),
+                                90 => Some(&mut peak_90),
+                                180 => Some(&mut peak_180),
+                                _ => None,
+                            };
+                            if let Some(pk) = pk {
+                                if delta > pk.0 {
+                                    pk.0 = delta;
+                                    pk.1 = format!("{}/{}", hardware, sensor_name);
+                                }
+                            }
+                            if days == 30 && delta >= 5.0 {
+                                let sign = if delta >= 0.0 { "+" } else { "" };
+                                alerts.push(format!(
+                                    "- {} **{}/{}** [{}] → {}{:.1}°C sur {}",
+                                    if delta >= 10.0 {
+                                        "🔴 **CRITIQUE**"
+                                    } else {
+                                        "⚠ **ATTENTION**"
+                                    },
+                                    hardware,
+                                    sensor_name,
+                                    cat,
+                                    sign,
+                                    delta,
+                                    label
+                                ));
+                            }
+                        }
+                        (Some(c), None) => {
+                            rows.push(format!(
+                                "| {} | {:.1} °C | — | — | (pas de période précédente) |",
+                                label, c
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                if !rows.is_empty() {
+                    writeln!(writer, "#### {} — {}", sensor_name, cat_label(cat))?;
+                    writeln!(writer)?;
+                    writeln!(
+                        writer,
+                        "| Fenêtre | Moy. actuelle | Moy. précédente | Δ | Statut |"
+                    )?;
+                    writeln!(writer, "|---|---|---|---|---|")?;
+                    for row in rows {
+                        writeln!(writer, "{}", row)?;
+                    }
+                    writeln!(writer)?;
+                }
+            }
+        }
+    }
+
+    // ── Résumé des alertes ────────────────────────────────────
+    writeln!(writer, "## Résumé des alertes")?;
+    writeln!(writer)?;
+    if alerts.is_empty() {
+        writeln!(writer, "✓ Aucune alerte — températures stables.")?;
+    } else {
+        for alert in &alerts {
+            writeln!(writer, "{}", alert)?;
+        }
+    }
+    writeln!(writer)?;
+
+    // ── Recommandation maintenance ────────────────────────────
+    writeln!(writer, "## ⚙ Recommandation Maintenance")?;
+    writeln!(writer)?;
+    if peak_180.0 >= 10.0 {
+        writeln!(writer, "### 🔴 Inspection matérielle urgente")?;
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "Dérive de **+{:.1}°C sur 180j** détectée — `{}`",
+            peak_180.0, peak_180.1
+        )?;
+        writeln!(writer)?;
+        writeln!(writer, "- Remplacer la pâte thermique (vieillissement)")?;
+        writeln!(
+            writer,
+            "- Inspecter les ventilateurs (roulements, encrassement)"
+        )?;
+        writeln!(writer, "- Nettoyer radiateurs et filtres à poussière")?;
+        writeln!(
+            writer,
+            "- Envisager le remplacement si le matériel a > 5 ans"
+        )?;
+    } else if peak_90.0 >= 8.0 {
+        writeln!(writer, "### ⚠ Maintenance préventive recommandée")?;
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "Dérive de **+{:.1}°C sur 90j** détectée — `{}`",
+            peak_90.0, peak_90.1
+        )?;
+        writeln!(writer)?;
+        writeln!(writer, "- Nettoyer les filtres et radiateurs")?;
+        writeln!(writer, "- Vérifier l'état des ventilateurs")?;
+        writeln!(writer, "- Envisager le renouvellement de la pâte thermique")?;
+    } else if peak_30.0 >= 5.0 {
+        writeln!(writer, "### ⚠ Nettoyage conseillé")?;
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "Dérive de **+{:.1}°C sur 30j** détectée — `{}`",
+            peak_30.0, peak_30.1
+        )?;
+        writeln!(writer)?;
+        writeln!(writer, "- Nettoyer les filtres à poussière")?;
+        writeln!(writer, "- Vérifier que les ventilateurs tournent librement")?;
+    } else {
+        writeln!(
+            writer,
+            "✓ Aucune action requise — comportement thermique stable."
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Saves a Markdown report to `reports_dir/rapport-YYYY-MM-DD-{period_label}.md`.
+/// Creates the directory if needed. Returns the path of the created file.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn save_report_md(
+    store: &dyn TemperatureStore,
+    reports_dir: &Path,
+    period_label: &str,
+) -> Result<PathBuf> {
+    std::fs::create_dir_all(reports_dir)
+        .with_context(|| format!("Failed to create reports dir: {}", reports_dir.display()))?;
+
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let filename = format!("rapport-{}-{}.md", date, period_label);
+    let path = reports_dir.join(&filename);
+
+    let mut buf: Vec<u8> = Vec::new();
+    generate_report_md_to_writer(store, &mut buf)?;
+    std::fs::write(&path, &buf)
+        .with_context(|| format!("Failed to write report: {}", path.display()))?;
+
+    Ok(path)
 }
 
 pub fn generate_report(store: &dyn TemperatureStore, output: Option<&str>) -> Result<()> {
