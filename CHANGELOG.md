@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.13] — 2026-04-09
+
+### Fixed
+- `service.rs`: renommage `args` → `_args` dans `run_service_main` — le paramètre
+  n'est plus utilisé depuis la lecture via `std::env::args_os()`
+
 ## [1.3.12] — 2026-04-09
 
 ### Changed
@@ -293,7 +299,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.12...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.13...HEAD
+[1.3.13]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.12...v1.3.13
 [1.3.12]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.11...v1.3.12
 [1.3.11]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.10...v1.3.11
 [1.3.10]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.9...v1.3.10

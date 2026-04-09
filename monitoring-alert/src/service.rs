@@ -197,7 +197,7 @@ pub mod windows {
     }
 
     /// Called by `ffi_service_main` — runs the actual service logic.
-    pub fn run_service_main(args: Vec<OsString>) -> Result<()> {
+    pub fn run_service_main(_args: Vec<OsString>) -> Result<()> {
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stop_flag_handler = Arc::clone(&stop_flag);
 
