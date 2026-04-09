@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  check:
+    name: Format & Lint
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "monitoring-alert -> target"
+
+      - name: Check formatting
+        working-directory: monitoring-alert
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        working-directory: monitoring-alert
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: windows-latest
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "monitoring-alert -> target"
+
+      - name: Run tests
+        working-directory: monitoring-alert
+        run: cargo test --target x86_64-pc-windows-msvc

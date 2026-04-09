@@ -1,41 +1,107 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["Build & Test"]
-    types: [completed]
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
 
-permissions:
-  contents: write
-  actions: read
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  release:
-    name: Publish
-    runs-on: ubuntu-latest
-    if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+  check:
+    name: Format & Lint
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/checkout@v4
 
-      - name: Download binary artifact
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "monitoring-alert -> target"
+
+      - name: Check formatting
+        working-directory: monitoring-alert
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        working-directory: monitoring-alert
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  build:
+    name: Build Release
+    runs-on: windows-latest
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "monitoring-alert -> target"
+
+      - name: Build (release)
+        working-directory: monitoring-alert
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-alert-windows-x64
+          path: monitoring-alert/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe
+          retention-days: 1
+          if-no-files-found: error
+
+  test:
+    name: Tests
+    runs-on: windows-latest
+    needs: check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "monitoring-alert -> target"
+
+      - name: Run tests
+        working-directory: monitoring-alert
+        run: cargo test --target x86_64-pc-windows-msvc
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: monitoring-alert-windows-x64
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifact/
 
       - name: Extract release notes from CHANGELOG
         id: notes
         run: |
-          VERSION="${{ github.event.workflow_run.head_branch }}"
-          VERSION="${VERSION#v}"
+          VERSION="${GITHUB_REF_NAME#v}"
           NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md \
                   | sed '/^[[:space:]]*$/d' | head -c 65000)
           {
@@ -44,7 +110,6 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
-          echo "TAG=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_ENV"
 
       - name: Package installer archive
         run: |
@@ -61,8 +126,8 @@ jobs:
           RELEASE_NOTES: ${{ steps.notes.outputs.body }}
         run: |
           echo "$RELEASE_NOTES" > release_notes.md
-          gh release create "$TAG" \
-            --title "MonitoringAlert $TAG" \
+          gh release create "$GITHUB_REF_NAME" \
+            --title "MonitoringAlert $GITHUB_REF_NAME" \
             --notes-file release_notes.md \
             "artifact/monitoring-alert.exe#monitoring-alert.exe" \
             "$ARCHIVE"
