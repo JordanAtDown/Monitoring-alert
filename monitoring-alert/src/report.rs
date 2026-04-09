@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -84,6 +85,10 @@ pub fn generate_summary(
     Ok(SummaryReport { title, body })
 }
 
+// ──────────────────────────────────────────────────────────────
+// ReportData — shared data model
+// ──────────────────────────────────────────────────────────────
+
 const WINDOWS: &[(u32, &str)] = &[
     (1, "24h"),
     (7, "7j"),
@@ -117,18 +122,80 @@ fn cat_label(cat: &str) -> &'static str {
     }
 }
 
-fn bar(pct: f64, width: usize) -> String {
-    let filled = ((pct / 100.0) * width as f64).round() as usize;
-    let filled = filled.min(width);
-    "█".repeat(filled)
+#[derive(Serialize)]
+pub struct DistRow {
+    pub label: String,
+    pub count: i64,
+    pub pct: u32,
 }
 
-/// Writes the full temperature report to `writer`.
-/// Extracted for testability — `generate_report` delegates to this.
-pub fn generate_report_to_writer(
-    store: &dyn TemperatureStore,
-    writer: &mut impl Write,
-) -> Result<()> {
+#[derive(Serialize)]
+pub struct WindowRow {
+    pub window: String,
+    pub current: String,
+    pub previous: String,
+    pub delta: String,
+    pub status: String,
+    /// Raw delta value, used by the ASCII renderer for alignment.
+    #[serde(skip)]
+    pub delta_f: f64,
+    #[serde(skip)]
+    pub current_f: f64,
+    #[serde(skip)]
+    pub previous_f: f64,
+    /// True when there is no previous period yet.
+    pub no_previous: bool,
+}
+
+#[derive(Serialize)]
+pub struct CategoryTable {
+    pub category: String,
+    pub rows: Vec<WindowRow>,
+}
+
+#[derive(Serialize)]
+pub struct SensorSection {
+    pub name: String,
+    pub tables: Vec<CategoryTable>,
+}
+
+#[derive(Serialize)]
+pub struct HardwareSection {
+    pub hardware: String,
+    pub sensors: Vec<SensorSection>,
+}
+
+#[derive(Serialize)]
+pub struct MaintenanceBlock {
+    /// "ok" | "cleaning" | "preventive" | "urgent"
+    pub level: String,
+    pub peak_delta: String,
+    pub peak_sensor: String,
+}
+
+#[derive(Serialize)]
+pub struct ReportData {
+    pub generated_at: String,
+    pub first_date: String,
+    pub last_ts: String,
+    pub total_snapshots: i64,
+    /// Days collected so far; -1 when the DB is empty.
+    pub days_collected: i64,
+    /// Date from which the 90-day comparison becomes available.
+    pub ready_90j_date: String,
+    /// Date from which the 180-day (seasonal) comparison becomes available.
+    pub ready_180j_date: String,
+    pub distribution: Vec<DistRow>,
+    pub sections: Vec<HardwareSection>,
+    /// Alert lines for the summary section.
+    pub alerts: Vec<String>,
+    pub maintenance: MaintenanceBlock,
+}
+
+/// Collects all data from the store into a [`ReportData`] value.
+/// Both the ASCII and Markdown renderers consume this instead of
+/// querying the DB independently, eliminating duplication.
+pub fn build_report_data(store: &dyn TemperatureStore) -> Result<ReportData> {
     let stats = store
         .get_overall_stats()
         .context("Failed to get overall stats")?;
@@ -137,133 +204,86 @@ pub fn generate_report_to_writer(
         .context("Failed to get distinct sensors")?;
 
     let now = chrono::Local::now();
-    let now_str = now.format("%d/%m/%Y %H:%M").to_string();
+    let generated_at = now.format("%d/%m/%Y %H:%M").to_string();
 
-    let mut out: Vec<u8> = Vec::with_capacity(16 * 1024);
+    let first_date = stats
+        .first_ts
+        .as_deref()
+        .map(|s| s[..10].to_string())
+        .unwrap_or_else(|| "N/A".to_string());
+    let last_ts = stats.last_ts.as_deref().unwrap_or("N/A").to_string();
 
-    // Header
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
-    writeln!(out, "  RAPPORT DE TEMPÉRATURE  —  {}", now_str)?;
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
-
-    let first_date = stats.first_ts.as_deref().map(|s| &s[..10]).unwrap_or("N/A");
-    let last_ts = stats.last_ts.as_deref().unwrap_or("N/A");
-    writeln!(
-        out,
-        "  Données depuis    : {}   ({} snapshots)",
-        first_date, stats.total_snapshots
-    )?;
-    writeln!(out, "  Dernière mesure   : {}", last_ts)?;
-    writeln!(out)?;
-
-    // Warn when the database is too young for the full 180-day comparison window.
-    if let Some(first_ts_str) = &stats.first_ts {
-        if let Ok(first) = chrono::NaiveDateTime::parse_from_str(first_ts_str, "%Y-%m-%dT%H:%M:%S")
-        {
-            let days_collected = (now.naive_local() - first).num_days();
-            if days_collected < 360 {
-                writeln!(
-                    out,
-                    "  ⚠  Données insuffisantes : {} jour(s) enregistré(s) sur 360 requis.",
-                    days_collected
-                )?;
-                if days_collected < 180 {
-                    let ready_90j = first + chrono::TimeDelta::days(180);
-                    writeln!(
-                        out,
-                        "     Comparaison 90j disponible le {}.",
-                        ready_90j.format("%d/%m/%Y")
-                    )?;
-                }
-                let ready_180j = first + chrono::TimeDelta::days(360);
-                writeln!(
-                    out,
-                    "     Comparaison 180j (saisonnière) complète le {}.",
-                    ready_180j.format("%d/%m/%Y")
-                )?;
-                writeln!(out)?;
-            }
+    let (days_collected, ready_90j_date, ready_180j_date) = if let Some(ref ts) = stats.first_ts {
+        if let Ok(first) = chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S") {
+            let days = (now.naive_local() - first).num_days();
+            let r90 = (first + chrono::TimeDelta::days(180))
+                .format("%d/%m/%Y")
+                .to_string();
+            let r180 = (first + chrono::TimeDelta::days(360))
+                .format("%d/%m/%Y")
+                .to_string();
+            (days, r90, r180)
+        } else {
+            (-1, String::new(), String::new())
         }
     } else {
-        writeln!(out, "  ⚠  Base de données vide — aucune donnée collectée.")?;
-        writeln!(out)?;
-    }
+        (-1, String::new(), String::new())
+    };
 
-    // Category distribution (last 90 days)
-    let dist = store
+    // ── Distribution ─────────────────────────────────────────
+    let dist_raw = store
         .get_category_distribution(90)
         .context("Failed to get distribution")?;
-    let total_dist: i64 = dist.iter().map(|c| c.count).sum();
-    writeln!(out, "  Distribution des états (90 derniers jours) :")?;
-    let order = ["idle", "light", "moderate", "heavy"];
-    for cat in order {
-        let cnt = dist
-            .iter()
-            .find(|c| c.load_cat == cat)
-            .map(|c| c.count)
-            .unwrap_or(0);
-        let pct = if total_dist > 0 {
-            cnt as f64 / total_dist as f64 * 100.0
-        } else {
-            0.0
-        };
-        let label = match cat {
-            "idle" => "Idle      (0–14 % CPU)  ",
-            "light" => "Léger     (15–39 % CPU) ",
-            "moderate" => "Modéré    (40–74 % CPU) ",
-            "heavy" => "Chargé    (75–100 % CPU)",
-            _ => continue,
-        };
-        writeln!(out, "    {}  {:3.0}%  {}", label, pct, bar(pct, 28))?;
-    }
-    writeln!(out)?;
+    let total_dist: i64 = dist_raw.iter().map(|c| c.count).sum();
+    let distribution = ["idle", "light", "moderate", "heavy"]
+        .iter()
+        .map(|&cat| {
+            let count = dist_raw
+                .iter()
+                .find(|c| c.load_cat == cat)
+                .map(|c| c.count)
+                .unwrap_or(0);
+            let pct = if total_dist > 0 {
+                (count as f64 / total_dist as f64 * 100.0).round() as u32
+            } else {
+                0
+            };
+            DistRow {
+                label: cat_label(cat).to_string(),
+                count,
+                pct,
+            }
+        })
+        .collect();
 
-    // Per-sensor analysis
-    writeln!(
-        out,
-        "────────────────────────────────────────────────────────────────"
-    )?;
-    writeln!(out, "  ANALYSE PAR CAPTEUR — comparaison à charge égale")?;
-    writeln!(
-        out,
-        "────────────────────────────────────────────────────────────────"
-    )?;
-    writeln!(out)?;
-
-    // Group sensors by hardware — consume the Vec to avoid cloning each name.
+    // ── Per-sensor sections ───────────────────────────────────
     let mut hw_map: HashMap<String, Vec<String>> = HashMap::new();
     for s in sensors {
         hw_map.entry(s.hardware).or_default().push(s.sensor);
     }
-    let mut hw_sorted: Vec<&String> = hw_map.keys().collect();
+    let mut hw_sorted: Vec<String> = hw_map.keys().cloned().collect();
     hw_sorted.sort();
 
-    let mut alerts: Vec<String> = Vec::with_capacity(8);
-
-    // Track worst positive delta per window for the maintenance recommendation.
-    // Tuple: (delta °C, "Hardware/Sensor" label). Initialised to NEG_INFINITY so any
-    // real delta (even negative) wins the first comparison — conditions below only
-    // trigger on positive thresholds so a negative peak never fires a recommendation.
+    let mut all_alerts: Vec<String> = Vec::new();
     let mut peak_30: (f64, String) = (f64::NEG_INFINITY, String::new());
     let mut peak_90: (f64, String) = (f64::NEG_INFINITY, String::new());
     let mut peak_180: (f64, String) = (f64::NEG_INFINITY, String::new());
 
+    let mut sections: Vec<HardwareSection> = Vec::new();
+
     for hardware in &hw_sorted {
-        writeln!(out, "  ┌─ {} ─", hardware)?;
-        writeln!(out, "  │")?;
-        let sensor_list = hw_map.get(*hardware).map(Vec::as_slice).unwrap_or(&[]);
-        for sensor_name in sensor_list {
-            writeln!(out, "  │  {}", sensor_name)?;
+        let sensor_names = hw_map
+            .get(hardware.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let mut sensor_sections: Vec<SensorSection> = Vec::new();
+
+        for sensor_name in sensor_names {
+            let mut tables: Vec<CategoryTable> = Vec::new();
+
             for &cat in DISPLAY_CATS {
-                // Write the category header lazily — only when the first data row is ready,
-                // so we avoid an extra round-trip to check existence.
-                let mut cat_header_written = false;
+                let mut rows: Vec<WindowRow> = Vec::new();
+
                 for &(days, label) in WINDOWS {
                     let curr = store
                         .get_avg_for_window(hardware, sensor_name, cat, days, 0)
@@ -271,36 +291,30 @@ pub fn generate_report_to_writer(
                     let prev = store
                         .get_avg_for_window(hardware, sensor_name, cat, days, days)
                         .context("Failed to query previous window avg")?;
+
                     match (curr, prev) {
                         (Some(c), Some(p)) => {
-                            if !cat_header_written {
-                                writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
-                                cat_header_written = true;
-                            }
                             let delta = c - p;
                             let sign = if delta >= 0.0 { "+" } else { "" };
-                            let status = delta_status(delta);
-                            writeln!(
-                                out,
-                                "  │  │  moy. {:4}   {:5.1} °C  vs préc.  {:5.1} °C  ({}{:.1}°C)  {}",
-                                label, c, p, sign, delta, status
-                            )?;
-                            // Update maintenance peaks (worst positive delta wins).
-                            let peak = match days {
+                            let status = delta_status(delta).to_string();
+
+                            // Update maintenance peaks
+                            let pk = match days {
                                 30 => Some(&mut peak_30),
                                 90 => Some(&mut peak_90),
                                 180 => Some(&mut peak_180),
                                 _ => None,
                             };
-                            if let Some(pk) = peak {
+                            if let Some(pk) = pk {
                                 if delta > pk.0 {
                                     pk.0 = delta;
                                     pk.1 = format!("{}/{}", hardware, sensor_name);
                                 }
                             }
+
                             if days == 30 && delta >= 5.0 {
-                                alerts.push(format!(
-                                    "  {} {}/{} [{}] → {}{:.1}°C sur {}",
+                                all_alerts.push(format!(
+                                    "{} {}/{} [{}] → {}{:.1}°C sur {}",
                                     if delta >= 10.0 {
                                         "🔴 CRITIQUE"
                                     } else {
@@ -314,124 +328,322 @@ pub fn generate_report_to_writer(
                                     label
                                 ));
                             }
+
+                            rows.push(WindowRow {
+                                window: label.to_string(),
+                                current: format!("{:.1}", c),
+                                previous: format!("{:.1}", p),
+                                delta: format!("{}{:.1}", sign, delta),
+                                status,
+                                delta_f: delta,
+                                current_f: c,
+                                previous_f: p,
+                                no_previous: false,
+                            });
                         }
                         (Some(c), None) => {
-                            if !cat_header_written {
-                                writeln!(out, "  │  ├─ {} ", cat_label(cat))?;
-                                cat_header_written = true;
-                            }
-                            writeln!(
-                                out,
-                                "  │  │  moy. {:4}   {:5.1} °C  (pas de période précédente)",
-                                label, c
-                            )?;
+                            rows.push(WindowRow {
+                                window: label.to_string(),
+                                current: format!("{:.1}", c),
+                                previous: "—".to_string(),
+                                delta: "—".to_string(),
+                                status: "(pas de période précédente)".to_string(),
+                                delta_f: 0.0,
+                                current_f: c,
+                                previous_f: 0.0,
+                                no_previous: true,
+                            });
                         }
                         _ => {}
                     }
                 }
-                if cat_header_written {
-                    writeln!(out, "  │  │")?;
+
+                if !rows.is_empty() {
+                    tables.push(CategoryTable {
+                        category: cat_label(cat).to_string(),
+                        rows,
+                    });
                 }
             }
-        }
-        writeln!(out, "  └─")?;
-        writeln!(out)?;
-    }
 
-    // Summary
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
-    writeln!(out, "  RÉSUMÉ DES ALERTES")?;
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
-    if alerts.is_empty() {
-        writeln!(out, "  ✓ Aucune alerte — températures stables.")?;
-    } else {
-        for alert in &alerts {
-            writeln!(out, "{}", alert)?;
+            if !tables.is_empty() {
+                sensor_sections.push(SensorSection {
+                    name: sensor_name.clone(),
+                    tables,
+                });
+            }
+        }
+
+        if !sensor_sections.is_empty() {
+            sections.push(HardwareSection {
+                hardware: hardware.clone(),
+                sensors: sensor_sections,
+            });
         }
     }
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
 
-    // ── Maintenance recommendation ─────────────────────────────
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
-    writeln!(out, "  RECOMMANDATION MAINTENANCE")?;
-    writeln!(
-        out,
-        "════════════════════════════════════════════════════════════════"
-    )?;
-
-    if peak_180.0 >= 10.0 {
-        writeln!(out, "  🔴 Inspection matérielle urgente")?;
-        writeln!(
-            out,
-            "     Dérive de +{:.1}°C sur 180j détectée — {} ",
-            peak_180.0, peak_180.1
-        )?;
-        writeln!(out, "     → Remplacer la pâte thermique (vieillissement)")?;
-        writeln!(
-            out,
-            "     → Inspecter les ventilateurs (roulements, encrassement)"
-        )?;
-        writeln!(out, "     → Nettoyer radiateurs et filtres à poussière")?;
-        writeln!(
-            out,
-            "     → Envisager le remplacement si le matériel a > 5 ans"
-        )?;
+    // ── Maintenance block ─────────────────────────────────────
+    let maintenance = if peak_180.0 >= 10.0 {
+        MaintenanceBlock {
+            level: "urgent".to_string(),
+            peak_delta: format!("+{:.1}°C sur 180j", peak_180.0),
+            peak_sensor: peak_180.1,
+        }
     } else if peak_90.0 >= 8.0 {
-        writeln!(out, "  ⚠  Maintenance préventive recommandée")?;
-        writeln!(
-            out,
-            "     Dérive de +{:.1}°C sur 90j détectée — {}",
-            peak_90.0, peak_90.1
-        )?;
-        writeln!(out, "     → Nettoyer les filtres et radiateurs")?;
-        writeln!(out, "     → Vérifier l'état des ventilateurs")?;
-        writeln!(
-            out,
-            "     → Envisager le renouvellement de la pâte thermique"
-        )?;
+        MaintenanceBlock {
+            level: "preventive".to_string(),
+            peak_delta: format!("+{:.1}°C sur 90j", peak_90.0),
+            peak_sensor: peak_90.1,
+        }
     } else if peak_30.0 >= 5.0 {
-        writeln!(out, "  ⚠  Nettoyage conseillé")?;
-        writeln!(
-            out,
-            "     Dérive de +{:.1}°C sur 30j détectée — {}",
-            peak_30.0, peak_30.1
-        )?;
-        writeln!(out, "     → Nettoyer les filtres à poussière")?;
-        writeln!(
-            out,
-            "     → Vérifier que les ventilateurs tournent librement"
-        )?;
+        MaintenanceBlock {
+            level: "cleaning".to_string(),
+            peak_delta: format!("+{:.1}°C sur 30j", peak_30.0),
+            peak_sensor: peak_30.1,
+        }
     } else {
+        MaintenanceBlock {
+            level: "ok".to_string(),
+            peak_delta: String::new(),
+            peak_sensor: String::new(),
+        }
+    };
+
+    Ok(ReportData {
+        generated_at,
+        first_date,
+        last_ts,
+        total_snapshots: stats.total_snapshots,
+        days_collected,
+        ready_90j_date,
+        ready_180j_date,
+        distribution,
+        sections,
+        alerts: all_alerts,
+        maintenance,
+    })
+}
+
+// ──────────────────────────────────────────────────────────────
+// ASCII report renderer
+// ──────────────────────────────────────────────────────────────
+
+fn bar(pct: u32, width: usize) -> String {
+    let filled = ((pct as f64 / 100.0) * width as f64).round() as usize;
+    "█".repeat(filled.min(width))
+}
+
+/// Writes the full temperature report in ASCII format to `writer`.
+pub fn generate_report_to_writer(
+    store: &dyn TemperatureStore,
+    writer: &mut impl Write,
+) -> Result<()> {
+    let data = build_report_data(store)?;
+    render_text(&data, writer)
+}
+
+fn render_text(data: &ReportData, writer: &mut impl Write) -> Result<()> {
+    writeln!(
+        writer,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    writeln!(writer, "  RAPPORT DE TEMPÉRATURE  —  {}", data.generated_at)?;
+    writeln!(
+        writer,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    writeln!(
+        writer,
+        "  Données depuis    : {}   ({} snapshots)",
+        data.first_date, data.total_snapshots
+    )?;
+    writeln!(writer, "  Dernière mesure   : {}", data.last_ts)?;
+    writeln!(writer)?;
+
+    if data.days_collected < 0 {
         writeln!(
-            out,
-            "  ✓  Aucune action requise — comportement thermique stable."
+            writer,
+            "  ⚠  Base de données vide — aucune donnée collectée."
+        )?;
+        writeln!(writer)?;
+    } else if data.days_collected < 360 {
+        writeln!(
+            writer,
+            "  ⚠  Données insuffisantes : {} jour(s) enregistré(s) sur 360 requis.",
+            data.days_collected
+        )?;
+        if data.days_collected < 180 {
+            writeln!(
+                writer,
+                "     Comparaison 90j disponible le {}.",
+                data.ready_90j_date
+            )?;
+        }
+        writeln!(
+            writer,
+            "     Comparaison 180j (saisonnière) complète le {}.",
+            data.ready_180j_date
+        )?;
+        writeln!(writer)?;
+    }
+
+    // Distribution
+    writeln!(writer, "  Distribution des états (90 derniers jours) :")?;
+    for row in &data.distribution {
+        writeln!(
+            writer,
+            "    {:<28}  {:3}%  {}",
+            row.label,
+            row.pct,
+            bar(row.pct, 28)
         )?;
     }
+    writeln!(writer)?;
+
+    // Per-sensor
     writeln!(
-        out,
+        writer,
+        "────────────────────────────────────────────────────────────────"
+    )?;
+    writeln!(writer, "  ANALYSE PAR CAPTEUR — comparaison à charge égale")?;
+    writeln!(
+        writer,
+        "────────────────────────────────────────────────────────────────"
+    )?;
+    writeln!(writer)?;
+
+    for hw in &data.sections {
+        writeln!(writer, "  ┌─ {} ─", hw.hardware)?;
+        writeln!(writer, "  │")?;
+        for sensor in &hw.sensors {
+            writeln!(writer, "  │  {}", sensor.name)?;
+            for table in &sensor.tables {
+                writeln!(writer, "  │  ├─ {} ", table.category)?;
+                for row in &table.rows {
+                    if row.no_previous {
+                        writeln!(
+                            writer,
+                            "  │  │  moy. {:4}   {:5.1} °C  (pas de période précédente)",
+                            row.window, row.current_f
+                        )?;
+                    } else {
+                        let sign = if row.delta_f >= 0.0 { "+" } else { "" };
+                        writeln!(
+                            writer,
+                            "  │  │  moy. {:4}   {:5.1} °C  vs préc.  {:5.1} °C  ({}{:.1}°C)  {}",
+                            row.window,
+                            row.current_f,
+                            row.previous_f,
+                            sign,
+                            row.delta_f,
+                            row.status
+                        )?;
+                    }
+                }
+                writeln!(writer, "  │  │")?;
+            }
+        }
+        writeln!(writer, "  └─")?;
+        writeln!(writer)?;
+    }
+
+    // Alerts summary
+    writeln!(
+        writer,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    writeln!(writer, "  RÉSUMÉ DES ALERTES")?;
+    writeln!(
+        writer,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    if data.alerts.is_empty() {
+        writeln!(writer, "  ✓ Aucune alerte — températures stables.")?;
+    } else {
+        for alert in &data.alerts {
+            writeln!(writer, "  {}", alert)?;
+        }
+    }
+
+    // Maintenance
+    writeln!(
+        writer,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    writeln!(writer, "  RECOMMANDATION MAINTENANCE")?;
+    writeln!(
+        writer,
+        "════════════════════════════════════════════════════════════════"
+    )?;
+    match data.maintenance.level.as_str() {
+        "urgent" => {
+            writeln!(writer, "  🔴 Inspection matérielle urgente")?;
+            writeln!(
+                writer,
+                "     Dérive de {} détectée — {}",
+                data.maintenance.peak_delta, data.maintenance.peak_sensor
+            )?;
+            writeln!(
+                writer,
+                "     → Remplacer la pâte thermique (vieillissement)"
+            )?;
+            writeln!(
+                writer,
+                "     → Inspecter les ventilateurs (roulements, encrassement)"
+            )?;
+            writeln!(writer, "     → Nettoyer radiateurs et filtres à poussière")?;
+            writeln!(
+                writer,
+                "     → Envisager le remplacement si le matériel a > 5 ans"
+            )?;
+        }
+        "preventive" => {
+            writeln!(writer, "  ⚠  Maintenance préventive recommandée")?;
+            writeln!(
+                writer,
+                "     Dérive de {} détectée — {}",
+                data.maintenance.peak_delta, data.maintenance.peak_sensor
+            )?;
+            writeln!(writer, "     → Nettoyer les filtres et radiateurs")?;
+            writeln!(writer, "     → Vérifier l'état des ventilateurs")?;
+            writeln!(
+                writer,
+                "     → Envisager le renouvellement de la pâte thermique"
+            )?;
+        }
+        "cleaning" => {
+            writeln!(writer, "  ⚠  Nettoyage conseillé")?;
+            writeln!(
+                writer,
+                "     Dérive de {} détectée — {}",
+                data.maintenance.peak_delta, data.maintenance.peak_sensor
+            )?;
+            writeln!(writer, "     → Nettoyer les filtres à poussière")?;
+            writeln!(
+                writer,
+                "     → Vérifier que les ventilateurs tournent librement"
+            )?;
+        }
+        _ => {
+            writeln!(
+                writer,
+                "  ✓  Aucune action requise — comportement thermique stable."
+            )?;
+        }
+    }
+    writeln!(
+        writer,
         "════════════════════════════════════════════════════════════════"
     )?;
 
-    let text = String::from_utf8(out).context("Report contains invalid UTF-8")?;
-    write!(writer, "{}", text)?;
     Ok(())
 }
 
 // ──────────────────────────────────────────────────────────────
-// Markdown report
+// Markdown report renderer (minijinja)
 // ──────────────────────────────────────────────────────────────
+
+const REPORT_MD_TEMPLATE: &str = include_str!("report_template.md.j2");
 
 /// Writes the full temperature report in Markdown format to `writer`.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -439,260 +651,21 @@ pub fn generate_report_md_to_writer(
     store: &dyn TemperatureStore,
     writer: &mut impl Write,
 ) -> Result<()> {
-    let stats = store
-        .get_overall_stats()
-        .context("Failed to get overall stats")?;
-    let sensors = store
-        .get_distinct_sensors()
-        .context("Failed to get distinct sensors")?;
+    let data = build_report_data(store)?;
+    render_md(&data, writer)
+}
 
-    let now = chrono::Local::now();
-    let now_str = now.format("%d/%m/%Y %H:%M").to_string();
-
-    let first_date = stats.first_ts.as_deref().map(|s| &s[..10]).unwrap_or("N/A");
-    let last_ts = stats.last_ts.as_deref().unwrap_or("N/A");
-
-    writeln!(writer, "# Rapport de Température — {}", now_str)?;
-    writeln!(writer)?;
-
-    // ── Résumé ────────────────────────────────────────────────
-    writeln!(writer, "## Résumé")?;
-    writeln!(writer)?;
-    writeln!(
-        writer,
-        "- **Données depuis** : {} ({} snapshots)",
-        first_date, stats.total_snapshots
-    )?;
-    writeln!(writer, "- **Dernière mesure** : {}", last_ts)?;
-    writeln!(writer)?;
-
-    // Warn when db is too young
-    if let Some(first_ts_str) = &stats.first_ts {
-        if let Ok(first) = chrono::NaiveDateTime::parse_from_str(first_ts_str, "%Y-%m-%dT%H:%M:%S")
-        {
-            let days = (now.naive_local() - first).num_days();
-            if days < 360 {
-                writeln!(
-                    writer,
-                    "> ⚠ Données insuffisantes : {} jour(s) enregistré(s) sur 360 requis.",
-                    days
-                )?;
-                if days < 180 {
-                    let ready = first + chrono::TimeDelta::days(180);
-                    writeln!(
-                        writer,
-                        "> Comparaison 90j disponible le {}.",
-                        ready.format("%d/%m/%Y")
-                    )?;
-                }
-                let ready180 = first + chrono::TimeDelta::days(360);
-                writeln!(
-                    writer,
-                    "> Comparaison 180j (saisonnière) complète le {}.",
-                    ready180.format("%d/%m/%Y")
-                )?;
-                writeln!(writer)?;
-            }
-        }
-    } else {
-        writeln!(
-            writer,
-            "> ⚠ Base de données vide — aucune donnée collectée."
-        )?;
-        writeln!(writer)?;
-    }
-
-    // ── Distribution ─────────────────────────────────────────
-    writeln!(writer, "## Distribution des états — 90 derniers jours")?;
-    writeln!(writer)?;
-    writeln!(writer, "| État | Snapshots | % |")?;
-    writeln!(writer, "|---|---|---|")?;
-    let dist = store
-        .get_category_distribution(90)
-        .context("Failed to get distribution")?;
-    let total_dist: i64 = dist.iter().map(|c| c.count).sum();
-    for cat in ["idle", "light", "moderate", "heavy"] {
-        let cnt = dist
-            .iter()
-            .find(|c| c.load_cat == cat)
-            .map(|c| c.count)
-            .unwrap_or(0);
-        let pct = if total_dist > 0 {
-            cnt as f64 / total_dist as f64 * 100.0
-        } else {
-            0.0
-        };
-        let label = match cat {
-            "idle" => "Idle (0–14 % CPU)",
-            "light" => "Léger (15–39 % CPU)",
-            "moderate" => "Modéré (40–74 % CPU)",
-            "heavy" => "Chargé (75–100 % CPU)",
-            _ => continue,
-        };
-        writeln!(writer, "| {} | {} | {:.0}% |", label, cnt, pct)?;
-    }
-    writeln!(writer)?;
-
-    // ── Analyse par capteur ───────────────────────────────────
-    writeln!(writer, "## Analyse par capteur")?;
-    writeln!(writer)?;
-
-    let mut hw_map: HashMap<String, Vec<String>> = HashMap::new();
-    for s in sensors {
-        hw_map.entry(s.hardware).or_default().push(s.sensor);
-    }
-    let mut hw_sorted: Vec<&String> = hw_map.keys().collect();
-    hw_sorted.sort();
-
-    let mut alerts: Vec<String> = Vec::new();
-    let mut peak_30: (f64, String) = (f64::NEG_INFINITY, String::new());
-    let mut peak_90: (f64, String) = (f64::NEG_INFINITY, String::new());
-    let mut peak_180: (f64, String) = (f64::NEG_INFINITY, String::new());
-
-    for hardware in &hw_sorted {
-        writeln!(writer, "### {}", hardware)?;
-        writeln!(writer)?;
-
-        let sensor_list = hw_map.get(*hardware).map(Vec::as_slice).unwrap_or(&[]);
-        for sensor_name in sensor_list {
-            for &cat in DISPLAY_CATS {
-                let mut rows: Vec<String> = Vec::new();
-                for &(days, label) in WINDOWS {
-                    let curr = store
-                        .get_avg_for_window(hardware, sensor_name, cat, days, 0)
-                        .context("Failed to query current window avg")?;
-                    let prev = store
-                        .get_avg_for_window(hardware, sensor_name, cat, days, days)
-                        .context("Failed to query previous window avg")?;
-                    match (curr, prev) {
-                        (Some(c), Some(p)) => {
-                            let delta = c - p;
-                            let sign = if delta >= 0.0 { "+" } else { "" };
-                            let status = delta_status(delta);
-                            rows.push(format!(
-                                "| {} | {:.1} °C | {:.1} °C | {}{:.1}°C | {} |",
-                                label, c, p, sign, delta, status
-                            ));
-                            let pk = match days {
-                                30 => Some(&mut peak_30),
-                                90 => Some(&mut peak_90),
-                                180 => Some(&mut peak_180),
-                                _ => None,
-                            };
-                            if let Some(pk) = pk {
-                                if delta > pk.0 {
-                                    pk.0 = delta;
-                                    pk.1 = format!("{}/{}", hardware, sensor_name);
-                                }
-                            }
-                            if days == 30 && delta >= 5.0 {
-                                let sign = if delta >= 0.0 { "+" } else { "" };
-                                alerts.push(format!(
-                                    "- {} **{}/{}** [{}] → {}{:.1}°C sur {}",
-                                    if delta >= 10.0 {
-                                        "🔴 **CRITIQUE**"
-                                    } else {
-                                        "⚠ **ATTENTION**"
-                                    },
-                                    hardware,
-                                    sensor_name,
-                                    cat,
-                                    sign,
-                                    delta,
-                                    label
-                                ));
-                            }
-                        }
-                        (Some(c), None) => {
-                            rows.push(format!(
-                                "| {} | {:.1} °C | — | — | (pas de période précédente) |",
-                                label, c
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
-                if !rows.is_empty() {
-                    writeln!(writer, "#### {} — {}", sensor_name, cat_label(cat))?;
-                    writeln!(writer)?;
-                    writeln!(
-                        writer,
-                        "| Fenêtre | Moy. actuelle | Moy. précédente | Δ | Statut |"
-                    )?;
-                    writeln!(writer, "|---|---|---|---|---|")?;
-                    for row in rows {
-                        writeln!(writer, "{}", row)?;
-                    }
-                    writeln!(writer)?;
-                }
-            }
-        }
-    }
-
-    // ── Résumé des alertes ────────────────────────────────────
-    writeln!(writer, "## Résumé des alertes")?;
-    writeln!(writer)?;
-    if alerts.is_empty() {
-        writeln!(writer, "✓ Aucune alerte — températures stables.")?;
-    } else {
-        for alert in &alerts {
-            writeln!(writer, "{}", alert)?;
-        }
-    }
-    writeln!(writer)?;
-
-    // ── Recommandation maintenance ────────────────────────────
-    writeln!(writer, "## ⚙ Recommandation Maintenance")?;
-    writeln!(writer)?;
-    if peak_180.0 >= 10.0 {
-        writeln!(writer, "### 🔴 Inspection matérielle urgente")?;
-        writeln!(writer)?;
-        writeln!(
-            writer,
-            "Dérive de **+{:.1}°C sur 180j** détectée — `{}`",
-            peak_180.0, peak_180.1
-        )?;
-        writeln!(writer)?;
-        writeln!(writer, "- Remplacer la pâte thermique (vieillissement)")?;
-        writeln!(
-            writer,
-            "- Inspecter les ventilateurs (roulements, encrassement)"
-        )?;
-        writeln!(writer, "- Nettoyer radiateurs et filtres à poussière")?;
-        writeln!(
-            writer,
-            "- Envisager le remplacement si le matériel a > 5 ans"
-        )?;
-    } else if peak_90.0 >= 8.0 {
-        writeln!(writer, "### ⚠ Maintenance préventive recommandée")?;
-        writeln!(writer)?;
-        writeln!(
-            writer,
-            "Dérive de **+{:.1}°C sur 90j** détectée — `{}`",
-            peak_90.0, peak_90.1
-        )?;
-        writeln!(writer)?;
-        writeln!(writer, "- Nettoyer les filtres et radiateurs")?;
-        writeln!(writer, "- Vérifier l'état des ventilateurs")?;
-        writeln!(writer, "- Envisager le renouvellement de la pâte thermique")?;
-    } else if peak_30.0 >= 5.0 {
-        writeln!(writer, "### ⚠ Nettoyage conseillé")?;
-        writeln!(writer)?;
-        writeln!(
-            writer,
-            "Dérive de **+{:.1}°C sur 30j** détectée — `{}`",
-            peak_30.0, peak_30.1
-        )?;
-        writeln!(writer)?;
-        writeln!(writer, "- Nettoyer les filtres à poussière")?;
-        writeln!(writer, "- Vérifier que les ventilateurs tournent librement")?;
-    } else {
-        writeln!(
-            writer,
-            "✓ Aucune action requise — comportement thermique stable."
-        )?;
-    }
-
+fn render_md(data: &ReportData, writer: &mut impl Write) -> Result<()> {
+    let mut env = minijinja::Environment::new();
+    env.add_template("report.md", REPORT_MD_TEMPLATE)
+        .context("Failed to load report template")?;
+    let tmpl = env
+        .get_template("report.md")
+        .context("Failed to get report template")?;
+    let rendered = tmpl
+        .render(minijinja::context!(data => data))
+        .context("Failed to render report template")?;
+    write!(writer, "{}", rendered)?;
     Ok(())
 }
 

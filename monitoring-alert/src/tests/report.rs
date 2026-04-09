@@ -304,6 +304,164 @@ fn report_maintenance_cleaning_on_30j_drift_only() {
     );
 }
 
+// ── build_report_data ─────────────────────────────────────────
+
+#[test]
+fn build_report_data_empty_db() {
+    let store = make_store();
+    let data = report::build_report_data(&store).expect("build_report_data");
+    assert_eq!(data.total_snapshots, 0);
+    assert_eq!(data.days_collected, -1);
+    assert!(data.sections.is_empty());
+    assert!(data.alerts.is_empty());
+    assert_eq!(data.maintenance.level, "ok");
+}
+
+#[test]
+fn build_report_data_with_sensor_produces_section() {
+    let store = make_store();
+    let snap = store
+        .insert_snapshot(&ts_days_ago(1), Some(5.0), None, "idle")
+        .unwrap();
+    store
+        .insert_reading(snap, "ITE IT8689E", "CPU", 49.0)
+        .unwrap();
+    let data = report::build_report_data(&store).expect("build_report_data");
+    assert_eq!(data.total_snapshots, 1);
+    assert_eq!(data.sections.len(), 1);
+    assert_eq!(data.sections[0].hardware, "ITE IT8689E");
+    assert_eq!(data.sections[0].sensors[0].name, "CPU");
+}
+
+#[test]
+fn build_report_data_drift_sets_maintenance_cleaning() {
+    let store = make_store();
+    for day in 1..31 {
+        let snap = store
+            .insert_snapshot(&ts_days_ago(day), Some(5.0), None, "idle")
+            .unwrap();
+        store
+            .insert_reading(snap, "CPU", "CPU Package", 56.0)
+            .unwrap();
+    }
+    for day in 31..61 {
+        let snap = store
+            .insert_snapshot(&ts_days_ago(day), Some(5.0), None, "idle")
+            .unwrap();
+        store
+            .insert_reading(snap, "CPU", "CPU Package", 50.0)
+            .unwrap();
+    }
+    let data = report::build_report_data(&store).expect("build_report_data");
+    assert_eq!(data.maintenance.level, "cleaning");
+    assert!(!data.maintenance.peak_delta.is_empty());
+    assert!(!data.alerts.is_empty());
+}
+
+// ── Markdown renderer ─────────────────────────────────────────
+
+#[test]
+fn report_md_empty_db_does_not_panic() {
+    let store = make_store();
+    let mut buf = Vec::new();
+    report::generate_report_md_to_writer(&store, &mut buf).expect("md report on empty db");
+    let md = String::from_utf8(buf).unwrap();
+    assert!(md.contains("# Rapport de Température"));
+    assert!(md.contains("Aucune action requise"));
+}
+
+#[test]
+fn report_md_contains_sensor_table() {
+    let store = make_store();
+    let snap = store
+        .insert_snapshot(&ts_days_ago(1), Some(5.0), None, "idle")
+        .unwrap();
+    store
+        .insert_reading(snap, "ITE IT8689E", "CPU", 49.0)
+        .unwrap();
+    let mut buf = Vec::new();
+    report::generate_report_md_to_writer(&store, &mut buf).expect("md report");
+    let md = String::from_utf8(buf).unwrap();
+    assert!(
+        md.contains("### ITE IT8689E"),
+        "should have hardware header"
+    );
+    assert!(md.contains("#### CPU"), "should have sensor header");
+    assert!(md.contains("| Fenêtre |"), "should have table header");
+}
+
+#[test]
+fn report_md_shows_maintenance_urgent_on_180j_drift() {
+    let store = make_store();
+    for day in 1..181 {
+        let snap = store
+            .insert_snapshot(&ts_days_ago(day), Some(5.0), None, "idle")
+            .unwrap();
+        store
+            .insert_reading(snap, "CPU", "CPU Package", 75.0)
+            .unwrap();
+    }
+    for day in 181..361 {
+        let snap = store
+            .insert_snapshot(&ts_days_ago(day), Some(5.0), None, "idle")
+            .unwrap();
+        store
+            .insert_reading(snap, "CPU", "CPU Package", 63.0)
+            .unwrap();
+    }
+    let mut buf = Vec::new();
+    report::generate_report_md_to_writer(&store, &mut buf).expect("md report");
+    let md = String::from_utf8(buf).unwrap();
+    assert!(
+        md.contains("Inspection matérielle urgente"),
+        "MD should show urgent maintenance, got:\n{}",
+        md
+    );
+    assert!(
+        md.contains("Remplacer la pâte thermique"),
+        "MD should list paste replacement action"
+    );
+}
+
+#[test]
+fn report_md_no_alert_when_stable() {
+    let store = make_store();
+    for day in 1..61 {
+        let snap = store
+            .insert_snapshot(&ts_days_ago(day), Some(5.0), None, "idle")
+            .unwrap();
+        store
+            .insert_reading(snap, "CPU", "CPU Package", 45.0)
+            .unwrap();
+    }
+    let mut buf = Vec::new();
+    report::generate_report_md_to_writer(&store, &mut buf).expect("md report");
+    let md = String::from_utf8(buf).unwrap();
+    assert!(
+        md.contains("Aucune alerte"),
+        "stable data should show no alert in MD, got:\n{}",
+        md
+    );
+}
+
+#[test]
+fn report_md_save_creates_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = make_store();
+    let snap = store
+        .insert_snapshot(&ts_days_ago(1), Some(5.0), None, "idle")
+        .unwrap();
+    store
+        .insert_reading(snap, "CPU", "CPU Package", 45.0)
+        .unwrap();
+    let path = report::save_report_md(&store, dir.path(), "test").expect("save_report_md");
+    assert!(path.exists(), "report file should exist at {:?}", path);
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("# Rapport de Température"));
+    // File name should contain the label
+    assert!(path.file_name().unwrap().to_string_lossy().contains("test"));
+}
+
 /// Toutes les températures stables → aucune action requise.
 #[test]
 fn report_maintenance_no_action_when_all_stable() {

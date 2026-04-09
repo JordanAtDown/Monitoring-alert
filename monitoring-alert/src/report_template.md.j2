@@ -1,0 +1,82 @@
+# Rapport de Température — {{ data.generated_at }}
+
+## Résumé
+
+- **Données depuis** : {{ data.first_date }} ({{ data.total_snapshots }} snapshots)
+- **Dernière mesure** : {{ data.last_ts }}
+
+{% if data.days_collected < 0 %}
+> ⚠ Base de données vide — aucune donnée collectée.
+
+{% elif data.days_collected < 360 %}
+> ⚠ Données insuffisantes : {{ data.days_collected }} jour(s) enregistré(s) sur 360 requis.
+{% if data.days_collected < 180 %}
+> Comparaison 90j disponible le {{ data.ready_90j_date }}.
+{% endif %}
+> Comparaison 180j (saisonnière) complète le {{ data.ready_180j_date }}.
+
+{% endif %}
+## Distribution des états — 90 derniers jours
+
+| État | Snapshots | % |
+|---|---|---|
+{% for row in data.distribution %}| {{ row.label }} | {{ row.count }} | {{ row.pct }}% |
+{% endfor %}
+## Analyse par capteur
+
+{% for hw in data.sections %}
+### {{ hw.hardware }}
+
+{% for sensor in hw.sensors %}
+{% for table in sensor.tables %}
+#### {{ sensor.name }} — {{ table.category }}
+
+| Fenêtre | Moy. actuelle | Moy. précédente | Δ | Statut |
+|---|---|---|---|---|
+{% for row in table.rows %}{% if row.no_previous %}| {{ row.window }} | {{ row.current }} °C | — | — | (pas de période précédente) |
+{% else %}| {{ row.window }} | {{ row.current }} °C | {{ row.previous }} °C | {{ row.delta }}°C | {{ row.status }} |
+{% endif %}{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+## Résumé des alertes
+
+{% if data.alerts %}
+{% for alert in data.alerts %}- {{ alert }}
+{% endfor %}
+{% else %}
+✓ Aucune alerte — températures stables.
+{% endif %}
+
+## ⚙ Recommandation Maintenance
+
+{% if data.maintenance.level == "urgent" %}
+### 🔴 Inspection matérielle urgente
+
+Dérive de **{{ data.maintenance.peak_delta }}** détectée — `{{ data.maintenance.peak_sensor }}`
+
+- Remplacer la pâte thermique (vieillissement)
+- Inspecter les ventilateurs (roulements, encrassement)
+- Nettoyer radiateurs et filtres à poussière
+- Envisager le remplacement si le matériel a > 5 ans
+
+{% elif data.maintenance.level == "preventive" %}
+### ⚠ Maintenance préventive recommandée
+
+Dérive de **{{ data.maintenance.peak_delta }}** détectée — `{{ data.maintenance.peak_sensor }}`
+
+- Nettoyer les filtres et radiateurs
+- Vérifier l'état des ventilateurs
+- Envisager le renouvellement de la pâte thermique
+
+{% elif data.maintenance.level == "cleaning" %}
+### ⚠ Nettoyage conseillé
+
+Dérive de **{{ data.maintenance.peak_delta }}** détectée — `{{ data.maintenance.peak_sensor }}`
+
+- Nettoyer les filtres à poussière
+- Vérifier que les ventilateurs tournent librement
+
+{% else %}
+✓ Aucune action requise — comportement thermique stable.
+{% endif %}
