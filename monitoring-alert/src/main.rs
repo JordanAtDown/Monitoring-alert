@@ -316,8 +316,17 @@ fn run_cli() -> Result<()> {
                 TestScenario::All => scenarios.to_vec(),
             };
 
+            let store = store::SqliteStore::new(db::init_db(&db_path)?);
+            let report_path =
+                report::save_report_md(&store, &cfg.reports_dir, "dry-run")
+                    .inspect_err(|e| eprintln!("Rapport MD non généré : {:#}", e))
+                    .ok();
+            if let Some(ref p) = report_path {
+                println!("Rapport généré : {}", p.display());
+            }
+
             let sender: Box<dyn reporter::ReportSender> =
-                Box::new(notification::ToastSender { report_path: None });
+                Box::new(notification::ToastSender { report_path });
             let count = to_send.len();
             for (i, (label, body)) in to_send.into_iter().enumerate() {
                 let test_title = format!("{} [TEST: {}]", title, label);
