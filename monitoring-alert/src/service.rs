@@ -234,17 +234,28 @@ pub mod windows {
 
         // args[0] is the config path passed via launch_arguments at service install time.
         // This allows the service (running as SYSTEM) to find the user's config.toml.
-        let config = match args.first() {
+        let config_path_arg = args.first().cloned();
+        let config = match &config_path_arg {
             Some(path) => crate::config::AppConfig::load_from(std::path::Path::new(path)),
             None => crate::config::AppConfig::load(),
         };
-        let log_path = config
+        let app_dir = config
             .db_path
             .parent()
             .unwrap_or(std::path::Path::new("."))
-            .join("monitoring-alert.log");
-        let _ = crate::logger::init(&log_path, &config.log_level);
-        tracing::info!("Service starting — db: {}", config.db_path.display());
+            .to_path_buf();
+        // Ensure the data directory exists before trying to open the log file.
+        let _ = std::fs::create_dir_all(&app_dir);
+        let log_path = app_dir.join("monitoring-alert.log");
+        if let Err(e) = crate::logger::init(&log_path, &config.log_level) {
+            // Last resort: log to stderr so Windows Event Log can capture it.
+            eprintln!("[monitoring-alert] logger init failed: {:#}", e);
+        }
+        tracing::info!(
+            "Service starting — config: {:?}, db: {}",
+            config_path_arg,
+            config.db_path.display()
+        );
         let result = crate::collector::watch(
             &config.db_path,
             config.collect_interval_secs,

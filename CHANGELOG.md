@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.6] — 2026-04-08
+
+### Fixed
+- `sensors.rs`: ajout d'un timeout ureq (5 s connect / 10 s read) — sans timeout,
+  le startup check LHM bloquait indéfiniment si LHM n'était pas encore prêt,
+  retardant ou bloquant la première collecte
+- `service.rs`: `create_dir_all` du dossier data avant init du logger ; log
+  explicite du chemin config et DB au démarrage ; fallback stderr si le logger
+  fichier ne peut pas s'initialiser
+
 ## [1.3.5] — 2026-04-08
 
 ### Fixed
@@ -236,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.6...HEAD
+[1.3.6]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.2...v1.3.3

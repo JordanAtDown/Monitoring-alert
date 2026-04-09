@@ -86,7 +86,12 @@ pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
     }
 
     let url = format!("http://{}:{}/data.json", lhm_host, lhm_port);
-    let root: Node = ureq::get(&url)
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(5))
+        .timeout_read(std::time::Duration::from_secs(10))
+        .build();
+    let root: Node = agent
+        .get(&url)
         .call()
         .context(
             "Cannot reach LibreHardwareMonitor HTTP server. \
