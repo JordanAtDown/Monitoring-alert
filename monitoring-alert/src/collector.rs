@@ -122,11 +122,34 @@ pub fn watch(
     // ── Startup diagnostics ───────────────────────────────────
     tracing::info!("Startup check — DB: {}", db_path.display());
     match store.get_overall_stats() {
-        Ok(s) => tracing::info!(
-            "Startup check — DB OK ({} snapshot(s), last: {})",
-            s.total_snapshots,
-            s.last_ts.as_deref().unwrap_or("none")
-        ),
+        Ok(s) => {
+            let days = s
+                .first_ts
+                .as_deref()
+                .and_then(|ts| ts.get(..10))
+                .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                .map(|first| (chrono::Local::now().date_naive() - first).num_days());
+            let readiness = match days {
+                None => "aucune donnée".to_string(),
+                Some(d) if d < 2 => format!("{d} j — aucune comparaison disponible"),
+                Some(d) if d < 14 => format!("{d} j — 24h OK, 7j/30j/90j/180j en attente"),
+                Some(d) if d < 60 => format!(
+                    "{d} j — 24h+7j OK, 30j/90j/180j en attente (notifications: dans {} j)",
+                    60 - d
+                ),
+                Some(d) if d < 180 => {
+                    format!("{d} j — 24h+7j+30j OK (notifications actives), 90j/180j en attente")
+                }
+                Some(d) if d < 360 => format!("{d} j — 24h+7j+30j+90j OK, 180j en attente"),
+                Some(d) => format!("{d} j — toutes les fenêtres disponibles"),
+            };
+            tracing::info!(
+                "Startup check — DB OK ({} snapshot(s), last: {}, données: {})",
+                s.total_snapshots,
+                s.last_ts.as_deref().unwrap_or("none"),
+                readiness
+            );
+        }
         Err(e) => tracing::error!("Startup check — DB error: {:#}", e),
     }
     #[cfg(windows)]

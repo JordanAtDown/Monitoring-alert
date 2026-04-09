@@ -317,10 +317,9 @@ fn run_cli() -> Result<()> {
             };
 
             let store = store::SqliteStore::new(db::init_db(&db_path)?);
-            let report_path =
-                report::save_report_md(&store, &cfg.reports_dir, "dry-run")
-                    .inspect_err(|e| eprintln!("Rapport MD non généré : {:#}", e))
-                    .ok();
+            let report_path = report::save_report_md(&store, &cfg.reports_dir, "dry-run")
+                .inspect_err(|e| eprintln!("Rapport MD non généré : {:#}", e))
+                .ok();
             if let Some(ref p) = report_path {
                 println!("Rapport généré : {}", p.display());
             }
@@ -380,20 +379,64 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
         }
         Ok(conn) => {
             let store = store::SqliteStore::new(conn);
-            let (snapshots, size_mb) = store
-                .get_overall_stats()
-                .map(|s| s.total_snapshots)
-                .unwrap_or(0)
-                .pipe(|n| {
-                    let mb = std::fs::metadata(db_path)
-                        .map(|m| m.len() as f64 / 1_048_576.0)
-                        .unwrap_or(0.0);
-                    (n, mb)
-                });
+            let stats = store.get_overall_stats().unwrap_or(db::OverallStats {
+                total_snapshots: 0,
+                first_ts: None,
+                last_ts: None,
+            });
+            let size_mb = std::fs::metadata(db_path)
+                .map(|m| m.len() as f64 / 1_048_576.0)
+                .unwrap_or(0.0);
             println!(
                 "  ✓  Base de données accessible  ({:.1} MB — {} snapshot(s))",
-                size_mb, snapshots
+                size_mb, stats.total_snapshots
             );
+
+            // Compute days collected from first_ts to today.
+            let days = stats
+                .first_ts
+                .as_deref()
+                .and_then(|s| s.get(..10))
+                .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+                .map(|first| (chrono::Local::now().date_naive() - first).num_days());
+
+            if let Some(d) = days {
+                let first_label = stats
+                    .first_ts
+                    .as_deref()
+                    .and_then(|s| s.get(..10))
+                    .unwrap_or("?");
+                println!(
+                    "     Données collectées : {} j  (depuis le {})",
+                    d, first_label
+                );
+            } else {
+                println!("     Données collectées : aucune mesure encore enregistrée");
+            }
+
+            // Report readiness: each window needs 2× its duration to compare current vs previous.
+            println!("     Maturité des comparaisons :");
+            const WINDOWS: &[(i64, &str, &str)] = &[
+                (2, "24h", ""),
+                (14, " 7j", ""),
+                (60, "30j", "  ← utilisé par les notifications"),
+                (180, "90j", ""),
+                (360, "180j", ""),
+            ];
+            let today = chrono::Local::now().date_naive();
+            for &(needed, label, note) in WINDOWS {
+                let collected = days.unwrap_or(0);
+                if collected >= needed {
+                    println!("       {}  ✓ comparaison disponible{}", label, note);
+                } else {
+                    let remaining = needed - collected;
+                    let ready_date = today + chrono::Duration::days(remaining);
+                    println!(
+                        "       {}  … dans {} j  (dispo le {}{})",
+                        label, remaining, ready_date, note
+                    );
+                }
+            }
         }
     }
     println!();
@@ -480,14 +523,6 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
         );
     }
 }
-
-// Helper to thread a value through a closure without a let binding.
-trait Pipe: Sized {
-    fn pipe<R>(self, f: impl FnOnce(Self) -> R) -> R {
-        f(self)
-    }
-}
-impl<T> Pipe for T {}
 
 fn main() -> Result<()> {
     #[cfg(windows)]
