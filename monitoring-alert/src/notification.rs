@@ -28,7 +28,7 @@ pub struct ToastSender {
 
 impl crate::reporter::ReportSender for ToastSender {
     fn send(&self, title: &str, body: &str) -> Result<()> {
-        let file_uri = self.report_path.as_ref().map(path_to_file_uri);
+        let file_uri = self.report_path.as_deref().map(path_to_file_uri);
         send_toast(title, body, file_uri.as_deref())
     }
 }
