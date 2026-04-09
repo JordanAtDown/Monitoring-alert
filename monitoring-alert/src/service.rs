@@ -202,10 +202,18 @@ pub mod windows {
         // Confirms the service thread is executing and shows received args.
         // Safe to remove once the logging issue is resolved.
         {
+            let proc_args: Vec<_> = std::env::args_os().collect();
             let diag = format!(
-                "run_service_main called\nargs ({}):\n{}\n",
+                "run_service_main called\nServiceMain args ({}):\n{}\nProcess argv ({}):\n{}\n",
                 args.len(),
                 args.iter()
+                    .enumerate()
+                    .map(|(i, a)| format!("  [{}] {:?}", i, a))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                proc_args.len(),
+                proc_args
+                    .iter()
                     .enumerate()
                     .map(|(i, a)| format!("  [{}] {:?}", i, a))
                     .collect::<Vec<_>>()
@@ -262,9 +270,10 @@ pub mod windows {
             })
             .context("Failed to set service status Running")?;
 
-        // Windows ServiceMain convention: args[0] = service name, args[1] = first launch_argument.
-        // Our config path is stored as the first launch_argument, so it lives at args[1].
-        let config_path_arg = args.get(1).cloned();
+        // launch_arguments are appended to BINARY_PATH_NAME and arrive as process argv,
+        // NOT as ServiceMain arguments (which only carry the service name).
+        // std::env::args_os(): [0] = exe path, [1] = our config path.
+        let config_path_arg = std::env::args_os().nth(1);
         let config = match &config_path_arg {
             Some(path) => crate::config::AppConfig::load_from(std::path::Path::new(path)),
             None => crate::config::AppConfig::load(),

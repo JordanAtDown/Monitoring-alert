@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.11] — 2026-04-09
+
+### Fixed
+- `service.rs`: lecture du config path depuis `std::env::args_os().nth(1)` au lieu
+  de `args.get(1)` — les `launch_arguments` sont ajoutés au `BINARY_PATH_NAME` du
+  processus (argv), pas aux arguments `ServiceMain` qui ne contiennent que le nom
+  du service
+
 ## [1.3.10] — 2026-04-09
 
 ### Added
@@ -280,7 +288,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.10...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.11...HEAD
+[1.3.11]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.10...v1.3.11
 [1.3.10]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.9...v1.3.10
 [1.3.9]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.8...v1.3.9
 [1.3.8]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.7...v1.3.8
