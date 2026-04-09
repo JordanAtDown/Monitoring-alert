@@ -174,7 +174,14 @@ fn cpu_total_load_extracted() {
     let mut temps = vec![];
     let mut cpu = None;
     let mut gpu = None;
-    collect(&node, "AMD Ryzen 7 5700X", false, &mut temps, &mut cpu, &mut gpu);
+    collect(
+        &node,
+        "AMD Ryzen 7 5700X",
+        false,
+        &mut temps,
+        &mut cpu,
+        &mut gpu,
+    );
     assert_eq!(cpu, Some(1.1));
     assert_eq!(gpu, None);
 }
@@ -193,11 +200,25 @@ fn gpu_core_load_extracted_only_for_gpu_node() {
     let mut gpu = None;
 
     // is_gpu = false → GPU Core load must be ignored
-    collect(&node, "NVIDIA GeForce RTX 5060", false, &mut temps, &mut cpu, &mut gpu);
+    collect(
+        &node,
+        "NVIDIA GeForce RTX 5060",
+        false,
+        &mut temps,
+        &mut cpu,
+        &mut gpu,
+    );
     assert_eq!(gpu, None, "GPU Core load must be ignored when is_gpu=false");
 
     // is_gpu = true → captured
-    collect(&node, "NVIDIA GeForce RTX 5060", true, &mut temps, &mut cpu, &mut gpu);
+    collect(
+        &node,
+        "NVIDIA GeForce RTX 5060",
+        true,
+        &mut temps,
+        &mut cpu,
+        &mut gpu,
+    );
     assert_eq!(gpu, Some(0.0));
 }
 
@@ -214,7 +235,11 @@ fn cpu_load_not_overwritten_by_second_occurrence() {
     let mut cpu = Some(1.1); // already set
     let mut gpu = None;
     collect(&node, "CPU", false, &mut temps, &mut cpu, &mut gpu);
-    assert_eq!(cpu, Some(1.1), "First cpu_load value must not be overwritten");
+    assert_eq!(
+        cpu,
+        Some(1.1),
+        "First cpu_load value must not be overwritten"
+    );
 }
 
 // ── Full benchmark fixture — 15 sensors ──────────────────────────────────────
