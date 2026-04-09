@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.17] — 2026-04-09
+
+### Added
+- `check` : nouvelle section "Maturité des comparaisons" affichant pour
+  chaque fenêtre (24h / 7j / 30j / 90j / 180j) si la comparaison est
+  disponible ou dans combien de jours elle le sera, avec la date exacte
+- `check` : affiche le nombre de jours collectés depuis le premier snapshot
+- Logs de démarrage du service : résumé de maturité en une ligne
+  (ex. "45 j — 24h+7j OK, 30j en attente (notifications: dans 15 j)")
+
+### Fixed
+- `notify-dry-run` : génère désormais un vrai rapport Markdown et affiche
+  le bouton "Ouvrir le rapport" dans le toast, identique au comportement
+  réel de `notify`
+
+### Changed
+- Workflows GitHub Actions rationalisés : `build.yml` supprimé,
+  remplacé par `ci.yml` (branches uniquement) et `release.yml` (tags
+  uniquement, déclenchement direct sans `workflow_run`)
+
 ## [1.3.16] — 2026-04-09
 
 ### Fixed
