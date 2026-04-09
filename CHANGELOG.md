@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.10] — 2026-04-09
+
+### Added
+- Fichier `diag.txt` écrit au tout début de `run_service_main` (avant logger init)
+  pour diagnostiquer les args reçus par le service — sera retiré après résolution
+
 ## [1.3.9] — 2026-04-09
 
 ### Fixed
@@ -274,7 +280,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.9...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.10...HEAD
+[1.3.10]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.9...v1.3.10
 [1.3.9]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.8...v1.3.9
 [1.3.8]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.7...v1.3.8
 [1.3.7]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.6...v1.3.7

@@ -198,6 +198,36 @@ pub mod windows {
 
     /// Called by `ffi_service_main` — runs the actual service logic.
     pub fn run_service_main(args: Vec<OsString>) -> Result<()> {
+        // Diagnostic breadcrumb — written before any logger init.
+        // Confirms the service thread is executing and shows received args.
+        // Safe to remove once the logging issue is resolved.
+        {
+            let diag = format!(
+                "run_service_main called\nargs ({}):\n{}\n",
+                args.len(),
+                args.iter()
+                    .enumerate()
+                    .map(|(i, a)| format!("  [{}] {:?}", i, a))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+            let paths = [
+                std::path::PathBuf::from(
+                    r"C:\Users\Jordan\AppData\Local\Programs\MonitoringAlert\diag.txt",
+                ),
+                std::path::PathBuf::from(r"C:\ProgramData\MonitoringAlert\diag.txt"),
+                std::path::PathBuf::from(r"C:\Windows\Temp\monitoring-alert-diag.txt"),
+            ];
+            for p in &paths {
+                if let Some(d) = p.parent() {
+                    let _ = std::fs::create_dir_all(d);
+                }
+                if std::fs::write(p, &diag).is_ok() {
+                    break;
+                }
+            }
+        }
+
         let stop_flag = Arc::new(AtomicBool::new(false));
         let stop_flag_handler = Arc::clone(&stop_flag);
 
