@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.8] — 2026-04-09
+
+### Fixed
+- Timestamps des logs en heure locale au format `YYYY-MM-DD HH:MM:SS` au lieu
+  de l'UTC RFC3339 avec microsecondes (`2026-04-09T08:51:58.601330Z`)
+
 ## [1.3.7] — 2026-04-09
 
 ### Added
@@ -259,7 +265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.7...HEAD
+[Unreleased]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.8...HEAD
+[1.3.8]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.7...v1.3.8
 [1.3.7]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.4...v1.3.5

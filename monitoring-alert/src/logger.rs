@@ -1,7 +1,9 @@
 use anyhow::Result;
 use std::path::Path;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{
+    fmt, fmt::time::ChronoLocal, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
 /// Initialise le logger :
 /// - Console (stderr) avec couleurs
@@ -39,16 +41,20 @@ pub fn init(log_path: &Path, level: &str) -> Result<()> {
     // Keep the guard alive for the lifetime of the process.
     Box::leak(Box::new(guard));
 
+    let timer = ChronoLocal::new("%Y-%m-%d %H:%M:%S".to_string());
+
     tracing_subscriber::registry()
         .with(EnvFilter::new(level))
         .with(
             fmt::layer()
+                .with_timer(timer.clone())
                 .with_writer(std::io::stderr)
                 .with_target(false)
                 .with_ansi(true),
         )
         .with(
             fmt::layer()
+                .with_timer(timer)
                 .with_writer(non_blocking)
                 .with_target(false)
                 .with_ansi(false),
