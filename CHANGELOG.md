@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.14] — 2026-04-09
+
+### Fixed
+- `collector.rs`: suppression du timestamp redondant `[YYYY-MM-DDTHH:MM:SS]` dans
+  les messages de snapshot — le logger ajoute déjà l'heure locale en préfixe
+- `collector.rs`: retry au démarrage si LHM n'est pas encore disponible — jusqu'à
+  30 tentatives toutes les 10 s (~5 min), chaque tentative est loguée ; log de
+  succès ("LHM ready after N retry(ies)") ou d'échec final avant de basculer en
+  mode collecte normale
+
+### Changed
+- `collector.rs`: extraction du sleep stop-signal-aware en fn `sleep_interruptible`
+  partagée entre le retry LHM et la boucle principale
+
 ## [1.3.13] — 2026-04-09
 
 ### Fixed

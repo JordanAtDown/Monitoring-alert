@@ -7,6 +7,33 @@ use std::sync::Arc;
 use crate::store::{SqliteStore, TemperatureStore};
 use crate::{db, sensors};
 
+/// Number of consecutive empty collections before escalating to an error.
+/// At the default 300s interval this corresponds to ~1 hour.
+const EMPTY_ALERT_THRESHOLD: u32 = 12;
+
+/// Retry interval (seconds) while waiting for LHM to become available at startup.
+#[cfg(windows)]
+const LHM_RETRY_INTERVAL_SECS: u64 = 10;
+
+/// Maximum number of startup retry attempts before giving up and entering the normal loop.
+/// 10s × 30 = 5 min, matching the default collection interval.
+#[cfg(windows)]
+const LHM_RETRY_MAX_ATTEMPTS: u32 = 30;
+
+/// Sleeps for `secs` seconds in 1-second increments, checking the stop signal between each.
+/// Returns `true` if the stop signal fired before the full duration elapsed.
+fn sleep_interruptible(secs: u64, stop: &Arc<AtomicBool>) -> bool {
+    let mut elapsed = 0u64;
+    while elapsed < secs {
+        if stop.load(Ordering::Relaxed) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        elapsed += 1;
+    }
+    false
+}
+
 pub fn load_category(load: f64) -> &'static str {
     match load as u32 {
         0..=14 => "idle",
@@ -59,15 +86,13 @@ pub fn collect_and_store(
     let n = data.temperatures.len();
     if n == 0 {
         tracing::warn!(
-            "[{}] Snapshot #{} — no temperature sensors detected. \
+            "Snapshot #{} — no temperature sensors detected. \
              Is LibreHardwareMonitor running with Remote Web Server enabled (Options → Remote Web Server → Run)?",
-            ts,
             snapshot_id
         );
     } else {
         tracing::info!(
-            "[{}] Snapshot #{} — CPU: {:.1}%, GPU: {:.1}%, cat: {}, sensors: {}",
-            ts,
+            "Snapshot #{} — CPU: {:.1}%, GPU: {:.1}%, cat: {}, sensors: {}",
             snapshot_id,
             data.cpu_load.unwrap_or(0.0),
             data.gpu_load.unwrap_or(0.0),
@@ -77,10 +102,6 @@ pub fn collect_and_store(
     }
     Ok(n)
 }
-
-/// Number of consecutive empty collections before escalating to an error.
-/// At the default 300s interval this corresponds to ~1 hour.
-const EMPTY_ALERT_THRESHOLD: u32 = 12;
 
 pub fn watch(
     db_path: &Path,
@@ -125,12 +146,48 @@ pub fn watch(
                 data.temperatures.len()
             );
         }
-        Err(e) => {
-            tracing::error!(
-                "Startup check — LHM unreachable at {}:{}: {:#}. \
-                 Launch LibreHardwareMonitor as administrator and enable Options › Remote Web Server › Run.",
-                lhm_host, lhm_port, e
+        Err(_) => {
+            tracing::warn!(
+                "Startup check — LHM unreachable at {}:{}, waiting up to {} min for it to start…",
+                lhm_host,
+                lhm_port,
+                LHM_RETRY_MAX_ATTEMPTS as u64 * LHM_RETRY_INTERVAL_SECS / 60,
             );
+            let mut lhm_ready = false;
+            for attempt in 1..=LHM_RETRY_MAX_ATTEMPTS {
+                if sleep_interruptible(LHM_RETRY_INTERVAL_SECS, &stop) {
+                    return Ok(());
+                }
+                match sensors::read_sensors(lhm_host, lhm_port) {
+                    Ok(data) => {
+                        tracing::info!(
+                            "LHM ready after {} retry(ies) — {} sensor(s) detected",
+                            attempt,
+                            data.temperatures.len()
+                        );
+                        lhm_ready = true;
+                        break;
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            "LHM not ready (attempt {}/{}), retrying in {}s…",
+                            attempt,
+                            LHM_RETRY_MAX_ATTEMPTS,
+                            LHM_RETRY_INTERVAL_SECS,
+                        );
+                    }
+                }
+            }
+            if !lhm_ready {
+                tracing::error!(
+                    "LHM still unreachable after {} retries (~{} min). \
+                     The service will continue and retry every {}s. \
+                     Launch LibreHardwareMonitor as administrator and enable Options › Remote Web Server › Run.",
+                    LHM_RETRY_MAX_ATTEMPTS,
+                    LHM_RETRY_MAX_ATTEMPTS as u64 * LHM_RETRY_INTERVAL_SECS / 60,
+                    interval_secs,
+                );
+            }
         }
     }
     // ─────────────────────────────────────────────────────────
@@ -191,14 +248,8 @@ pub fn watch(
         }
 
         iterations += 1;
-        // Sleep in small increments to remain responsive to stop signals.
-        let mut elapsed = 0u64;
-        while elapsed < interval_secs {
-            if stop.load(Ordering::Relaxed) {
-                return Ok(());
-            }
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            elapsed += 1;
+        if sleep_interruptible(interval_secs, &stop) {
+            return Ok(());
         }
     }
     Ok(())
