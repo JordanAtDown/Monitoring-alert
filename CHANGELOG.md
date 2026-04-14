@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.21] — 2026-04-14
+
+### Fixed
+- `scripts/Register-Tasks.ps1` : `New-ScheduledTaskTrigger` n'a pas de
+  paramètre `-Monthly` en PowerShell — la tâche mensuelle n'a jamais pu
+  être créée. Remplacé par `schtasks.exe /SC MONTHLY` avec activation
+  de `StartWhenAvailable` via `Set-ScheduledTask`
+
 ## [1.3.20] — 2026-04-14
 
 ### Fixed
