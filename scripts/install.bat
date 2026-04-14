@@ -122,7 +122,7 @@ if %errorLevel% neq 0 (
 
 :: --- 6. Création des tâches planifiées de rapport ---
 echo [6/6] Creation des taches planifiees de rapport (StartWhenAvailable)...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" -ExePath "!INSTALL_DIR!\%EXE_NAME!" -Username "%USERNAME%" -DailyEnabled "!DAILY_ENABLED!" -DailyTime "!DAILY_TIME!" -WeeklyEnabled "!WEEKLY_ENABLED!" -WeeklyDay "!WEEKLY_DAY!" -WeeklyTime "!WEEKLY_TIME!" -MonthlyEnabled "!MONTHLY_ENABLED!" -MonthlyDay "!MONTHLY_DAY!" -MonthlyTime "!MONTHLY_TIME!"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" -ExePath "!INSTALL_DIR!\%EXE_NAME%" -Username "%USERNAME%" -DailyEnabled "!DAILY_ENABLED!" -DailyTime "!DAILY_TIME!" -WeeklyEnabled "!WEEKLY_ENABLED!" -WeeklyDay "!WEEKLY_DAY!" -WeeklyTime "!WEEKLY_TIME!" -MonthlyEnabled "!MONTHLY_ENABLED!" -MonthlyDay "!MONTHLY_DAY!" -MonthlyTime "!MONTHLY_TIME!"
 
 echo.
 echo Installation terminee. Le service MonitoringAlert est actif.
