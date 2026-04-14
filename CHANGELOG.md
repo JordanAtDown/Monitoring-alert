@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.19] — 2026-04-14
+
+### Fixed
+- `scripts/Register-Tasks.ps1` : `$MonthlyDay` passé en `[string]` au lieu
+  de `[int]` pour éviter l'erreur `NamedParameterNotFound` lors du binding
+  des paramètres depuis CMD
+- `scripts/install.bat`, `update.bat`, `apply-config.bat` : suppression des
+  continuations `^` multi-lignes dans l'appel à `Register-Tasks.ps1` —
+  remplacées par une seule ligne (les fichiers `.bat` produits sur Linux ont
+  des fins de ligne LF qui rendaient `^` instable sur Windows CMD)
+- `release.yml` : ajout de `apply-config.bat` dans l'archive zip de release
+
 ## [1.3.18] — 2026-04-14
 
 ### Added
