@@ -90,11 +90,12 @@ if not "!DB_PATH!"=="" (
     )
 )
 
-echo        Copie de config.toml, Register-Tasks.ps1, uninstall.bat, update.bat...
+echo        Copie de config.toml, Register-Tasks.ps1, uninstall.bat, update.bat, apply-config.bat...
 copy /Y "%CONFIG_FILE%"                    "%DATA_DIR%\config.toml"          >nul
 copy /Y "%SCRIPT_DIR%Register-Tasks.ps1"   "%DATA_DIR%\Register-Tasks.ps1"   >nul
 copy /Y "%SCRIPT_DIR%uninstall.bat"        "%DATA_DIR%\uninstall.bat"        >nul
 copy /Y "%SCRIPT_DIR%update.bat"           "%DATA_DIR%\update.bat"           >nul
+copy /Y "%SCRIPT_DIR%apply-config.bat"     "%DATA_DIR%\apply-config.bat"     >nul
 
 :: --- 3. Enregistrement de l'AUMID pour les notifications toast ---
 echo [3/6] Enregistrement de l'AUMID pour les notifications...

@@ -38,7 +38,9 @@ foreach ($name in 'RapportJournalier', 'RapportHebdomadaire', 'RapportMensuel') 
 
 # ── Rapport journalier ─────────────────────────────────────────
 if ($DailyEnabled -ieq 'true') {
-    $action  = New-ScheduledTaskAction -Execute $ExePath -Argument 'notify --daily'
+    $action  = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --daily`""
     $trigger = New-ScheduledTaskTrigger -Daily -At $DailyTime
     Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportJournalier' `
         -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `
@@ -57,7 +59,9 @@ if ($WeeklyEnabled -ieq 'true') {
     $day = $dayMap[$WeeklyDay.ToUpper()]
     if (-not $day) { $day = 'Monday' }
 
-    $action  = New-ScheduledTaskAction -Execute $ExePath -Argument 'notify --weekly'
+    $action  = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --weekly`""
     $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $day -At $WeeklyTime
     Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportHebdomadaire' `
         -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `
@@ -69,7 +73,9 @@ if ($WeeklyEnabled -ieq 'true') {
 
 # ── Rapport mensuel ────────────────────────────────────────────
 if ($MonthlyEnabled -ieq 'true') {
-    $action  = New-ScheduledTaskAction -Execute $ExePath -Argument 'notify --monthly'
+    $action  = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
     $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth $MonthlyDay -At $MonthlyTime
     Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' `
         -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `

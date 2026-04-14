@@ -166,7 +166,11 @@ monthly_report_time    = "08:00"
 | `collect_interval_secs` | Redémarrer le service |
 | `retention_days` | Redémarrer le service |
 | `log_level` | Redémarrer le service |
-| Paramètres de rapport | Lancer `update.bat` en tant qu'administrateur |
+| Paramètres de rapport | Lancer `apply-config.bat` en tant qu'administrateur |
+| Tous les autres | Lancer `apply-config.bat` en tant qu'administrateur |
+
+`apply-config.bat` relit `config.toml`, redémarre le service et resynchronise
+les tâches planifiées — sans télécharger de nouvelle version.
 
 ---
 
@@ -244,19 +248,33 @@ monitoring-alert.exe notify-dry-run --scenario all --period weekly
 Le titre est suffixé `[TEST: <scénario>]` pour distinguer les toasts de test
 des vrais rapports dans le centre de notifications.
 
+### Notifications pendant les sessions de jeu
+
+Les notifications Windows peuvent apparaître par-dessus un jeu en mode
+fenêtré ou borderless. Ce comportement est contrôlé par Windows, pas par
+l'application.
+
+Pour désactiver les interruptions pendant les parties, activez
+**Focus Assist → Priorité uniquement** ou **Alarmes uniquement** dans
+`Paramètres → Système → Notifications` (Windows 10) ou
+`Paramètres → Système → Ne pas déranger` (Windows 11).
+
+Sur Windows 11, l'option **"Activer Ne pas déranger automatiquement → Lors
+de l'utilisation d'une application en plein écran"** bloque les toasts
+uniquement pendant les jeux en plein écran exclusif.
+
 ---
 
 ## Mise à jour
 
-Lancer `update.bat` (dans `C:\ProgramData\MonitoringAlert\`) **en tant qu'administrateur**.
+Lancer `update.bat` (dans `%LOCALAPPDATA%\Programs\MonitoringAlert\`) **en tant qu'administrateur**.
 
 Le script :
 1. Arrête le service
-2. Télécharge la dernière release depuis GitHub
-3. Remplace l'exécutable
+2. Télécharge l'archive zip de la dernière release depuis GitHub
+3. Remplace l'exécutable **et** les scripts (`Register-Tasks.ps1`, `apply-config.bat`, `uninstall.bat`)
 4. Redémarre le service
 5. **Resynchronise les tâches planifiées** avec la configuration actuelle de `config.toml`
-   (active, désactive ou met à jour les horaires selon les valeurs courantes)
 
 `config.toml` et `temperatures.db` sont conservés intacts.
 
