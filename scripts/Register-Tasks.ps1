@@ -89,14 +89,21 @@ if ($WeeklyEnabled) {
 }
 
 # ── Rapport mensuel ────────────────────────────────────────────
+# New-ScheduledTaskTrigger n'a pas de paramètre -Monthly.
+# On utilise schtasks.exe qui supporte /SC MONTHLY nativement.
 if ($MonthlyEnabled) {
-    $action  = New-ScheduledTaskAction `
-        -Execute "powershell.exe" `
-        -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
-    $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth $MonthlyDay -At $MonthlyTime
-    Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' `
-        -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `
-        -Force | Out-Null
+    $psArgs = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
+    schtasks.exe /Create /F `
+        /TN '\MonitoringAlert\RapportMensuel' `
+        /TR "powershell.exe $psArgs" `
+        /SC MONTHLY /D $MonthlyDay /ST $MonthlyTime `
+        /RU $Username | Out-Null
+    # Activer StartWhenAvailable via le module ScheduledTasks
+    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' -ErrorAction SilentlyContinue
+    if ($task) {
+        $task.Settings.StartWhenAvailable = $true
+        Set-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' -Settings $task.Settings | Out-Null
+    }
     Write-Host "       Rapport mensuel       : jour $MonthlyDay a $MonthlyTime  [StartWhenAvailable]"
 } else {
     Write-Host "       Rapport mensuel       : desactive"
