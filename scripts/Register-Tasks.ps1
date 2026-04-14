@@ -19,7 +19,7 @@ param(
     [string]$WeeklyTime     = '08:00',
 
     [string]$MonthlyEnabled = 'false',
-    [int]   $MonthlyDay     = 1,
+    [string]$MonthlyDay     = '1',
     [string]$MonthlyTime    = '08:00'
 )
 
@@ -76,7 +76,7 @@ if ($MonthlyEnabled -ieq 'true') {
     $action  = New-ScheduledTaskAction `
         -Execute "powershell.exe" `
         -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
-    $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth $MonthlyDay -At $MonthlyTime
+    $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth ([int]$MonthlyDay) -At $MonthlyTime
     Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' `
         -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `
         -Force | Out-Null

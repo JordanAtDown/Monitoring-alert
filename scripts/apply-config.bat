@@ -62,12 +62,7 @@ for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFI
 for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$c=gc '%CONFIG_FILE%' -Raw;if($c-match 'monthly_report_day\s*=\s*(\d+)'){$matches[1]}else{'1'}"`) do set "MONTHLY_DAY=%%v"
 for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('monthly_report_time\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]}else{'08:00'}"`) do set "MONTHLY_TIME=%%v"
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" ^
-    -ExePath "!INSTALL_DIR!\%EXE_NAME%" ^
-    -Username "%USERNAME%" ^
-    -DailyEnabled "!DAILY_ENABLED!"   -DailyTime "!DAILY_TIME!" ^
-    -WeeklyEnabled "!WEEKLY_ENABLED!" -WeeklyDay "!WEEKLY_DAY!" -WeeklyTime "!WEEKLY_TIME!" ^
-    -MonthlyEnabled "!MONTHLY_ENABLED!" -MonthlyDay "!MONTHLY_DAY!" -MonthlyTime "!MONTHLY_TIME!"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" -ExePath "!INSTALL_DIR!\%EXE_NAME!" -Username "%USERNAME%" -DailyEnabled "!DAILY_ENABLED!" -DailyTime "!DAILY_TIME!" -WeeklyEnabled "!WEEKLY_ENABLED!" -WeeklyDay "!WEEKLY_DAY!" -WeeklyTime "!WEEKLY_TIME!" -MonthlyEnabled "!MONTHLY_ENABLED!" -MonthlyDay "!MONTHLY_DAY!" -MonthlyTime "!MONTHLY_TIME!"
 
 echo.
 echo Configuration appliquee.

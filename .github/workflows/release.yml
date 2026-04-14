@@ -116,7 +116,7 @@ jobs:
           DIR="monitoring-alert-v${VERSION}-windows-x64"
           mkdir "$DIR"
           cp artifact/monitoring-alert.exe "$DIR/"
-          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/Register-Tasks.ps1 "$DIR/"
+          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/Register-Tasks.ps1 scripts/apply-config.bat "$DIR/"
           zip -r "${DIR}.zip" "$DIR/"
           echo "ARCHIVE=${DIR}.zip" >> "$GITHUB_ENV"
 
