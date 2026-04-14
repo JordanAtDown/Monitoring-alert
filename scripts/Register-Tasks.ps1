@@ -1,31 +1,48 @@
 <#
 .SYNOPSIS
     Crée les tâches planifiées MonitoringAlert avec StartWhenAvailable.
-    Appelé par install.bat et update.bat.
+    Appelé par install.bat, update.bat et apply-config.bat.
 
 .DESCRIPTION
+    Lit la configuration des rapports directement depuis config.toml.
     StartWhenAvailable garantit que si le PC était éteint à l'heure prévue,
     la notification sera envoyée dès la prochaine ouverture de session.
 #>
 param(
     [Parameter(Mandatory)][string]$ExePath,
-    [Parameter(Mandatory)][string]$Username,
-
-    [string]$DailyEnabled   = 'false',
-    [string]$DailyTime      = '08:00',
-
-    [string]$WeeklyEnabled  = 'false',
-    [string]$WeeklyDay      = 'MON',
-    [string]$WeeklyTime     = '08:00',
-
-    [string]$MonthlyEnabled = 'false',
-    [string]$MonthlyDay     = '1',
-    [string]$MonthlyTime    = '08:00'
+    [Parameter(Mandatory)][string]$Username
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# ── Lecture de config.toml ─────────────────────────────────────
+$ConfigPath = Join-Path $env:LOCALAPPDATA 'Programs\MonitoringAlert\config.toml'
+$Config = Get-Content $ConfigPath -Raw
+
+function Get-TomlBool([string]$Key, [bool]$Default) {
+    if ($Config -match "$Key\s*=\s*(\w+)") { return $matches[1] -ieq 'true' }
+    return $Default
+}
+function Get-TomlString([string]$Key, [string]$Default) {
+    if ($Config -match "$Key\s*=\s*""([^""]+)""") { return $matches[1] }
+    return $Default
+}
+function Get-TomlInt([string]$Key, [int]$Default) {
+    if ($Config -match "$Key\s*=\s*(\d+)") { return [int]$matches[1] }
+    return $Default
+}
+
+$DailyEnabled   = Get-TomlBool   'daily_report_enabled'   $true
+$DailyTime      = Get-TomlString 'daily_report_time'      '08:00'
+$WeeklyEnabled  = Get-TomlBool   'weekly_report_enabled'  $false
+$WeeklyDay      = Get-TomlString 'weekly_report_day'      'MON'
+$WeeklyTime     = Get-TomlString 'weekly_report_time'     '08:00'
+$MonthlyEnabled = Get-TomlBool   'monthly_report_enabled' $false
+$MonthlyDay     = Get-TomlInt    'monthly_report_day'     1
+$MonthlyTime    = Get-TomlString 'monthly_report_time'    '08:00'
+
+# ── Initialisation ─────────────────────────────────────────────
 $TaskPath  = '\MonitoringAlert\'
 $Settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable
 $Principal = New-ScheduledTaskPrincipal -UserId $Username -LogonType Interactive
@@ -37,7 +54,7 @@ foreach ($name in 'RapportJournalier', 'RapportHebdomadaire', 'RapportMensuel') 
 }
 
 # ── Rapport journalier ─────────────────────────────────────────
-if ($DailyEnabled -ieq 'true') {
+if ($DailyEnabled) {
     $action  = New-ScheduledTaskAction `
         -Execute "powershell.exe" `
         -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --daily`""
@@ -51,7 +68,7 @@ if ($DailyEnabled -ieq 'true') {
 }
 
 # ── Rapport hebdomadaire ───────────────────────────────────────
-if ($WeeklyEnabled -ieq 'true') {
+if ($WeeklyEnabled) {
     $dayMap = @{
         MON = 'Monday'; TUE = 'Tuesday';  WED = 'Wednesday'; THU = 'Thursday'
         FRI = 'Friday'; SAT = 'Saturday'; SUN = 'Sunday'
@@ -72,11 +89,11 @@ if ($WeeklyEnabled -ieq 'true') {
 }
 
 # ── Rapport mensuel ────────────────────────────────────────────
-if ($MonthlyEnabled -ieq 'true') {
+if ($MonthlyEnabled) {
     $action  = New-ScheduledTaskAction `
         -Execute "powershell.exe" `
         -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
-    $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth ([int]$MonthlyDay) -At $MonthlyTime
+    $trigger = New-ScheduledTaskTrigger -Monthly -DaysOfMonth $MonthlyDay -At $MonthlyTime
     Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' `
         -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `
         -Force | Out-Null

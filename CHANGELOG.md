@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.20] — 2026-04-14
+
+### Fixed
+- `scripts/install.bat`, `update.bat`, `apply-config.bat` : correction
+  de la typo `%EXE_NAME!` (délimiteurs `%` et `!` mélangés) qui faisait
+  avaler `-Username "%USERNAME%"` par CMD et provoquait une invite
+  interactive pour le paramètre `Username` de `Register-Tasks.ps1`
+
 ## [1.3.19] — 2026-04-14
 
 ### Fixed
