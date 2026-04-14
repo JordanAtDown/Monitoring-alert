@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.18] — 2026-04-14
+
+### Added
+- `scripts/apply-config.bat` : nouveau script pour appliquer les modifications
+  de `config.toml` sans télécharger de mise à jour — redémarre le service et
+  resynchronise les tâches planifiées
+- `README.md` : note sur les notifications en session de jeu (Focus Assist /
+  Ne pas déranger Windows)
+
+### Fixed
+- `scripts/Register-Tasks.ps1` : les tâches planifiées utilisent désormais
+  `powershell.exe -WindowStyle Hidden` — plus aucune fenêtre console n'apparaît
+  lors de l'envoi des notifications
+- `scripts/update.bat` : télécharge désormais le zip complet de la release et
+  met à jour les scripts (`Register-Tasks.ps1`, `apply-config.bat`,
+  `uninstall.bat`) en plus de l'exécutable
+- `scripts/install.bat` : copie `apply-config.bat` dans le dossier de données
+
 ## [1.3.17] — 2026-04-09
 
 ### Added
