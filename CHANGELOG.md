@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `scripts/Register-Tasks.ps1` : la création de la tâche planifiée mensuelle
+  échouait silencieusement dès que le chemin de l'exécutable contenait un
+  espace (ex. `C:\Program Files\MonitoringAlert\...`) — `schtasks.exe`
+  reconstruit sa ligne de commande depuis une chaîne texte et cassait sur
+  le guillemet imbriqué. Remplacé par un trigger CIM natif
+  (`MSFT_TaskMonthlyTrigger`) via `Register-ScheduledTask`, comme pour les
+  tâches journalière et hebdomadaire.
+
 ## [1.3.21] — 2026-04-14
 
 ### Fixed

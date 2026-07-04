@@ -89,21 +89,27 @@ if ($WeeklyEnabled) {
 }
 
 # ── Rapport mensuel ────────────────────────────────────────────
-# New-ScheduledTaskTrigger n'a pas de paramètre -Monthly.
-# On utilise schtasks.exe qui supporte /SC MONTHLY nativement.
+# New-ScheduledTaskTrigger n'a pas de paramètre -Monthly. On construit le
+# trigger CIM directement (MSFT_TaskMonthlyTrigger) plutôt que de passer par
+# schtasks.exe : ce dernier reconstruit sa ligne de commande depuis une
+# chaîne texte et casse dès que $ExePath contient un espace (ex. "C:\Program
+# Files\..."), car le guillemet imbriqué autour du chemin n'est plus reconnu.
 if ($MonthlyEnabled) {
-    $psArgs = "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
-    schtasks.exe /Create /F `
-        /TN '\MonitoringAlert\RapportMensuel' `
-        /TR "powershell.exe $psArgs" `
-        /SC MONTHLY /D $MonthlyDay /ST $MonthlyTime `
-        /RU $Username | Out-Null
-    # Activer StartWhenAvailable via le module ScheduledTasks
-    $task = Get-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' -ErrorAction SilentlyContinue
-    if ($task) {
-        $task.Settings.StartWhenAvailable = $true
-        Set-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' -Settings $task.Settings | Out-Null
-    }
+    $action = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"& '$ExePath' notify --monthly`""
+
+    $triggerClass = Get-CimClass -ClassName MSFT_TaskMonthlyTrigger `
+        -Namespace Root/Microsoft/Windows/TaskScheduler
+    $trigger = New-CimInstance -CimClass $triggerClass -ClientOnly
+    $trigger.DaysOfMonth   = [uint32]1 -shl ($MonthlyDay - 1)
+    $trigger.MonthsOfYear  = 0xFFF
+    $trigger.StartBoundary = (Get-Date -Format 'yyyy-MM-dd') + "T$MonthlyTime`:00"
+    $trigger.Enabled       = $true
+
+    Register-ScheduledTask -TaskPath $TaskPath -TaskName 'RapportMensuel' `
+        -Action $action -Trigger $trigger -Settings $Settings -Principal $Principal `
+        -Force | Out-Null
     Write-Host "       Rapport mensuel       : jour $MonthlyDay a $MonthlyTime  [StartWhenAvailable]"
 } else {
     Write-Host "       Rapport mensuel       : desactive"
