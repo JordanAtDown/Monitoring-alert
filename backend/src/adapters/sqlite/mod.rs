@@ -6,10 +6,8 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 
 use crate::application::clock::day_string;
-use crate::application::ports::{
-    ExtraSeries, LatestReading, LatestSnapshot, OverallStats, SeriesInfo,
-};
-use crate::domain::model::{ExtraKind, ExtraReading};
+use crate::application::ports::{LatestReading, LatestSnapshot, OverallStats, SeriesInfo};
+use crate::domain::model::{ExtraKind, ExtraReading, ExtraSeries};
 use crate::domain::trends::DayStat;
 
 mod store;

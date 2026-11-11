@@ -2,6 +2,7 @@
 //! needs through the ports and hands it to the business code of the domain; the web server only
 //! calls them (one endpoint, one use case).
 
+pub mod get_cooling;
 pub mod get_curves;
 pub mod get_health;
 pub mod get_overview;

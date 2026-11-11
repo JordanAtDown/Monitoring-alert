@@ -133,6 +133,29 @@ pub fn temp(v: f64) -> String {
     format!("{} °C", one_decimal(v))
 }
 
+/// "0,31 °C/W": a thermal resistance, two decimals since it is a few tenths of a degree per watt.
+pub fn resistance(v: f64) -> String {
+    format!("{:.2} °C/W", v).replace('.', ",")
+}
+
+/// "1 293 tr/min".
+pub fn rpm(v: f64) -> String {
+    format!("{} tr/min", int(v.round() as i64))
+}
+
+/// "+6 %", "−12 %" (a real minus sign); no sign when it rounds to nothing.
+pub fn relative(fraction: f64) -> String {
+    let percent = (fraction * 100.0).round();
+    let sign = if percent > 0.0 {
+        "+"
+    } else if percent < 0.0 {
+        "−"
+    } else {
+        ""
+    };
+    format!("{sign}{} %", percent.abs())
+}
+
 /// "± 0,6 °C": how much of a change could be noise.
 pub fn margin(v: f64) -> String {
     format!("± {}", temp(v))

@@ -37,7 +37,7 @@ const HEALTH_OK = {
 /** Opens the real page in a simulated browser, with the API answering from recorded responses. */
 const READY = { home: ".comp-card", curves: "#curves .picker", details: "#components table", status: "#health" };
 
-async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status = fixture("status.json"), overview = fixture("overview-idle.json"), curves = {}, sensor = fixture("sensor-disk1.json"), health = HEALTH_OK } = {}) {
+async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status = fixture("status.json"), overview = fixture("overview-idle.json"), cooling = fixture("cooling-idle.json"), curves = {}, sensor = fixture("sensor-disk1.json"), health = HEALTH_OK } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
     url: `http://127.0.0.1:8787/#page=${page}${hash}`,
     runScripts: "outside-only",
@@ -62,6 +62,7 @@ async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status
       "/api/health": health,
       "/api/update": update,
       "/api/overview": load === "idle" || !load ? overview : { ...overview, load: { ...overview.load, id: load, label: "Charge légère" }, headline: { ...overview.headline, lead: `Depuis le début, ${load} :` } },
+      "/api/cooling": cooling,
       "/api/curves": curvesByMode[u.searchParams.get("mode") ?? "temp"],
       "/api/sensor": sensor,
     }[u.pathname];
@@ -169,6 +170,57 @@ test("the little curves take the color of the trend, and the word stays next to 
     assert.equal(cards[i].querySelector("polyline").getAttribute("stroke"), colors[id], id);
     assert.match(cards[i].textContent, new RegExp(`Mot ${i}`), "the word stays next to the curve");
   });
+  page.close();
+});
+
+test("the cooling card says whether the processor's cooling got worse, in the backend's words", async () => {
+  const page = await openPage();
+  const card = page.d.querySelector("#cooling");
+  assert.ok(card, "the home page has a cooling card");
+  const c = fixture("cooling-idle.json");
+  assert.equal(card.querySelector("h2").textContent, "Le refroidissement du processeur");
+  assert.equal(card.querySelector(".lead").textContent, c.lead);
+  assert.ok(card.querySelector(".lead").classList.contains(`cooling-${c.verdict}`), "the sentence carries its verdict");
+  assert.match(page.text("#cooling")[0], /nettoyer.*pâte thermique/);
+  // One line per figure, with the beginning, the last 30 days and the change.
+  const rows = [...card.querySelectorAll("tbody tr")].map((tr) => [...tr.children].map((x) => x.textContent));
+  assert.equal(rows.length, c.rows.length);
+  assert.deepEqual(rows[0].slice(1), [c.rows[0].baseline, c.rows[0].current, c.rows[0].change]);
+  assert.ok(rows[0][0].startsWith(c.rows[0].label) && rows[0][0].includes(c.rows[0].hint));
+  assert.equal(card.querySelector("details p").textContent, c.how);
+  assert.deepEqual(page.errors, []);
+  page.close();
+});
+
+test("the cooling card prints what it is given, word for word", async () => {
+  const cooling = {
+    state: "ok", verdict: "better", lead: "Une phrase du backend.", detail: "Un détail du backend.",
+    rows: [{ label: "Une mesure", hint: "ce que ça veut dire", baseline: "1 unité", current: "2 unités", change: "+100 %" }],
+    how: "Comment, par le backend.", since: "2026-11-11",
+  };
+  const page = await openPage({ cooling });
+  assert.match(page.text("#cooling")[0], /Une phrase du backend\..*Un détail du backend\..*Une mesure.*1 unité.*2 unités.*\+100 %.*Comment, par le backend\./);
+  assert.ok(page.d.querySelector("#cooling .lead").classList.contains("cooling-better"));
+  page.close();
+});
+
+test("before there is enough to say, the cooling card says how much is missing and draws no table", async () => {
+  const cooling = {
+    state: "few", verdict: "unknown", lead: "Pas encore assez d'historique pour juger le refroidissement.",
+    detail: "Pour l'instant : 12 jours de mesures.", rows: [], how: "Comment.", since: "2026-11-01",
+  };
+  const page = await openPage({ cooling });
+  assert.match(page.text("#cooling")[0], /Pas encore assez d'historique.*12 jours de mesures/);
+  assert.equal(page.d.querySelector("#cooling table"), null);
+  assert.ok(page.d.querySelector("#cooling .muted"), "an explanation is set back, not shouted");
+  page.close();
+});
+
+test("the home page still works when the cooling cannot be fetched", async () => {
+  const page = await openPage({ cooling: null });
+  assert.equal(page.d.querySelector("#cooling"), null, "no card rather than a broken page");
+  assert.ok(page.d.querySelector(".comp-card"), "the components are still there");
+  assert.deepEqual(page.errors, []);
   page.close();
 });
 

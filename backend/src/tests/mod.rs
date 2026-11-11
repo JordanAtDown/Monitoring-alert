@@ -1,5 +1,6 @@
 // Domain
 mod components;
+mod cooling;
 mod dashboard;
 mod health;
 mod load;

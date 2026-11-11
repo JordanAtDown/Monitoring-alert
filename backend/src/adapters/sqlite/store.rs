@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 use crate::application::ports::{
-    ExtraSeries, LatestSnapshot, OverallStats, ReadModel, SeriesInfo, TemperatureStore,
+    LatestSnapshot, OverallStats, ReadModel, SeriesInfo, TemperatureStore,
 };
-use crate::domain::model::NewSnapshot;
+use crate::domain::model::{ExtraSeries, NewSnapshot};
 use crate::domain::trends::DayStat;
 
 /// SQLite-backed implementation of [`TemperatureStore`] and [`ReadModel`].

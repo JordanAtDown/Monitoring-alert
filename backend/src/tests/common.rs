@@ -57,3 +57,28 @@ pub fn insert_daily_series_ending(
     }
     tx.commit().expect("commit");
 }
+
+/// `days` consecutive days ending the day before yesterday of a fan speed or a power draw, as the
+/// daily aggregates the dashboard reads.
+pub fn insert_extra_daily_series(
+    conn: &rusqlite::Connection,
+    hardware: &str,
+    sensor: &str,
+    kind: &str,
+    load_cat: &str,
+    days: u32,
+    f: impl Fn(u32) -> f64,
+) {
+    let tx = conn.unchecked_transaction().expect("begin");
+    for i in 0..days {
+        let day = clock::day_string(days - i + 1);
+        let value = f(i);
+        tx.execute(
+            "INSERT INTO extra_daily (day, hardware, sensor, kind, load_cat, n, min, median, p95, max, avg)
+             VALUES (?1, ?2, ?3, ?4, ?5, 288, ?6, ?6, ?6, ?6, ?6)",
+            rusqlite::params![day, hardware, sensor, kind, load_cat, value],
+        )
+        .expect("insert extra_daily");
+    }
+    tx.commit().expect("commit");
+}

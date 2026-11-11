@@ -129,6 +129,20 @@ export interface Overview {
   components: ComponentView[];
 }
 
+/** Whether the processor's cooling got worse: the sentence, and the figures it rests on. */
+export interface Cooling {
+  /** `none`: nothing recorded to talk about; `few`: not enough history; `ok`. */
+  state: "none" | "few" | "ok";
+  /** What the page says about the cooling, for its color only: the words come written. */
+  verdict: "worse" | "watch" | "better" | "same" | "unknown";
+  lead: string;
+  detail: string | null;
+  rows: { label: string; hint: string; baseline: string; current: string; change: string }[];
+  /** How the figures are obtained. */
+  how: string;
+  since: string | null;
+}
+
 export interface Reference {
   value: number;
   label: string;
@@ -181,6 +195,7 @@ export const api = {
   update: () => getJson<UpdateInfo>("/api/update"),
   health: () => getJson<Health>("/api/health"),
   overview: (load: Load) => getJson<Overview>("/api/overview", { load }),
+  cooling: (load: Load) => getJson<Cooling>("/api/cooling", { load }),
   curves: (load: Load, mode: CurvesMode) => getJson<Curves>("/api/curves", { load, mode }),
   sensor: (hardware: string, sensor: string, load: Load) => getJson<SensorPage>("/api/sensor", { hardware, sensor, load }),
 };

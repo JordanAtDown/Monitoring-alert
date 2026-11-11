@@ -239,6 +239,29 @@ bord le dit au lieu de conclure.
 
 Rien ne déclenche d'alerte : ce sont des chiffres à regarder.
 
+### Le refroidissement du processeur
+
+Une température mélange la pièce, l'effort demandé au PC et l'état du refroidissement, et seul ce dernier
+justifie un nettoyage ou une nouvelle pâte thermique. La carte « Le refroidissement du processeur » de l'accueil
+l'isole avec deux chiffres, comparés aux 30 premiers jours comme les températures :
+
+- **la chaleur gardée par le processeur** = (température du processeur − température de l'intérieur du boîtier) ÷
+  puissance du processeur, en °C/W. La pièce qui chauffe monte les deux températures et laisse l'écart ; un usage
+  plus lourd fait consommer plus de watts et la division le compense ; un radiateur encrassé ou une pâte sèche
+  gardent plus de chaleur pour les mêmes watts. L'intérieur du boîtier sert de repère pour la pièce : il chauffe un
+  peu avec ce que le PC dissipe, c'est donc une approximation, la même d'un mois à l'autre. Les journées où le
+  processeur consomme moins de 15 W sont écartées (à si peu de watts, un degré de résolution fausse le calcul) ;
+- **la vitesse du ventilateur « CPU »**, qui dit si le refroidissement travaille plus pour tenir la même température.
+
+Un changement n'est annoncé qu'au-delà de **10 %** (davantage pour une série qui varie beaucoup d'un jour à l'autre).
+Ni l'un ni l'autre ne distingue la poussière de la pâte thermique : un ventilateur piloté par la température accélère
+dans les deux cas. La carte propose donc l'ordre qui, lui, départage : **nettoyer d'abord** (gratuit), puis regarder
+si l'efficacité revient ; sinon, c'est la pâte.
+
+Ces mesures sont enregistrées **depuis la version 3** : il faut 60 jours de suivi (dont 40 avec des mesures) à un
+niveau de charge avant que la carte juge quoi que ce soit, et elle dit d'ici là combien il en manque. Au repos la
+mesure est moins précise (peu de watts) ; un niveau de charge plus soutenu est plus parlant.
+
 ---
 
 ## Base de données

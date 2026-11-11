@@ -52,6 +52,39 @@ function componentsGrid(): HTMLElement {
   return section;
 }
 
+/** Whether the processor's cooling got worse: the one question a temperature alone cannot answer. */
+function coolingCard(): HTMLElement | null {
+  const c = state.cooling;
+  if (!c) return null;
+  const card = h("section", { id: "cooling", class: "card", "aria-live": "polite" }, h("h2", {}, "Le refroidissement du processeur"));
+  card.append(h("p", { class: `lead cooling-${c.verdict}` }, c.lead));
+  if (c.detail) card.append(h("p", c.state === "ok" ? {} : { class: "muted" }, c.detail));
+  if (c.rows.length > 0) {
+    const body = h("tbody");
+    for (const r of c.rows) {
+      body.append(
+        h(
+          "tr",
+          {},
+          h("th", { scope: "row" }, h("span", { class: "sensor" }, r.label), h("span", { class: "tech" }, r.hint)),
+          h("td", { class: "num" }, r.baseline),
+          h("td", { class: "num" }, r.current),
+          h("td", { class: "num" }, r.change),
+        ),
+      );
+    }
+    card.append(
+      h(
+        "div",
+        { class: "table-wrap" },
+        h("table", {}, h("thead", {}, h("tr", {}, h("th", { scope: "col" }, "Mesure"), h("th", { scope: "col", class: "num" }, "Au début"), h("th", { scope: "col", class: "num" }, "Ces 30 derniers jours"), h("th", { scope: "col", class: "num" }, "Évolution"))), body),
+      ),
+    );
+  }
+  card.append(h("details", {}, h("summary", {}, "Comment c'est calculé"), h("p", { class: "muted" }, c.how)));
+  return card;
+}
+
 function helpBlock(): HTMLElement {
   return h(
     "details",
@@ -71,5 +104,8 @@ function helpBlock(): HTMLElement {
 
 export function renderHome(host: HTMLElement, actions: Actions): void {
   clear(host);
-  host.append(summaryCard(actions), componentsGrid(), helpBlock());
+  host.append(summaryCard(actions), componentsGrid());
+  const cooling = coolingCard();
+  if (cooling) host.append(cooling);
+  host.append(helpBlock());
 }

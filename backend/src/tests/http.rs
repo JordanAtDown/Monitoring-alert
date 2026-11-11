@@ -5,7 +5,9 @@ use crate::application::clock;
 use crate::application::ports::ReadModel;
 use crate::application::status::CollectorStatus;
 use crate::application::updates::UpdateStatus;
-use crate::tests::common::{insert_daily_series, insert_daily_series_ending};
+use crate::tests::common::{
+    insert_daily_series, insert_daily_series_ending, insert_extra_daily_series,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -53,8 +55,17 @@ fn fixture() -> Fixture {
     db::insert_reading(&conn, snap, "AMD Ryzen 7", "Core (Tctl/Tdie)", 41.5).unwrap();
     drop(conn);
 
-    let state = AppState {
-        open_read_model: reader_for(path.clone()),
+    let state = app_state(path.clone());
+    Fixture {
+        _dir: dir,
+        path,
+        state,
+    }
+}
+
+fn app_state(path: std::path::PathBuf) -> AppState {
+    AppState {
+        open_read_model: reader_for(path),
         status: Arc::new(CollectorStatus::new(300)),
         updates: Arc::new(UpdateStatus::new("2.0.0", true)),
         autostart: Box::new(|| Some(true)),
@@ -65,7 +76,37 @@ fn fixture() -> Fixture {
             raw_retention_days: 90,
         },
         allowed_hosts: server::allowed_hosts_for("127.0.0.1"),
-    };
+    }
+}
+
+/// A machine with its cooling recorded: 150 days, the processor going from 6 °C to 12 °C above the
+/// case halfway through while drawing 60 W, and its fan speeding up to compensate.
+fn cooling_fixture() -> Fixture {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    let conn = db::init_db(&path).unwrap();
+    let (cpu, case) = (
+        ("AMD Ryzen 7 5700X", "Core (Tctl/Tdie)"),
+        ("Gigabyte B550I AORUS PRO AX", "System"),
+    );
+    insert_daily_series(&conn, cpu.0, cpu.1, "idle", 150, |i| {
+        if i < 75 {
+            40.0
+        } else {
+            46.0
+        }
+    });
+    insert_daily_series(&conn, case.0, case.1, "idle", 150, |_| 34.0);
+    insert_extra_daily_series(&conn, cpu.0, "Package", "power", "idle", 150, |_| 60.0);
+    insert_extra_daily_series(&conn, case.0, "CPU Fan", "fan", "idle", 150, |i| {
+        if i < 75 {
+            1000.0
+        } else {
+            1400.0
+        }
+    });
+    drop(conn);
+    let state = app_state(path.clone());
     Fixture {
         _dir: dir,
         path,
@@ -630,6 +671,50 @@ fn a_quiet_series_is_reported_as_such_by_the_trend() {
 fn the_overview_rejects_an_unknown_load() {
     let f = fixture();
     assert_eq!(get(&f, "/api/overview?load=turbo").0, 400);
+}
+
+// ── /api/cooling ──────────────────────────────────────────────
+
+#[test]
+fn the_cooling_says_it_got_worse_and_what_to_do_first() {
+    let f = cooling_fixture();
+    let (code, v) = get(&f, "/api/cooling?load=idle");
+    assert_eq!(code, 200);
+    assert_eq!(v["state"], "ok");
+    assert_eq!(v["verdict"], "worse");
+    assert!(v["lead"]
+        .as_str()
+        .unwrap()
+        .contains("garde 100 % de chaleur en plus"));
+    let detail = v["detail"].as_str().unwrap();
+    assert!(detail.contains("le système compense"), "{detail}");
+    assert!(detail.find("nettoyer").unwrap() < detail.find("pâte thermique").unwrap());
+
+    let rows = v["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["label"], "Chaleur gardée par le processeur");
+    assert_eq!(rows[0]["baseline"], "0,10 °C/W");
+    assert_eq!(rows[0]["current"], "0,20 °C/W");
+    assert_eq!(rows[1]["label"], "Ventilateur du processeur");
+    assert_eq!(rows[1]["change"], "+40 %");
+    assert!(v["how"].as_str().unwrap().contains("par watt"));
+    assert!(v["since"].is_string());
+}
+
+#[test]
+fn the_cooling_of_a_machine_with_nothing_recorded_yet_says_so() {
+    // The ordinary fixture has temperatures but no fan nor power.
+    let f = fixture();
+    let (code, v) = get(&f, "/api/cooling?load=idle");
+    assert_eq!(code, 200);
+    assert_eq!(v["state"], "none");
+    assert_eq!(v["rows"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn the_cooling_rejects_an_unknown_load() {
+    let f = cooling_fixture();
+    assert_eq!(get(&f, "/api/cooling?load=turbo").0, 400);
 }
 
 // ── /api/curves ───────────────────────────────────────────────

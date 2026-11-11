@@ -201,6 +201,10 @@ th[scope="row"] { font-weight: 500; }
 .comp-cause { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 400; color: var(--ink-secondary); }
 .cause-alone { font-weight: 600; color: var(--ink); }
 .cause-detail { font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+/* The cooling card: the sentence carries a mark of what it says; the words stay in ink. */
+.cooling-worse, .cooling-watch, .cooling-better { padding-left: 12px; border-left: 4px solid var(--ink-muted); }
+.cooling-worse { border-left-color: var(--diverge-warm); }
+.cooling-better { border-left-color: var(--diverge-cool); }
 .table-wrap tbody tr.detail-row { cursor: default; }
 .table-wrap tbody tr.detail-row:hover { background: transparent; }
 .detail-row > td { padding: 6px 4px 18px; }

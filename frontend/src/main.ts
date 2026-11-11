@@ -174,15 +174,12 @@ async function refreshUpdate(): Promise<void> {
 
 async function refreshData(): Promise<void> {
   const load = state.load;
-  let overview = null;
-  try {
-    overview = await api.overview(load);
-  } catch {
-    /* the page keeps what it had and says nothing is available */
-  }
+  // Fetched together; one failing never takes the other down with it (nor the page).
+  const [overview, cooling] = await Promise.all([api.overview(load).catch(() => null), api.cooling(load).catch(() => null)]);
   if (state.load !== load) return; // the reader changed the level meanwhile
   loaded = true;
   state.overview = overview;
+  state.cooling = cooling;
   state.curves.clear();
   state.sensors.clear();
   renderChrome();

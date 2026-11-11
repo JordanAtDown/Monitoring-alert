@@ -6,6 +6,7 @@
 //! depends on it.
 
 pub mod components;
+pub mod cooling;
 pub mod dashboard;
 pub mod load;
 pub mod model;

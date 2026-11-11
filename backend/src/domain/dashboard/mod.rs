@@ -2,6 +2,7 @@
 //! daily figures of the sensors. Pure functions of the facts they are given; reading them from the
 //! database is the use cases' job.
 
+pub mod cooling;
 pub mod curves;
 pub mod data;
 pub mod overview;

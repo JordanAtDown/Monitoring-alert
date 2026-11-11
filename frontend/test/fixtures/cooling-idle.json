@@ -1,0 +1,24 @@
+{
+  "state": "ok",
+  "verdict": "worse",
+  "lead": "Le processeur garde 75 % de chaleur en plus qu'au début, pour la même puissance : son refroidissement est moins efficace.",
+  "detail": "Le ventilateur tourne 15 % plus vite : le système compense, ce qui masque encore la hausse de température mais fait plus de bruit. Dans cet ordre : nettoyer le radiateur, les ventilateurs et les filtres, ce qui ne coûte rien ; si l'efficacité ne revient pas après, c'est la pâte thermique. La vitesse du ventilateur ne départage pas les deux : un ventilateur piloté par la température accélère dans les deux cas.",
+  "rows": [
+    {
+      "label": "Chaleur gardée par le processeur",
+      "hint": "écart avec l'intérieur du boîtier, par watt consommé : plus c'est bas, mieux il est refroidi",
+      "baseline": "0,23 °C/W",
+      "current": "0,40 °C/W",
+      "change": "+75 %"
+    },
+    {
+      "label": "Ventilateur du processeur",
+      "hint": "vitesse habituelle",
+      "baseline": "896 tr/min",
+      "current": "1 035 tr/min",
+      "change": "+15 %"
+    }
+  ],
+  "how": "L'efficacité du refroidissement est l'écart entre la température du processeur et celle de l'intérieur du boîtier, divisé par la puissance que le processeur consomme (en °C par watt) : la pièce qui chauffe monte les deux températures et laisse l'écart, un usage plus lourd fait consommer plus de watts et la division le compense, alors qu'un radiateur encrassé ou une pâte thermique sèche gardent plus de chaleur dans le processeur pour les mêmes watts. L'intérieur du boîtier sert de repère pour la pièce : il chauffe aussi un peu avec ce que le PC dissipe, c'est donc une approximation, mais elle est la même d'un mois à l'autre, ce qui suffit pour comparer. La vitesse du ventilateur dit si le refroidissement travaille plus pour tenir la même température. Les journées où le processeur consomme moins de 15 W sont écartées : à si peu de watts, un degré de résolution fausse le calcul.",
+  "since": "2025-09-17"
+}

@@ -45,6 +45,16 @@ pub struct ExtraReading {
     pub value: f64,
 }
 
+/// The daily aggregates of one fan or one package power draw at one load category.
+#[derive(Debug)]
+pub struct ExtraSeries {
+    pub hardware: String,
+    pub sensor: String,
+    pub kind: ExtraKind,
+    /// Oldest first.
+    pub stats: Vec<crate::domain::trends::DayStat>,
+}
+
 /// What one poll of the sensors returns.
 pub struct SnapshotData {
     pub temperatures: Vec<TemperatureReading>,

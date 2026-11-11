@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serde::Serialize;
 
-use crate::domain::model::{ExtraKind, NewSnapshot, SnapshotData};
+use crate::domain::model::{ExtraSeries, NewSnapshot, SnapshotData};
 use crate::domain::trends::DayStat;
 
 /// Where the temperatures come from (LibreHardwareMonitor today).
@@ -63,16 +63,6 @@ pub struct SeriesInfo {
     pub days: i64,
     pub first_day: String,
     pub last_day: String,
-}
-
-/// The daily aggregates of one fan or one package power draw at one load category.
-#[derive(Debug)]
-pub struct ExtraSeries {
-    pub hardware: String,
-    pub sensor: String,
-    pub kind: ExtraKind,
-    /// Oldest first.
-    pub stats: Vec<DayStat>,
 }
 
 #[derive(Debug, Serialize)]

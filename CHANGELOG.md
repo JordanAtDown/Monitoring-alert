@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Le refroidissement du processeur a sa propre carte** sur l'accueil (`/api/cooling`), et dit si c'est lui qui se
+  dégrade : la chaleur que le processeur garde par rapport à l'intérieur du boîtier, par watt consommé, et la vitesse
+  du ventilateur « CPU », comparées aux 30 premiers jours. Contrairement à une température, ces chiffres ne bougent
+  ni quand la pièce chauffe (les deux températures montent, l'écart reste) ni quand le PC travaille plus (la division
+  par les watts le compense) : c'est testé comme telles, et chaque formule a été cassée à dessein pour vérifier que
+  ces tests l'attrapent. La carte ne prétend pas distinguer la poussière de la pâte thermique, ce que la vitesse du
+  ventilateur ne permet pas : elle recommande de nettoyer d'abord (gratuit) puis de regarder si l'efficacité revient.
+  Il faut 60 jours de suivi depuis la mise à jour avant qu'elle juge ; elle dit d'ici là combien il en manque.
+  `tools/demo.sh` dispose désormais de ventilateurs et de puissances de démonstration.
 - **Les ventilateurs et la puissance sont enregistrés** (schéma v3). LibreHardwareMonitor les publiait déjà dans la
   même réponse que les températures, et ils étaient jetés. Ce sont eux qui permettront de séparer, à terme, un
   refroidissement qui se dégrade (poussière, pâte thermique) de la température de la pièce et de l'effort demandé au

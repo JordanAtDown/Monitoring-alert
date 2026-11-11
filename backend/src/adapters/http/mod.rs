@@ -8,6 +8,7 @@
 //! * `GET /api/summary?load=` — drift overview of all the sensors
 //! * `GET /api/overview?load=` — the home of the dashboard: headline and components, ready to display
 //! * `GET /api/curves?load=&mode=temp|delta` — one line per component, ready to draw
+//! * `GET /api/cooling?load=` — whether the processor's cooling is getting worse
 //! * `GET /api/sensor?hardware=&sensor=&load=` — one sensor: its story, curve and months, ready to display
 //!
 //! The server only reads. It listens on the loopback interface by default and
@@ -175,6 +176,7 @@ pub fn route(state: &AppState, method: &str, url: &str, host: Option<&str>) -> R
         "/api/summary" => endpoints::summary::handle(state, &params),
         "/api/overview" => endpoints::overview::handle(state, &params),
         "/api/curves" => endpoints::curves::handle(state, &params),
+        "/api/cooling" => endpoints::cooling::handle(state, &params),
         "/api/sensor" => endpoints::sensor::handle(state, &params),
         p if p.starts_with("/api/") => Ok(Reply::error(404, "unknown endpoint")),
         p => Ok(static_file(p)),

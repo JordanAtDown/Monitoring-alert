@@ -1,6 +1,6 @@
 // What the page knows at a given moment, shared by the views. The views only read it; main.ts changes it.
 
-import type { Curves, CurvesMode, Health, Level, Load, Overview, SensorPage, Status, UpdateInfo } from "./api";
+import type { Cooling, Curves, CurvesMode, Health, Level, Load, Overview, SensorPage, Status, UpdateInfo } from "./api";
 import { readTheme, SERIES_COUNT } from "./theme";
 
 export type Page = "home" | "curves" | "details" | "status";
@@ -30,6 +30,8 @@ export const state = {
   update: null as UpdateInfo | null,
   /** The home page at the current load level (the choices of load levels come with it). */
   overview: null as Overview | null,
+  /** The processor's cooling at the current load level; `null` when it could not be fetched. */
+  cooling: null as Cooling | null,
   /** Components the reader switched off on the curves. */
   hidden: new Set<string>(),
   mode: "temp" as CurvesMode,
