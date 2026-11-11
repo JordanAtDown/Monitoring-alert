@@ -1,4 +1,4 @@
-//! monitoring-alert — long-term temperature monitoring library.
+//! Monitoring — long-term temperature drift monitoring library (crate `monitoring-alert`).
 //!
 //! A simplified hexagonal layout, inside one crate:
 //!

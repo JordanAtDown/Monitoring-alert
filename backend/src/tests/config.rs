@@ -92,7 +92,7 @@ fn a_v1_config_still_loads_and_its_obsolete_keys_are_ignored() {
 
 #[test]
 fn the_shipped_config_template_parses_and_is_free_of_obsolete_keys() {
-    let template = include_str!("../../../installer/config.toml");
+    let template = include_str!("../adapters/default-config.toml");
     for obsolete in [
         "reports_dir",
         "report_enabled",
@@ -440,5 +440,62 @@ mod set_db_path {
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("db_path_backup = \"x\""));
         assert_eq!(AppConfig::load_from(&path).db_path, Path::new("/data/t.db"));
+    }
+}
+
+// ── Where the configuration lives ─────────────────────────────
+
+mod data_folder {
+    use crate::adapters::config::config_path_in;
+    use std::fs;
+
+    #[test]
+    fn a_fresh_machine_uses_the_new_name() {
+        let programs = tempfile::tempdir().unwrap();
+        assert_eq!(
+            config_path_in(programs.path()),
+            programs.path().join("Monitoring").join("config.toml")
+        );
+    }
+
+    #[test]
+    fn an_installation_that_predates_the_rename_keeps_its_folder() {
+        let programs = tempfile::tempdir().unwrap();
+        let legacy = programs.path().join("MonitoringAlert");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("config.toml"), "web_port = 9000\n").unwrap();
+
+        // Using the new folder would silently ignore the user's configuration.
+        assert_eq!(config_path_in(programs.path()), legacy.join("config.toml"));
+    }
+
+    #[test]
+    fn once_the_new_folder_has_a_config_it_wins() {
+        let programs = tempfile::tempdir().unwrap();
+        for name in ["MonitoringAlert", "Monitoring"] {
+            fs::create_dir_all(programs.path().join(name)).unwrap();
+            fs::write(programs.path().join(name).join("config.toml"), "").unwrap();
+        }
+        assert_eq!(
+            config_path_in(programs.path()),
+            programs.path().join("Monitoring").join("config.toml")
+        );
+    }
+
+    #[test]
+    fn a_leftover_folder_without_a_config_does_not_count() {
+        let programs = tempfile::tempdir().unwrap();
+        // v1.x uninstalled keeping only logs and the database, no config.
+        fs::create_dir_all(programs.path().join("MonitoringAlert")).unwrap();
+        // An empty new folder (e.g. created by the installer) does not hide the old config either.
+        fs::create_dir_all(programs.path().join("Monitoring")).unwrap();
+        assert_eq!(
+            config_path_in(programs.path()),
+            programs.path().join("Monitoring").join("config.toml")
+        );
+
+        let legacy = programs.path().join("MonitoringAlert");
+        fs::write(legacy.join("config.toml"), "").unwrap();
+        assert_eq!(config_path_in(programs.path()), legacy.join("config.toml"));
     }
 }

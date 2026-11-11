@@ -28,6 +28,26 @@ pub struct AppConfig {
 
 pub const DEFAULT_WEB_PORT: u16 = 8787;
 
+/// Data folder of a fresh installation, inside `%LOCALAPPDATA%\Programs`.
+pub const DATA_DIR_NAME: &str = "Monitoring";
+/// Data folder of the 1.x installations, before the product was renamed.
+pub const LEGACY_DATA_DIR_NAME: &str = "MonitoringAlert";
+
+/// Where `config.toml` lives, given the `Programs` folder.
+///
+/// A fresh install uses `Monitoring`. An existing installation keeps using its
+/// `MonitoringAlert` folder as long as that is where its configuration is: moving it
+/// would orphan the config, and the logs and database paths it may contain.
+pub fn config_path_in(programs_dir: &Path) -> PathBuf {
+    let current = programs_dir.join(DATA_DIR_NAME).join("config.toml");
+    let legacy = programs_dir.join(LEGACY_DATA_DIR_NAME).join("config.toml");
+    if !current.exists() && legacy.exists() {
+        legacy
+    } else {
+        current
+    }
+}
+
 const VALID_LOG_LEVELS: &[&str] = &["error", "warn", "info", "debug", "trace"];
 
 /// The keys of `config.toml`. Unknown keys — including the ones of the v1 reports
@@ -46,22 +66,14 @@ pub(crate) struct RawConfig {
 }
 
 impl AppConfig {
-    /// Default config file location: `%LOCALAPPDATA%\Programs\MonitoringAlert\config.toml`
-    /// on Windows, `./config.toml` elsewhere (development).
+    /// Default config file location: `%LOCALAPPDATA%\Programs\Monitoring\config.toml` on
+    /// Windows (see [`config_path_in`]), `./config.toml` elsewhere (development).
     #[cfg(windows)]
     pub fn default_config_path() -> PathBuf {
-        std::env::var("LOCALAPPDATA")
-            .map(|p| {
-                PathBuf::from(p)
-                    .join("Programs")
-                    .join("MonitoringAlert")
-                    .join("config.toml")
-            })
-            .unwrap_or_else(|_| {
-                PathBuf::from(
-                    r"C:\Users\Default\AppData\Local\Programs\MonitoringAlert\config.toml",
-                )
-            })
+        let programs = std::env::var("LOCALAPPDATA")
+            .map(|p| PathBuf::from(p).join("Programs"))
+            .unwrap_or_else(|_| PathBuf::from(r"C:\Users\Default\AppData\Local\Programs"));
+        config_path_in(&programs)
     }
 
     #[cfg(not(windows))]
@@ -181,22 +193,22 @@ fn number_line<T: Copy + Into<i64>>(
 pub(crate) fn render_config(raw: &RawConfig) -> String {
     let mut out = String::from(
         "# =============================================================\n\
-         #  MonitoringAlert — configuration\n\
+         #  Monitoring — configuration\n\
          #\n\
          #  Les lignes commençant par # montrent la valeur par défaut.\n\
-         #  Après modification : monitoring-alert.exe restart\n\
+         #  Après modification : monitoring.exe restart\n\
          # =============================================================\n",
     );
     out += &string_line(
         "db_path",
         &raw.db_path,
-        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db",
+        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\Monitoring\\temperatures.db",
         "# Base de données de températures (défaut : temperatures.db à côté de ce fichier)",
     );
     out += &string_line(
         "log_dir",
         &raw.log_dir,
-        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert",
+        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\Monitoring",
         "# Dossier des logs (défaut : le dossier de la base de données)",
     );
     out += &number_line(

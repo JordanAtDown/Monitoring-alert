@@ -10,7 +10,7 @@ description: Faire un commit de ce projet — format Conventional Commits, atomi
    de comportement. Plusieurs petits commits clairs valent mieux qu'un gros. Pas de WIP sur `main`.
    Chaque commit **compile et passe les tests**.
 3. **Documentation** (voir `.claude/rules/docs.md`) : un `feat` ou `fix` visible met à jour README /
-   `installer/config.toml` / CHANGELOG dans le même commit, ou dans un commit `docs` immédiatement après.
+   `backend/src/adapters/default-config.toml` / CHANGELOG dans le même commit, ou dans un commit `docs` immédiatement après.
 4. **Ajouter les fichiers explicitement** (`git add <chemins>`) — jamais un `git add -A` à l'aveugle quand le
    dossier contient des fichiers non liés (`frontend/node_modules`, `dist`, sorties de test…). Le hook
    `pre-commit` ne re-stage que les fichiers **déjà indexés** qu'il a reformatés : un fichier modifié mais

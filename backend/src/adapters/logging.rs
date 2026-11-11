@@ -8,10 +8,10 @@ use tracing_subscriber::{
 /// Initialise le logger :
 /// - Console (stderr) avec couleurs
 /// - Fichier avec rotation quotidienne dans le répertoire de `log_path`,
-///   nommé d'après `log_path` (ex. `monitoring-alert.log`)
+///   nommé d'après `log_path` (ex. `monitoring.log`)
 ///
 /// `level` accepte : `"error"`, `"warn"`, `"info"` (défaut), `"debug"`, `"trace"`.
-/// La rotation produit des fichiers du type `monitoring-alert-2026-04-06.log`.
+/// La rotation produit des fichiers du type `monitoring.2026-04-06.log`.
 ///
 /// Le guard du writer non-bloquant est leaké intentionnellement — acceptable
 /// pour un service/daemon qui s'exécute jusqu'à la fin du processus.
@@ -23,7 +23,7 @@ pub fn init(log_path: &Path, level: &str) -> Result<()> {
     let stem = log_path
         .file_stem()
         .and_then(|n| n.to_str())
-        .unwrap_or("monitoring-alert");
+        .unwrap_or("monitoring");
 
     if !log_dir.as_os_str().is_empty() {
         std::fs::create_dir_all(log_dir)

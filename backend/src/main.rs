@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
-    name = "monitoring-alert",
+    name = "monitoring",
     version,
     about = "Suivi long terme de la dérive des températures — collecte + tableau de bord local"
 )]
@@ -136,7 +136,7 @@ fn start_daemon(cfg: &config::AppConfig) -> Result<()> {
     let daemon_exe = plan.daemon_exe();
     if !daemon_exe.is_file() {
         bail!(
-            "{} introuvable : lancez d'abord `monitoring-alert install`",
+            "{} introuvable : lancez d'abord `monitoring install`",
             daemon_exe.display()
         );
     }
@@ -153,13 +153,13 @@ fn run_cli() -> Result<()> {
     let db_path = cli.db.unwrap_or_else(|| cfg.db_path.clone());
 
     // Init logger — directory from config (defaults to same dir as db_path).
-    let log_path = cfg.log_dir.join("monitoring-alert.log");
+    let log_path = cfg.log_dir.join("monitoring.log");
     let _ = logging::init(&log_path, &cfg.log_level);
 
     match cli.command {
         Commands::Install { in_place, db_path } => {
             let plan = deploy_plan(in_place, db_path)?;
-            println!("Installation de monitoring-alert…");
+            println!("Installation de Monitoring…");
             let report = install::install(host()?.as_ref(), &plan)?;
             print_report(&report);
             println!();
@@ -350,7 +350,9 @@ fn run_check(db_path: &Path, cfg: &config::AppConfig) {
             "  ✗  Le tableau de bord ne répond pas ({}:{})",
             cfg.web_host, cfg.web_port
         );
-        println!("     → monitoring-alert.exe start   (ou relancez l'installateur si ce n'est pas installé)");
+        println!(
+            "     → monitoring.exe start   (ou relancez l'installateur si ce n'est pas installé)"
+        );
     }
     println!();
 

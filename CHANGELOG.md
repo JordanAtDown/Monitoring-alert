@@ -12,12 +12,12 @@ profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base d
 conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ### Added
-- **Installateur Windows** (`monitoring-alert-setup-vX.Y.Z.exe`, Inno Setup) : assistant en français,
+- **Installateur Windows** (`monitoring_X.Y.Z.exe`, Inno Setup) : assistant en français,
   installation par utilisateur **sans droits administrateur**, entrée dans les Applications installées,
   raccourci vers le tableau de bord, mise à jour en relançant l'installateur. Il détecte la base de
   données de l'installation actuelle (page « Base de données ») et la conserve ou la remplace. Il ne
   demande l'administrateur que pour supprimer l'ancien service Windows d'une 1.x. 
-- `monitoring-alert.exe db locate [--porcelain]` (où est la base actuelle, ce qu'elle contient, sans rien
+- `monitoring.exe db locate [--porcelain]` (où est la base actuelle, ce qu'elle contient, sans rien
   modifier), `install --in-place` (exécutable déjà en place) et `install --db-path <fichier>`.
 - La CI compile le script de l'installateur à chaque push ; la release publie l'installateur et l'exécutable.
 - **Tableau de bord web** (`http://127.0.0.1:8787/`, TypeScript + uPlot, thèmes clair et sombre)
@@ -42,6 +42,14 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   test qui impose le sens des dépendances.
 
 ### Changed
+- **Le produit s'appelle « Monitoring »** (seul le nom du dépôt garde `monitoring-alert`) : installateur
+  `monitoring_X.Y.Z.exe` (seul fichier publié), application « Monitoring » dans les Applications installées
+  et le menu Démarrer, exécutable `monitoring.exe` (au lieu de `monitoring-alert.exe`), copie sans fenêtre
+  `monitoring-daemon.exe`, logs `monitoring.AAAA-MM-JJ.log`, entrée de démarrage « Monitoring », titre du
+  tableau de bord. Une installation 1.x continue d'utiliser son dossier de données `MonitoringAlert` tant que
+  sa configuration s'y trouve ; une installation neuve utilise `%LOCALAPPDATA%\Programs\Monitoring`.
+- La configuration par défaut est écrite par `install` (et non plus livrée comme fichier à côté de
+  l'exécutable), sans jamais écraser une configuration existante.
 - **Plus de service Windows** : un seul processus d'arrière-plan, sans droits administrateur
   (sauf pour supprimer l'ancien service). Le collecteur est relancé automatiquement s'il échoue.
 - Mesures brutes conservées **90 jours** par défaut (`raw_retention_days`, minimum 7, remplace

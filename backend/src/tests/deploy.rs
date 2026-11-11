@@ -1,9 +1,12 @@
+use crate::adapters::config::AppConfig;
 use crate::adapters::deploy::deploy_files;
 use crate::adapters::pe::subsystem;
 use crate::application::ports::DeployPlan;
 use crate::tests::pe::fake_pe;
 use std::fs;
 use std::path::Path;
+
+const DEFAULT_CONFIG: &str = include_str!("../adapters/default-config.toml");
 
 struct Layout {
     _dir: tempfile::TempDir,
@@ -15,12 +18,11 @@ fn layout() -> Layout {
     let dir = tempfile::tempdir().unwrap();
     let archive = dir.path().join("archive");
     fs::create_dir_all(&archive).unwrap();
-    fs::write(archive.join("monitoring-alert.exe"), fake_pe(0x20b, 3)).unwrap();
-    fs::write(archive.join("config.toml"), "web_port = 9000\n").unwrap();
+    fs::write(archive.join("monitoring.exe"), fake_pe(0x20b, 3)).unwrap();
     let plan = DeployPlan {
-        source_exe: archive.join("monitoring-alert.exe"),
-        install_dir: dir.path().join("Program Files").join("MonitoringAlert"),
-        data_dir: dir.path().join("AppData").join("MonitoringAlert"),
+        source_exe: archive.join("monitoring.exe"),
+        install_dir: dir.path().join("Program Files").join("Monitoring"),
+        data_dir: dir.path().join("AppData").join("Monitoring"),
         db_path: None,
     };
     Layout { _dir: dir, plan }
@@ -41,7 +43,7 @@ fn a_fresh_install_puts_everything_in_place() {
     assert_eq!(subsystem(&fs::read(l.plan.daemon_exe()).unwrap()), Some(2));
     assert_eq!(
         fs::read_to_string(l.plan.data_dir.join("config.toml")).unwrap(),
-        "web_port = 9000\n"
+        DEFAULT_CONFIG
     );
     assert_eq!(done.len(), 3);
 }
@@ -50,7 +52,7 @@ fn a_fresh_install_puts_everything_in_place() {
 fn the_daemon_executable_is_named_monitoring_daemon() {
     let l = layout();
     assert!(l.plan.daemon_exe().ends_with("monitoring-daemon.exe"));
-    assert!(l.plan.cli_exe().ends_with("monitoring-alert.exe"));
+    assert!(l.plan.cli_exe().ends_with("monitoring.exe"));
 }
 
 #[test]
@@ -99,7 +101,7 @@ fn an_upgrade_replaces_the_executables() {
 }
 
 #[test]
-fn running_from_the_install_directory_only_refreshes_the_daemon_copy() {
+fn running_from_the_install_directory_copies_no_executable_but_still_sets_up_the_rest() {
     // The executable is already where it belongs (what the installer's --in-place does).
     let l = layout();
     fs::create_dir_all(&l.plan.install_dir).unwrap();
@@ -114,8 +116,11 @@ fn running_from_the_install_directory_only_refreshes_the_daemon_copy() {
     assert!(done
         .iter()
         .all(|line| !line.starts_with("Exécutable installé")));
-    // No config / scripts next to it: nothing else to copy, and nothing fails.
-    assert!(!plan.data_dir.join("config.toml").exists());
+    // Nothing is copied, but the daemon copy and the default configuration are created.
+    assert!(done
+        .iter()
+        .any(|line| line.starts_with("Configuration créée")));
+    assert!(plan.data_dir.join("config.toml").is_file());
 }
 
 #[test]
@@ -123,4 +128,18 @@ fn a_source_that_is_not_a_windows_executable_is_refused() {
     let l = layout();
     fs::write(&l.plan.source_exe, b"not an exe").unwrap();
     assert!(deploy_files(&l.plan).is_err());
+}
+
+#[test]
+fn the_default_configuration_written_by_a_fresh_install_loads_with_the_defaults() {
+    let l = layout();
+    deploy_files(&l.plan).unwrap();
+
+    let cfg = AppConfig::load_from(&l.plan.data_dir.join("config.toml"));
+    assert_eq!(
+        (cfg.raw_retention_days, cfg.web_port, cfg.lhm_port),
+        (90, 8787, 8085)
+    );
+    // The database defaults to the data folder, next to the configuration.
+    assert_eq!(cfg.db_path, l.plan.data_dir.join("temperatures.db"));
 }

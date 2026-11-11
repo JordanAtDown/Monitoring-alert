@@ -1,41 +1,41 @@
-﻿; Monitoring Alert - installateur Windows (Inno Setup 6)
+﻿; Monitoring - installateur Windows (Inno Setup 6)
 ;
-; Installation par utilisateur, sans droits administrateur : %LOCALAPPDATA%\Programs\MonitoringAlert.
+; Installation par utilisateur, sans droits administrateur : %LOCALAPPDATA%\Programs\Monitoring.
 ; L'installateur ne fait que copier le fichier ; tout le reste (nettoyage d'une version 1.x, migration
 ; de config.toml, copie sans fenetre, demarrage automatique, demarrage) est fait par
-; "monitoring-alert.exe install --in-place", qui est teste. Idem a la desinstallation.
+; "monitoring.exe install --in-place", qui est teste. Idem a la desinstallation.
 ;
 ; Compilation (depuis la racine du depot) :
-;   iscc /DAppVersion=2.0.0 /DExePath=..\backend\target\release\monitoring-alert.exe installer\monitoring-alert.iss
+;   iscc /DAppVersion=2.0.0 /DExePath=..\backend\target\release\monitoring.exe installer\monitoring.iss
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 #ifndef ExePath
-  #define ExePath "..\backend\target\release\monitoring-alert.exe"
+  #define ExePath "..\backend\target\release\monitoring.exe"
 #endif
-#define AppName "Monitoring Alert"
+#define AppName "Monitoring"
 #define DashboardUrl "http://127.0.0.1:8787/"
 
 [Setup]
 AppId={{62E21ACE-53A6-48D0-9065-D303F3479C13}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=monitoring-alert
+AppPublisher=Monitoring
 AppPublisherURL=https://github.com/JordanAtDown/monitoring-alert
-DefaultDirName={autopf}\MonitoringAlert
+DefaultDirName={autopf}\Monitoring
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
 OutputDir=..\dist
-OutputBaseFilename=monitoring-alert-setup-v{#AppVersion}
+OutputBaseFilename=monitoring_{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName}
-UninstallDisplayIcon={app}\monitoring-alert.exe
+UninstallDisplayIcon={app}\monitoring.exe
 CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
@@ -44,9 +44,7 @@ SetupLogging=yes
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Files]
-Source: "{#ExePath}"; DestDir: "{app}"; DestName: "monitoring-alert.exe"; Flags: ignoreversion
-; Modele de configuration : jamais ecrase, jamais supprime a la desinstallation.
-Source: "config.toml"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "{#ExePath}"; DestDir: "{app}"; DestName: "monitoring.exe"; Flags: ignoreversion
 ; Extrait au debut de l'assistant pour retrouver la base de donnees actuelle.
 Source: "{#ExePath}"; Flags: dontcopy
 
@@ -60,7 +58,7 @@ Name: "{autoprograms}\{#AppName} - Tableau de bord"; Filename: "{app}\Tableau de
 Filename: "{#DashboardUrl}"; Description: "Ouvrir le tableau de bord"; Flags: shellexec postinstall skipifsilent nowait
 
 [UninstallRun]
-Filename: "{app}\monitoring-alert.exe"; Parameters: "uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "StopAndUnregister"
+Filename: "{app}\monitoring.exe"; Parameters: "uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "StopAndUnregister"
 
 [UninstallDelete]
 ; Crees par "install", pas par cet installateur.
@@ -106,7 +104,7 @@ begin
   if Exec(ExpandConstant('{sys}\sc.exe'), 'query MonitoringAlert', '', SW_HIDE, ewWaitUntilTerminated, Code)
      and (Code = 0) and (not IsAdmin) then
   begin
-    if MsgBox('Une ancienne version de Monitoring Alert (service Windows) est installée.' + NL +
+    if MsgBox('Une ancienne version (service Windows « MonitoringAlert ») est installée.' + NL +
               'Pour la remplacer, l''installation doit s''exécuter en administrateur.' + NL + NL +
               'Relancer en administrateur maintenant ?', mbConfirmation, MB_YESNO) = IDYES then
       ShellExec('runas', ExpandConstant('{srcexe}'), '', '', SW_SHOWNORMAL, ewNoWait, Code);
@@ -124,8 +122,8 @@ begin
   Found := '';
   DefaultDb := '';
   Summary := '';
-  ExtractTemporaryFile('monitoring-alert.exe');
-  if RunCapture(ExpandConstant('{tmp}\monitoring-alert.exe'), 'db locate --porcelain',
+  ExtractTemporaryFile('monitoring.exe');
+  if RunCapture(ExpandConstant('{tmp}\monitoring.exe'), 'db locate --porcelain',
                 ExpandConstant('{tmp}\db-locate.txt'), Code)
      and (Code = 0)
      and LoadStringsFromFile(ExpandConstant('{tmp}\db-locate.txt'), Lines) then
@@ -168,14 +166,26 @@ begin
   if CurStep = ssPostInstall then
   begin
     WizardForm.StatusLabel.Caption := 'Configuration et démarrage...';
-    if (not RunCapture(ExpandConstant('{app}\monitoring-alert.exe'),
+    if (not RunCapture(ExpandConstant('{app}\monitoring.exe'),
                        'install --in-place' + DbPathParam(''),
                        ExpandConstant('{tmp}\install-output.txt'), Code)) or (Code <> 0) then
       MsgBox('La configuration automatique a échoué (code ' + IntToStr(Code) + ').' + NL + NL +
              'Ouvrez une invite de commandes et lancez :' + NL +
-             '"' + ExpandConstant('{app}\monitoring-alert.exe') + '" install --in-place' + NL +
+             '"' + ExpandConstant('{app}\monitoring.exe') + '" install --in-place' + NL +
              'pour voir le message d''erreur.', mbError, MB_OK);
   end;
+end;
+
+{ Dossier de la configuration, de la base par defaut et des journaux : celui d'une installation
+  existante (ancien nom MonitoringAlert) tant que c'est la que se trouve sa configuration. }
+function DataFolder(): String;
+var
+  Programs: String;
+begin
+  Programs := ExpandConstant('{localappdata}\Programs');
+  Result := Programs + '\Monitoring';
+  if (not FileExists(Result + '\config.toml')) and FileExists(Programs + '\MonitoringAlert\config.toml') then
+    Result := Programs + '\MonitoringAlert';
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -184,7 +194,7 @@ var
 begin
   if (CurUninstallStep = usPostUninstall) and (not UninstallSilent) then
   begin
-    DataDir := ExpandConstant('{localappdata}\Programs\MonitoringAlert');
+    DataDir := DataFolder();
     if DirExists(DataDir) then
       if MsgBox('Supprimer aussi la configuration, les journaux et la base de données de ce dossier ?' +
                 NL + NL + DataDir + NL + NL +

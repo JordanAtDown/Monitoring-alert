@@ -2,7 +2,7 @@
 paths:
   - "README.md"
   - "CHANGELOG.md"
-  - "installer/config.toml"
+  - "backend/src/adapters/default-config.toml"
 ---
 
 # Documentation
@@ -13,7 +13,7 @@ commit `docs` juste après pour un changement mineur).
 | Fichier | À mettre à jour si… |
 |---|---|
 | `README.md` | changement visible : installation, migration, configuration, CLI, tableau de bord, calcul de la dérive, base de données |
-| `installer/config.toml` | une clé de configuration est ajoutée, retirée ou change de défaut (un test vérifie qu'il se charge et ne contient pas de clé obsolète) |
+| `backend/src/adapters/default-config.toml` | une clé de configuration est ajoutée, retirée ou change de défaut (un test vérifie qu'il se charge et ne contient pas de clé obsolète) |
 | `CHANGELOG.md` | à chaque changement notable, sous `## [Unreleased]` ; promu en version par `tools/release.sh` |
 
 - README et CHANGELOG sont en **français**. Le README dit ce qui est vrai **aujourd'hui**, pas l'historique

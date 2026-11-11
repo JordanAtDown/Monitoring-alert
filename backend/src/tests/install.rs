@@ -100,9 +100,9 @@ impl HostSystem for FakeHost {
 
 fn plan() -> DeployPlan {
     DeployPlan {
-        source_exe: PathBuf::from("C:/zip/monitoring-alert.exe"),
-        install_dir: PathBuf::from("C:/Program Files/MonitoringAlert"),
-        data_dir: PathBuf::from("C:/Users/me/AppData/Local/Programs/MonitoringAlert"),
+        source_exe: PathBuf::from("C:/Downloads/monitoring.exe"),
+        install_dir: PathBuf::from("C:/Users/me/AppData/Local/Programs/Monitoring"),
+        data_dir: PathBuf::from("C:/Users/me/AppData/Local/Programs/Monitoring"),
         db_path: None,
     }
 }
@@ -270,7 +270,7 @@ fn a_refused_copy_tells_how_to_fix_it_and_starts_nothing() {
     };
     let error = format!("{:#}", install(&host, &plan()).unwrap_err());
 
-    assert!(error.contains("Program Files"), "{error}");
+    assert!(error.contains("Programs"), "{error}");
     assert!(error.contains("administrateur"), "{error}");
     assert!(error.contains("os error 5"), "{error}");
     assert!(!host.called("autostart_enable") && !host.called("start_daemon"));

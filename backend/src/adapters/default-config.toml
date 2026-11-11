@@ -1,20 +1,20 @@
 # =============================================================
-#  MonitoringAlert — configuration
+#  Monitoring — configuration
 #
-#  Modèle installé avec le programme : une configuration existante n'est jamais écrasée.
+#  Configuration par défaut, écrite à l'installation : une configuration existante n'est jamais écrasée.
 #  Toutes les clés sont facultatives (les lignes commentées montrent le défaut).
-#  Après modification : monitoring-alert.exe restart
+#  Après modification : monitoring.exe restart
 # =============================================================
 
 # Chemin complet de la base de données de températures
 # Défaut : temperatures.db à côté de ce fichier
-# Exemple : "D:\\Backup\\MonitoringAlert\\temperatures.db"
-# db_path = "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
+# Exemple : "D:\\Backup\\Monitoring\\temperatures.db"
+# db_path = "C:\\Users\\<vous>\\AppData\\Local\\Programs\\Monitoring\\temperatures.db"
 
 # Dossier des fichiers de log (défaut : même répertoire que db_path)
-# Les fichiers sont nommés monitoring-alert.YYYY-MM-DD.log (rotation quotidienne)
-# Exemple : "D:\\Logs\\MonitoringAlert"
-# log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert"
+# Les fichiers sont nommés monitoring.YYYY-MM-DD.log (rotation quotidienne)
+# Exemple : "D:\\Logs\\Monitoring"
+# log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\Monitoring"
 
 # Intervalle de collecte (en secondes, minimum 60)
 # Défaut : 300 (toutes les 5 minutes)

@@ -15,8 +15,8 @@ fin, et on le vérifie par `cargo clippy --target x86_64-pc-windows-gnu`, par le
 
 ## Principe : la logique est en Rust, l'installateur est mince
 
-- **Installateur Inno Setup** (`installer/monitoring-alert.iss`, voie principale) : il copie `monitoring-alert.exe`
-  et délègue à `monitoring-alert.exe install --in-place` ; à la désinstallation à `uninstall`. Par utilisateur
+- **Installateur Inno Setup** (`installer/monitoring.iss`, voie principale) : il copie `monitoring.exe`
+  et délègue à `monitoring.exe install --in-place` ; à la désinstallation à `uninstall`. Par utilisateur
   (`PrivilegesRequired=lowest`) : l'administrateur n'est demandé que si un service 1.x est présent. Le fichier
   `.iss` est en **UTF-8 avec BOM**, et **aucune ligne n'y commence par `#`** hors directives (le préprocesseur
   la lirait comme une directive : utiliser la constante `NL`). Il se compile en CI (`ISCC`), c'est la seule
@@ -40,10 +40,16 @@ fin, et on le vérifie par `cargo clippy --target x86_64-pc-windows-gnu`, par le
    `config.toml.v1.bak`.
 5. Le nettoyage d'une 1.x reste dans `install` tant que des installations 1.x peuvent exister : service,
    tâches planifiées, AUMID, `apply-config.bat`, `Register-Tasks.ps1`, et réécriture de `config.toml`.
-6. `monitoring-alert.exe` garde son nom (l'installateur, `Run` et la doc le référencent).
+6. **Le produit s'appelle « Monitoring »** (l'utilisateur ne voit « monitoring-alert » que dans le nom du
+   dépôt) : exécutable `monitoring.exe`, copie `monitoring-daemon.exe`, installateur `monitoring_X.Y.Z.exe`.
+   Les identifiants de la 1.x (`MonitoringAlert` : service, tâches, AUMID, ancien dossier de données) doivent
+   rester reconnus pour la migration. Une installation qui a déjà un `config.toml` dans `MonitoringAlert` garde ce
+   dossier (`config_path_in`) : ne jamais déposer de `config.toml` dans `Monitoring` avant `install`, il
+   masquerait la vraie configuration. C'est pourquoi la configuration par défaut est écrite par `install`
+   (`deploy.rs`, modèle `adapters/default-config.toml`) et non livrée par l'installateur.
 
 ## `monitoring-daemon.exe`
 
-C'est une **copie** de `monitoring-alert.exe` dont le sous-système PE est passé à GUI (pas de fenêtre
+C'est une **copie** de `monitoring.exe` dont le sous-système PE est passé à GUI (pas de fenêtre
 console), faite par `install` (`adapters/pe.rs`). Elle est relancée par la clé `Run` de l'utilisateur
 (`"<chemin>" serve`). Le chemin est entre guillemets dans la clé.

@@ -7,6 +7,9 @@ use std::time::Duration;
 use crate::adapters::pe;
 use crate::application::ports::DeployPlan;
 
+/// The configuration written by a fresh installation (every key is a commented default).
+const DEFAULT_CONFIG: &str = include_str!("default-config.toml");
+
 /// A file just released by a process that was stopped a moment ago can stay locked
 /// for a short while on Windows.
 const RETRIES: u32 = 8;
@@ -33,7 +36,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Installs the executables and the default config (never over an existing one).
+/// Installs the executables and, if there is none, the default configuration.
 /// Returns one line per action.
 pub fn deploy_files(plan: &DeployPlan) -> Result<Vec<String>> {
     let mut done = Vec::new();
@@ -61,13 +64,11 @@ pub fn deploy_files(plan: &DeployPlan) -> Result<Vec<String>> {
     })?;
     done.push(format!("Exécutable d'arrière-plan : {}", daemon.display()));
 
-    // The config template shipped next to the executable.
-    let source_dir = plan.source_exe.parent().unwrap_or(Path::new("."));
+    // The default configuration, only if there is none: an existing one is never touched.
     let config = plan.data_dir.join("config.toml");
-    let shipped_config = source_dir.join("config.toml");
-    if !config.exists() && shipped_config.is_file() {
-        std::fs::copy(&shipped_config, &config)
-            .with_context(|| format!("Copie de {}", config.display()))?;
+    if !config.exists() {
+        std::fs::write(&config, DEFAULT_CONFIG)
+            .with_context(|| format!("Écriture de {}", config.display()))?;
         done.push(format!("Configuration créée : {}", config.display()));
     }
     Ok(done)

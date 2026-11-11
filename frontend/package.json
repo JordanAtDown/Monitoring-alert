@@ -1,8 +1,8 @@
 {
-  "name": "monitoring-alert-web",
+  "name": "monitoring-web",
   "private": true,
   "version": "0.0.0",
-  "description": "Dashboard of monitoring-alert: long-term temperature drift. Built into web/dist and embedded in the Rust executable.",
+  "description": "Dashboard of Monitoring: long-term temperature drift. Built into web/dist and embedded in the Rust executable.",
   "type": "module",
   "scripts": {
     "dev": "vite",

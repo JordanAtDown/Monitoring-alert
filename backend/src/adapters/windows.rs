@@ -30,7 +30,9 @@ const LEGACY_TASKS: &[&str] = &[
 const LEGACY_AUMID_KEY: &str =
     r"Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor";
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const RUN_VALUE: &str = "MonitoringAlert";
+const RUN_VALUE: &str = "Monitoring";
+/// Name of the start-up entry in the builds that predate the product rename.
+const OLD_RUN_VALUE: &str = "MonitoringAlert";
 
 const ERROR_ACCESS_DENIED: i32 = 5;
 const ERROR_SERVICE_MARKED_FOR_DELETE: i32 = 1072;
@@ -163,11 +165,15 @@ impl HostSystem for WindowsHost {
         let Ok(run_key) = hkcu.open_subkey_with_flags(RUN_KEY, KEY_SET_VALUE | KEY_READ) else {
             return Ok(false);
         };
-        match run_key.delete_value(RUN_VALUE) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(e).context("Suppression de la clé Run"),
+        let mut removed = false;
+        for name in [RUN_VALUE, OLD_RUN_VALUE] {
+            match run_key.delete_value(name) {
+                Ok(()) => removed = true,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e).context("Suppression de la clé Run"),
+            }
         }
+        Ok(removed)
     }
 
     fn autostart_enabled(&self) -> Result<bool> {

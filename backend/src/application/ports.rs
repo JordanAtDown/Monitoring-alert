@@ -132,7 +132,7 @@ pub enum ConfigMigration {
     },
 }
 
-/// File name of the background executable.
+/// File name of the background executable (the command-line one is `monitoring.exe`).
 pub const DAEMON_EXE_NAME: &str = "monitoring-daemon.exe";
 
 /// Where the files of an installation go.
@@ -150,7 +150,7 @@ pub struct DeployPlan {
 
 impl DeployPlan {
     pub fn cli_exe(&self) -> std::path::PathBuf {
-        self.install_dir.join("monitoring-alert.exe")
+        self.install_dir.join("monitoring.exe")
     }
 
     /// The background copy of the executable (no console window).

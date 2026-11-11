@@ -7,7 +7,7 @@ license = "MIT"
 authors = []
 
 [[bin]]
-name = "monitoring-alert"
+name = "monitoring"
 path = "src/main.rs"
 
 [dependencies]

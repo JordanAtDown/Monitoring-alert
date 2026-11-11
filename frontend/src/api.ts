@@ -1,4 +1,4 @@
-// Types mirror the JSON written by monitoring-alert/src/server.rs.
+// Types mirror the JSON written by backend/src/application/queries.rs.
 
 export type Load = "idle" | "light" | "moderate" | "heavy";
 

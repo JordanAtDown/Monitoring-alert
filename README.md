@@ -1,4 +1,6 @@
-# monitoring-alert — Suivi long terme de la dérive des températures
+# Monitoring — Suivi long terme de la dérive des températures
+
+*(dépôt GitHub : `monitoring-alert`)*
 
 Collecte les températures de la machine toutes les 5 minutes et les affiche sur un
 **tableau de bord local** pour voir, sur des mois, si elles dérivent : poussière,
@@ -36,17 +38,17 @@ Il écoute sur `http://127.0.0.1:8085` (clés `lhm_host` / `lhm_port`).
 
 ## Installation
 
-1. Télécharger **`monitoring-alert-setup-vX.Y.Z.exe`** sur
+1. Télécharger **`monitoring_X.Y.Z.exe`** sur
    [GitHub Releases](https://github.com/jordanatdown/monitoring-alert/releases) et le lancer.
    Windows SmartScreen peut afficher « protégé votre ordinateur » (l'installateur n'est pas signé) :
    *Informations complémentaires › Exécuter quand même*.
-2. L'assistant propose un dossier (par défaut `%LOCALAPPDATA%\Programs\MonitoringAlert`, **aucun droit
+2. L'assistant propose un dossier (par défaut `%LOCALAPPDATA%\Programs\Monitoring`, **aucun droit
    administrateur**) puis la **base de données** : s'il en trouve une dans l'installation actuelle, il la
    préremplit avec son contenu (« 4 300 relevés bruts, depuis le … ») ; gardez-la pour conserver tout votre
    historique, ou choisissez-en une autre.
 3. À la fin, **Ouvrir le tableau de bord** : <http://127.0.0.1:8787/>. Un raccourci est aussi dans le menu Démarrer.
 
-L'installateur copie le programme, puis lance `monitoring-alert.exe install --in-place`, qui active le
+L'installateur copie le programme, puis lance `monitoring.exe install --in-place`, qui active le
 démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus. C'est **idempotent** :
 relancer l'installateur met à jour sans rien casser, et `config.toml` n'est jamais écrasé.
 
@@ -122,13 +124,14 @@ au réseau local, **sans authentification** : à ne faire que sur un réseau de 
 
 ## Configuration
 
-`%LOCALAPPDATA%\Programs\MonitoringAlert\config.toml` — toutes les clés sont facultatives.
-Après modification : `monitoring-alert.exe restart`.
+`%LOCALAPPDATA%\Programs\Monitoring\config.toml` — toutes les clés sont facultatives. Une installation
+qui date de la 1.x garde son dossier `MonitoringAlert` tant que sa configuration s'y trouve.
+Après modification : `monitoring.exe restart`.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
 | `db_path` | `temperatures.db` à côté du fichier | Base SQLite |
-| `log_dir` | dossier de la base | Logs (`monitoring-alert.AAAA-MM-JJ.log`, rotation quotidienne) |
+| `log_dir` | dossier de la base | Logs (`monitoring.AAAA-MM-JJ.log`, rotation quotidienne) |
 | `collect_interval_secs` | `300` | Intervalle de collecte (minimum 60) |
 | `raw_retention_days` | `90` | Jours de mesures brutes conservées (minimum 7) |
 | `lhm_host` / `lhm_port` | `127.0.0.1` / `8085` | Serveur HTTP de LibreHardwareMonitor |
@@ -139,7 +142,7 @@ Après modification : `monitoring-alert.exe restart`.
 
 ## Ligne de commande
 
-`monitoring-alert.exe` (console). `monitoring-daemon.exe` est la copie sans fenêtre lancée
+`monitoring.exe` (console). `monitoring-daemon.exe` est la copie sans fenêtre lancée
 automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce nom.
 
 | Commande | Rôle |
@@ -189,9 +192,9 @@ supprime dans la même transaction ; après une grosse purge le fichier est comp
 
 ## Supervision
 
-- **`monitoring-alert.exe check`** : état complet, sans rien modifier.
+- **`monitoring.exe check`** : état complet, sans rien modifier.
 - **En-tête du tableau de bord** : dernière mesure et erreur éventuelle.
-- **Logs** : `monitoring-alert.AAAA-MM-JJ.log` dans `log_dir`. Le collecteur est relancé automatiquement
+- **Logs** : `monitoring.AAAA-MM-JJ.log` dans `log_dir`. Le collecteur est relancé automatiquement
   s'il échoue, et un échec de collecte n'arrête pas le processus.
 - Si le processus ne tourne pas (port déjà pris, base inaccessible), l'erreur est dans le log : le
   processus d'arrière-plan n'a pas de console.
@@ -203,7 +206,7 @@ supprime dans la même transaction ; après une grosse purge le fichier est comp
 ```
 backend/    Rust : la bibliothèque, la CLI, le démon et le serveur web
 frontend/   TypeScript (Vite + uPlot) : le tableau de bord
-installer/  monitoring-alert.iss (installateur Inno Setup) et config.toml (modèle installé)
+installer/  monitoring.iss (installateur Inno Setup)
 tools/      release.sh
 ```
 
@@ -228,7 +231,7 @@ cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings   # cod
 
 # Frontend (depuis frontend/)
 npm ci
-npm run dev        # proxy /api vers 127.0.0.1:8787 (lancer `monitoring-alert serve` à côté)
+npm run dev        # proxy /api vers 127.0.0.1:8787 (lancer `monitoring serve` à côté)
 npm run build      # produit frontend/dist, embarqué dans l'exécutable
 
 # Exécutable complet
@@ -239,7 +242,7 @@ Le frontend est embarqué dans l'exécutable par `backend/build.rs`. Sans build 
 fonctionne (page de remplacement) ; un `cargo build --release` est refusé
 (`MONITORING_ALERT_ALLOW_NO_FRONTEND=1` pour passer outre).
 
-Pour essayer le tout sans Windows : `monitoring-alert serve` avec un faux serveur LHM (un script qui sert
+Pour essayer le tout sans Windows : `monitoring serve` avec un faux serveur LHM (un script qui sert
 un JSON `/data.json` sur `lhm_port`).
 
 Conventions du projet (commits, branche, tests, documentation) : voir [CLAUDE.md](CLAUDE.md).

@@ -17,9 +17,8 @@ const FILES: &[&str] = &[
     "favicon.svg",
 ];
 
-const PLACEHOLDER_INDEX: &str =
-    "<!doctype html><meta charset=\"utf-8\"><title>monitoring-alert</title>\
-<h1>monitoring-alert</h1><p>The dashboard was not built into this executable \
+const PLACEHOLDER_INDEX: &str = "<!doctype html><meta charset=\"utf-8\"><title>Monitoring</title>\
+<h1>Monitoring</h1><p>The dashboard was not built into this executable \
 (run <code>npm ci &amp;&amp; npm run build</code> in <code>frontend/</code>, then rebuild). \
 The JSON API is available under <code>/api/</code>.</p>";
 

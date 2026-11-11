@@ -1,13 +1,13 @@
-# CLAUDE.md — monitoring-alert
+# CLAUDE.md — Monitoring (dépôt `monitoring-alert`)
 
 Suivi long terme de la **dérive des températures** : un processus d'arrière-plan collecte les
 capteurs de LibreHardwareMonitor et sert un tableau de bord local. Pas de service Windows, pas de
 rapports, pas de notifications. Détails d'usage et d'architecture : [README.md](README.md).
 
 ```
-backend/    Rust — bibliothèque, CLI (monitoring-alert.exe), démon (copie monitoring-daemon.exe), serveur web
+backend/    Rust — bibliothèque, CLI (monitoring.exe), démon (copie monitoring-daemon.exe), serveur web
 frontend/   TypeScript (Vite + uPlot) — tableau de bord, embarqué dans l'exécutable par backend/build.rs
-installer/  monitoring-alert.iss (installateur Inno Setup, seule voie d'installation) + config.toml (modèle)
+installer/  monitoring.iss (installateur Inno Setup, seule voie d'installation)
 tools/      release.sh
 ```
 

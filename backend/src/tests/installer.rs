@@ -7,10 +7,9 @@ use std::path::Path;
 
 fn installer() -> String {
     // UTF-8 with a BOM: without it Inno reads the accents as ANSI.
-    let bytes = std::fs::read(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../installer/monitoring-alert.iss"),
-    )
-    .expect("installer/monitoring-alert.iss");
+    let bytes =
+        std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../installer/monitoring.iss"))
+            .expect("installer/monitoring.iss");
     assert!(
         bytes.starts_with(&[0xEF, 0xBB, 0xBF]),
         "the .iss file must start with a UTF-8 BOM"
@@ -21,7 +20,7 @@ fn installer() -> String {
 #[test]
 fn the_installer_only_copies_and_delegates_to_the_tested_installer() {
     let iss = installer();
-    // Everything else is done by `monitoring-alert.exe install --in-place`.
+    // Everything else is done by `monitoring.exe install --in-place`.
     assert!(iss.contains("'install --in-place'"));
     assert!(iss.contains("Parameters: \"uninstall\""));
     assert!(iss.contains("--db-path"));
@@ -31,18 +30,18 @@ fn the_installer_only_copies_and_delegates_to_the_tested_installer() {
 fn the_installer_installs_per_user_without_administrator_rights() {
     let iss = installer();
     assert!(iss.contains("PrivilegesRequired=lowest"));
-    assert!(iss.contains("DefaultDirName={autopf}\\MonitoringAlert"));
+    assert!(iss.contains("DefaultDirName={autopf}\\Monitoring"));
 }
 
 #[test]
-fn the_installer_never_overwrites_or_removes_the_configuration() {
+fn the_installer_ships_no_config_file_the_executable_writes_the_default_one() {
+    // A config.toml dropped next to the executable would be mistaken for the user's own and
+    // hide the configuration of an existing installation: `install` writes it only if absent.
     let iss = installer();
-    let config_line = iss
-        .lines()
-        .find(|l| l.contains("uninsneveruninstall"))
-        .expect("config.toml entry");
-    assert!(config_line.contains("onlyifdoesntexist"));
-    assert!(config_line.contains("uninsneveruninstall"));
+    assert!(!iss.contains("config.toml\"; DestDir"));
+    assert!(Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/adapters/default-config.toml")
+        .is_file());
 }
 
 #[test]
@@ -77,9 +76,9 @@ fn the_installer_is_built_by_ci_and_published_with_the_release() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap();
     let release = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
-    assert!(ci.contains("installer\\monitoring-alert.iss"));
-    assert!(release.contains("monitoring-alert-setup"));
-    assert!(release.contains("installer-out/monitoring-alert-setup-v*.exe"));
+    assert!(ci.contains("installer\\monitoring.iss"));
+    assert!(release.contains("monitoring-setup"));
+    assert!(release.contains("installer-out/monitoring_*.exe"));
 }
 
 #[test]
@@ -91,14 +90,20 @@ fn the_obsolete_scripts_folder_is_gone() {
 }
 
 #[test]
-fn the_config_template_the_installer_ships_exists_next_to_it() {
+fn the_product_is_called_monitoring_and_the_installer_is_named_after_its_version() {
     let iss = installer();
-    let line = iss
-        .lines()
-        .find(|l| l.contains("DestDir: \"{app}\"") && l.contains("config.toml"))
-        .expect("config.toml entry");
-    assert!(line.contains("Source: \"config.toml\""));
-    assert!(Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../installer/config.toml")
-        .is_file());
+    assert!(iss.contains("#define AppName \"Monitoring\""));
+    assert!(iss.contains("OutputBaseFilename=monitoring_{#AppVersion}"));
+    // The user sees the product name in the wizard, the shortcut and the dashboard.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    for visible in [
+        iss,
+        std::fs::read_to_string(root.join("frontend/index.html")).unwrap(),
+        std::fs::read_to_string(root.join("frontend/src/main.ts")).unwrap(),
+    ] {
+        assert!(
+            !visible.contains("Monitoring Alert"),
+            "the old product name is still visible"
+        );
+    }
 }

@@ -89,4 +89,4 @@ jobs:
 
       # Syntax and [Code] check only: any file stands in for the executable.
       - name: Compile the installer script
-        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.0.0 "/DExePath=..\frontend\package.json" installer\monitoring-alert.iss'
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.0.0 "/DExePath=..\frontend\package.json" installer\monitoring.iss'

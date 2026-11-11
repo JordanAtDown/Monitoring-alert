@@ -15,7 +15,7 @@ export default defineConfig({
     },
   },
   server: {
-    // `npm run dev` while `monitoring-alert serve` runs on its default port.
+    // `npm run dev` while `monitoring serve` runs on its default port.
     proxy: { "/api": "http://127.0.0.1:8787" },
   },
 });

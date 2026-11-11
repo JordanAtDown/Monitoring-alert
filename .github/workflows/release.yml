@@ -72,8 +72,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: monitoring-alert-windows-x64
-          path: backend/target/x86_64-pc-windows-msvc/release/monitoring-alert.exe
+          name: monitoring-windows-x64
+          path: backend/target/x86_64-pc-windows-msvc/release/monitoring.exe
           retention-days: 1
           if-no-files-found: error
 
@@ -108,7 +108,7 @@ jobs:
       - name: Download the executable
         uses: actions/download-artifact@v4
         with:
-          name: monitoring-alert-windows-x64
+          name: monitoring-windows-x64
           path: artifact/
 
       - name: Install Inno Setup
@@ -117,14 +117,14 @@ jobs:
       - name: Compile the installer
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "/DExePath=..\artifact\monitoring-alert.exe" installer\monitoring-alert.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "/DExePath=..\artifact\monitoring.exe" installer\monitoring.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:
-          name: monitoring-alert-setup
-          path: dist/monitoring-alert-setup-v*.exe
+          name: monitoring-setup
+          path: dist/monitoring_*.exe
           retention-days: 1
           if-no-files-found: error
 
@@ -141,13 +141,13 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: monitoring-alert-windows-x64
+          name: monitoring-windows-x64
           path: artifact/
 
       - name: Download the installer
         uses: actions/download-artifact@v4
         with:
-          name: monitoring-alert-setup
+          name: monitoring-setup
           path: installer-out/
 
       - name: Extract release notes from CHANGELOG
@@ -170,7 +170,6 @@ jobs:
         run: |
           echo "$RELEASE_NOTES" > release_notes.md
           gh release create "$GITHUB_REF_NAME" \
-            --title "MonitoringAlert $GITHUB_REF_NAME" \
+            --title "Monitoring $GITHUB_REF_NAME" \
             --notes-file release_notes.md \
-            "artifact/monitoring-alert.exe#monitoring-alert.exe" \
-            installer-out/monitoring-alert-setup-v*.exe
+            installer-out/monitoring_*.exe

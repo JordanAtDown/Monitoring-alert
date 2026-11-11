@@ -343,7 +343,7 @@ async function refreshData(): Promise<void> {
 function mount(): void {
   const app = document.getElementById("app") as HTMLElement;
   app.append(
-    h("header", {}, h("h1", {}, "Monitoring Alert"), h("p", { class: "tagline" }, "Évolution des températures dans le temps"), h("div", { id: "status", "aria-live": "polite" })),
+    h("header", {}, h("h1", {}, "Monitoring"), h("p", { class: "tagline" }, "Évolution des températures dans le temps"), h("div", { id: "status", "aria-live": "polite" })),
     h("section", { id: "filters", class: "filters", "aria-label": "Filtres" }),
     h(
       "main",
