@@ -12,6 +12,7 @@ struct FakeHost {
     daemon_running: bool,
     service_removal_fails: bool,
     tasks_removal_fails: bool,
+    deploy_fails: bool,
     autostart_present: bool,
     config: Option<ConfigMigration>,
 }
@@ -67,6 +68,9 @@ impl HostSystem for FakeHost {
     }
     fn deploy(&self, _: &DeployPlan) -> Result<Vec<String>> {
         self.log("deploy");
+        if self.deploy_fails {
+            bail!("Access is denied. (os error 5)");
+        }
         Ok(vec!["Exécutable installé : X".into()])
     }
     fn stop_daemon(&self) -> Result<bool> {
@@ -250,6 +254,22 @@ fn a_migrated_config_is_reported_with_its_backup() {
         .unwrap();
     assert!(line.contains("reports_dir, retention_days"));
     assert!(line.contains("config.toml.v1.bak"));
+}
+
+#[test]
+fn a_refused_copy_tells_how_to_fix_it_and_starts_nothing() {
+    // The v1.x config keeps install_dir = "C:\\Program Files\\MonitoringAlert".
+    let host = FakeHost {
+        deploy_fails: true,
+        ..Default::default()
+    };
+    let error = format!("{:#}", install(&host, &plan()).unwrap_err());
+
+    assert!(error.contains("Program Files"), "{error}");
+    assert!(error.contains("administrateur"), "{error}");
+    assert!(error.contains("install_dir"), "{error}");
+    assert!(error.contains("os error 5"), "{error}");
+    assert!(!host.called("autostart_enable") && !host.called("start_daemon"));
 }
 
 #[test]

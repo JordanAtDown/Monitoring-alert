@@ -87,9 +87,13 @@ pub fn install(host: &dyn HostSystem, plan: &DeployPlan) -> Result<Report> {
     }
 
     // 4. Files, start-up entry, start.
-    report
-        .lines
-        .extend(host.deploy(plan).context("Copie des fichiers")?);
+    report.lines.extend(host.deploy(plan).with_context(|| {
+        format!(
+            "Copie des fichiers dans {} (si l'accès est refusé : relancez install.bat en \
+                 administrateur, ou changez `install_dir` dans config.toml)",
+            plan.install_dir.display()
+        )
+    })?);
     let daemon = plan.daemon_exe();
     host.autostart_enable(&daemon)
         .context("Enregistrement du démarrage automatique")?;
