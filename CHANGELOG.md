@@ -7,13 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Un niveau de charge qu'on n'atteint plus n'affiche plus un chiffre périmé.** La dernière médiane glissante
-  était présentée comme « ces 30 derniers jours » même si la dernière mesure datait de deux mois (après avoir
-  arrêté de jouer, par exemple). Au-delà de 15 jours sans mesure, la page dit « plus de mesures depuis le … »
-  au lieu du chiffre, ne prononce plus de verdict, et la série ne compte plus dans la dérive commune à la machine.
-
 ### Added
+- **Une marge d'incertitude, pour ne plus annoncer du bruit.** L'écart d'un capteur est accompagné de l'erreur-type
+  des deux médianes comparées (estimation robuste, 95 %), et aucun verdict n'est prononcé tant que l'écart ne dépasse
+  pas le plus grand des deux seuils : la résolution des capteurs (1,5 °C) ou cette marge. Un capteur bruyant — la
+  température du processeur au repos varie facilement de 3 °C d'un jour à l'autre — doit donc bouger plus qu'un disque
+  stable avant qu'on en dise quelque chose, et la comparaison entre composants, y compris la phrase de l'accueil, suit
+  la même règle. La marge est indiquée dans les « Détails techniques » du capteur.
 - **La saison ou le composant : le tableau de bord tranche.** Chaque composant est comparé à la **dérive commune à
   toute la machine** (médiane des écarts, une voix par composant) ; son *excès* sur cette dérive est ce qui distingue
   une pièce qui a chauffé (tout monte ensemble) d'un composant qui chauffe seul — poussière, pâte thermique ou
@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   masquer ; au choix, les températures ou l'écart depuis le début (pour voir une petite dérive). Le niveau de charge
   (au repos, charge légère…) se choisit juste au-dessus du graphique.
 - `tools/demo.sh` : voir le tableau de bord en local (données de démonstration ou copie de votre base, faux LibreHardwareMonitor).
+
+### Fixed
+- **Un niveau de charge qu'on n'atteint plus n'affiche plus un chiffre périmé.** La dernière médiane glissante
+  était présentée comme « ces 30 derniers jours » même si la dernière mesure datait de deux mois (après avoir
+  arrêté de jouer, par exemple). Au-delà de 15 jours sans mesure, la page dit « plus de mesures depuis le … »
+  au lieu du chiffre, ne prononce plus de verdict, et la série ne compte plus dans la dérive commune à la machine.
 
 ### Changed
 - **Tableau de bord réécrit en langage courant, en quatre pages** (Accueil, Courbes, Détails, État) :
