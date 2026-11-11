@@ -208,3 +208,25 @@ fn vacuum_runs_without_error() {
     db::purge_old_snapshots(&conn, 30).unwrap();
     db::vacuum(&conn).expect("vacuum should not fail");
 }
+
+// ── Journal mode ──────────────────────────────────────────────
+
+#[test]
+fn file_database_uses_wal_so_readers_do_not_block_the_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wal.db");
+    let writer = db::init_db(&path).unwrap();
+
+    let mode: String = writer
+        .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(mode, "wal");
+
+    // A second connection (the dashboard) can read while the first holds a write transaction.
+    writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+    db::insert_snapshot(&writer, "2024-01-01T12:00:00", None, None, "idle").unwrap();
+    let reader = db::init_db(&path).unwrap();
+    let stats = db::get_overall_stats(&reader).unwrap();
+    assert_eq!(stats.total_snapshots, 0);
+    writer.execute_batch("COMMIT").unwrap();
+}
