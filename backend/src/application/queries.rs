@@ -58,7 +58,7 @@ pub fn status(
     info: &AppInfo,
 ) -> Result<StatusResponse> {
     let stats = read.overall_stats()?;
-    let history_since = read.series()?.into_iter().map(|s| s.first_day).min();
+    let history_since = stats.history_start_day().map(str::to_string);
     Ok(StatusResponse {
         version: env!("CARGO_PKG_VERSION"),
         now: now_string(),

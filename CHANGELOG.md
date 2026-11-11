@@ -78,6 +78,9 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   tout l'historique existant.
 - `check` ne modifie plus rien et vérifie le tableau de bord, le démarrage automatique et les
   reliquats de la 1.x.
+- L'ancienneté de l'historique (`check`, journal de démarrage, tableau de bord) se compte depuis le **premier résumé
+  quotidien** et non plus depuis la première mesure brute : après la purge des mesures brutes, `check` annonçait
+  « 51 j » alors que 217 jours de résumés existaient.
 - `install_dir` et `db_path` valent par défaut le dossier de `config.toml` (installation possible
   sans droits administrateur).
 - Dossiers renommés : `monitoring-alert/` → `backend/`, nouveau `frontend/`.

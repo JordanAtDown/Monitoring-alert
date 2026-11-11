@@ -265,10 +265,17 @@ pub fn get_overall_stats(conn: &Connection) -> Result<OverallStats> {
             },
         )
         .context("Failed to query overall stats")?;
+    // A database not migrated yet (opened read-only) has no daily_stats table.
+    let history_since = conn
+        .query_row("SELECT MIN(day) FROM daily_stats", [], |r| {
+            r.get::<_, Option<String>>(0)
+        })
+        .unwrap_or(None);
     Ok(OverallStats {
         total_snapshots: row.0,
         first_ts: row.1,
         last_ts: row.2,
+        history_since,
     })
 }
 

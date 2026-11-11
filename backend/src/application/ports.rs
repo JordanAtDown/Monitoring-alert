@@ -37,8 +37,21 @@ pub trait UpdateSource: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct OverallStats {
     pub total_snapshots: i64,
+    /// First raw snapshot still stored (raw readings are purged after a while).
     pub first_ts: Option<String>,
     pub last_ts: Option<String>,
+    /// First day with daily aggregates: how far the long-term history goes. Unlike the raw
+    /// readings it is never purged.
+    pub history_since: Option<String>,
+}
+
+impl OverallStats {
+    /// The day the follow-up started: the first daily aggregate, else the first raw snapshot.
+    pub fn history_start_day(&self) -> Option<&str> {
+        self.history_since
+            .as_deref()
+            .or_else(|| self.first_ts.as_deref().and_then(|ts| ts.get(..10)))
+    }
 }
 
 /// One (sensor, load category) series present in the daily aggregates.

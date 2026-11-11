@@ -545,3 +545,42 @@ fn read_only_connection_can_read_but_not_write() {
     assert_eq!(db::get_overall_stats(&ro).unwrap().total_snapshots, 0);
     assert!(db::insert_snapshot(&ro, "2024-01-01T00:00:00", None, None, "idle").is_err());
 }
+
+// ── How far the history goes ──────────────────────────────────
+
+#[test]
+fn the_history_start_is_the_first_daily_aggregate_even_after_the_raw_readings_are_purged() {
+    let conn = make_conn();
+    seed(&conn, "2024-01-01T10:00:00", "idle", "Package", 40.0);
+    seed(&conn, "2024-01-02T10:00:00", "idle", "Package", 41.0);
+    db::purge_old_snapshots(&conn, 30).unwrap();
+
+    let stats = db::get_overall_stats(&conn).unwrap();
+    assert_eq!(stats.total_snapshots, 0, "the raw readings are gone");
+    assert_eq!(stats.first_ts, None);
+    // ...but the follow-up still reaches back to the first day.
+    assert_eq!(stats.history_since.as_deref(), Some("2024-01-01"));
+    assert_eq!(stats.history_start_day(), Some("2024-01-01"));
+}
+
+#[test]
+fn without_aggregates_the_history_starts_at_the_first_raw_snapshot() {
+    let conn = make_conn();
+    seed(&conn, "2025-03-05T10:00:00", "idle", "Package", 40.0);
+    let stats = db::get_overall_stats(&conn).unwrap();
+    assert_eq!(stats.history_since, None);
+    assert_eq!(stats.history_start_day(), Some("2025-03-05"));
+}
+
+#[test]
+fn a_database_not_migrated_yet_can_be_read_without_a_daily_stats_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("temperatures.db");
+    create_v1_db(&path, &[("2024-01-01T10:00:00", "idle", 40.0)]);
+
+    let ro = db::open_read_only(&path).unwrap();
+    let stats = db::get_overall_stats(&ro).unwrap();
+    assert_eq!(stats.total_snapshots, 1);
+    assert_eq!(stats.history_since, None);
+    assert_eq!(stats.history_start_day(), Some("2024-01-01"));
+}

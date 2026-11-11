@@ -56,10 +56,9 @@ fn startup_checks(
 ) -> bool {
     match store.overall_stats() {
         Ok(s) => {
+            // The history counts from the first daily aggregate: raw readings are purged.
             let days = s
-                .first_ts
-                .as_deref()
-                .and_then(|ts| ts.get(..10))
+                .history_start_day()
                 .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
                 .map(|first| (chrono::Local::now().date_naive() - first).num_days());
             let readiness = match days {

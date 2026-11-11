@@ -280,6 +280,7 @@ fn run_check(db_path: &Path, cfg: &config::AppConfig) {
                 total_snapshots: 0,
                 first_ts: None,
                 last_ts: None,
+                history_since: None,
             });
             let size_mb = ReadModel::storage_bytes(&store) as f64 / 1_048_576.0;
             println!(
@@ -287,13 +288,14 @@ fn run_check(db_path: &Path, cfg: &config::AppConfig) {
                 size_mb, stats.total_snapshots
             );
 
-            let first_day = stats.first_ts.as_deref().and_then(|s| s.get(..10));
+            // The history starts at the first daily summary: raw readings are purged after a while.
+            let first_day = stats.history_start_day();
             let days = first_day
                 .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
                 .map(|first| (chrono::Local::now().date_naive() - first).num_days());
             match (days, first_day) {
                 (Some(d), Some(first)) => {
-                    println!("     Mesures brutes depuis le {first} ({d} j)");
+                    println!("     Historique depuis le {first} ({d} j)");
                     let min = monitoring_alert::domain::trends::MIN_SPAN_DAYS;
                     if d >= min {
                         println!("     Suivi de dérive : disponible (≥ {min} j de recul)");
