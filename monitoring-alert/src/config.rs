@@ -17,8 +17,9 @@ pub struct AppConfig {
     /// Sensor collection interval in seconds (min 60, default 300).
     #[cfg_attr(not(windows), allow(dead_code))]
     pub collect_interval_secs: u64,
-    /// How many days of data to keep (default 365, enforced minimum 360).
-    pub retention_days: u32,
+    /// How many days of raw readings to keep (default 90, minimum 7).
+    /// The daily aggregates used for the long-term trends are never purged.
+    pub raw_retention_days: u32,
     /// tracing log level: "error", "warn", "info" (default), "debug", "trace".
     pub log_level: String,
     /// LibreHardwareMonitor HTTP host (default "127.0.0.1").
@@ -40,7 +41,7 @@ struct RawConfig {
     log_dir: Option<String>,
     install_dir: Option<String>,
     collect_interval_secs: Option<u64>,
-    retention_days: Option<u32>,
+    raw_retention_days: Option<u32>,
     log_level: Option<String>,
     lhm_host: Option<String>,
     lhm_port: Option<u16>,
@@ -97,8 +98,7 @@ impl AppConfig {
             .unwrap_or_else(|| db_path.parent().unwrap_or(Path::new(".")).to_path_buf());
 
         let collect_interval_secs = raw.collect_interval_secs.unwrap_or(300).max(60);
-        // Minimum 360 days to cover the full 180-day current + 180-day reference window.
-        let retention_days = raw.retention_days.unwrap_or(365).max(360);
+        let raw_retention_days = raw.raw_retention_days.unwrap_or(90).max(7);
 
         let log_level = raw
             .log_level
@@ -116,7 +116,7 @@ impl AppConfig {
             db_path,
             log_dir,
             collect_interval_secs,
-            retention_days,
+            raw_retention_days,
             log_level,
             lhm_host,
             lhm_port,
@@ -148,7 +148,7 @@ impl AppConfig {
             db_path,
             log_dir,
             collect_interval_secs: 300,
-            retention_days: 365,
+            raw_retention_days: 90,
             log_level: "info".to_string(),
             lhm_host: "127.0.0.1".to_string(),
             lhm_port: 8085,

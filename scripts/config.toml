@@ -18,15 +18,17 @@ db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\tempera
 # Exemple : "D:\\Logs\\MonitoringAlert"
 # log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert"
 
-# Intervalle de collecte du service (en secondes, minimum 60)
+# Intervalle de collecte (en secondes, minimum 60)
 # Défaut : 300 (toutes les 5 minutes)
 collect_interval_secs = 300
 
-# Durée de rétention des données (en jours, minimum 360)
-# Les snapshots plus anciens sont purgés automatiquement au démarrage
-# du service puis toutes les 24h. La valeur minimale est 360 car l'algorithme
-# compare une fenêtre de 180 jours (saisonnière) à la fenêtre précédente (180j).
-retention_days = 365
+# Durée de conservation des mesures brutes (en jours, minimum 7)
+# Au-delà, les mesures brutes sont supprimées automatiquement (au démarrage puis
+# toutes les 24h) APRÈS avoir été agrégées par jour (médiane, min, max, p95).
+# Ces agrégats quotidiens sont conservés sans limite : ce sont eux qui servent
+# à suivre la dérive sur toute la durée de la collecte.
+# Défaut : 90
+raw_retention_days = 90
 
 # Adresse IP du serveur HTTP de LibreHardwareMonitor (Options → Remote Web Server)
 # Défaut : "127.0.0.1" (machine locale)

@@ -101,7 +101,7 @@ fn run_cli() -> Result<()> {
             collector::watch(
                 &db_path,
                 interval,
-                cfg.retention_days,
+                cfg.raw_retention_days,
                 &cfg.lhm_host,
                 cfg.lhm_port,
                 stop,
@@ -170,8 +170,8 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
     println!("  ✓  Configuration chargée");
     println!("     DB         : {}", db_path.display());
     println!(
-        "     Intervalle : {} s  —  Rétention : {} j  —  Log : {}",
-        cfg.collect_interval_secs, cfg.retention_days, cfg.log_level
+        "     Intervalle : {} s  —  Mesures brutes conservées : {} j  —  Log : {}",
+        cfg.collect_interval_secs, cfg.raw_retention_days, cfg.log_level
     );
     println!();
 

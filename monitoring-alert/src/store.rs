@@ -29,9 +29,15 @@ pub trait TemperatureStore {
 
     fn get_overall_stats(&self) -> Result<OverallStats>;
 
-    /// Delete snapshots (and their readings) older than `days` days.
-    /// Returns the number of snapshots removed.
+    /// Delete the raw snapshots and readings of every whole day older than `days`
+    /// days (their daily aggregates are kept). Returns the number of snapshots removed.
     fn purge_old_data(&self, days: u32) -> Result<usize>;
+
+    /// Compact the database file and release the free pages to the disk.
+    fn vacuum(&self) -> Result<()>;
+
+    /// Recompute the daily aggregates of every day from `from_day` (`YYYY-MM-DD`) onwards.
+    fn rollup_since(&self, from_day: &str) -> Result<usize>;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -77,5 +83,13 @@ impl TemperatureStore for SqliteStore {
 
     fn purge_old_data(&self, days: u32) -> Result<usize> {
         crate::db::purge_old_snapshots(&self.0, days)
+    }
+
+    fn rollup_since(&self, from_day: &str) -> Result<usize> {
+        crate::db::rollup_since(&self.0, from_day)
+    }
+
+    fn vacuum(&self) -> Result<()> {
+        crate::db::vacuum(&self.0)
     }
 }

@@ -255,7 +255,7 @@ pub mod windows {
         let result = crate::collector::watch(
             &config.db_path,
             config.collect_interval_secs,
-            config.retention_days,
+            config.raw_retention_days,
             &config.lhm_host,
             config.lhm_port,
             stop_flag,

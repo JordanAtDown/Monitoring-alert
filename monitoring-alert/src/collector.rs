@@ -11,6 +11,9 @@ use crate::{db, sensors};
 /// At the default 300s interval this corresponds to ~1 hour.
 const EMPTY_ALERT_THRESHOLD: u32 = 12;
 
+/// A purge removing at least this many snapshots (~17 days at 5 min) is followed by a VACUUM.
+const VACUUM_AFTER_PURGE_SNAPSHOTS: usize = 5000;
+
 /// Retry interval (seconds) while waiting for LHM to become available at startup.
 #[cfg(windows)]
 const LHM_RETRY_INTERVAL_SECS: u64 = 10;
@@ -106,7 +109,7 @@ pub fn collect_and_store(
 pub fn watch(
     db_path: &Path,
     interval_secs: u64,
-    retention_days: u32,
+    raw_retention_days: u32,
     lhm_host: &str,
     lhm_port: u16,
     stop: Arc<AtomicBool>,
@@ -114,9 +117,9 @@ pub fn watch(
     let conn = db::init_db(db_path).context("Failed to open database")?;
     let store = SqliteStore::new(conn);
     tracing::info!(
-        "Watch loop started — interval: {}s, retention: {} days.",
+        "Watch loop started — interval: {}s, raw readings kept {} days (daily aggregates kept forever).",
         interval_secs,
-        retention_days
+        raw_retention_days
     );
 
     // ── Startup diagnostics ───────────────────────────────────
@@ -215,7 +218,10 @@ pub fn watch(
     }
     // ─────────────────────────────────────────────────────────
 
-    // Run purge once at startup, then every 24 h.
+    // Roll up the raw readings into daily aggregates once at startup, then hourly.
+    // Run purge once at startup, then every 24 h. The purge itself aggregates
+    // whatever it is about to delete, so no history is lost.
+    let rollup_every = (3600 / interval_secs).max(1);
     let purge_every = (86400 / interval_secs).max(1);
     let mut iterations: u64 = 0;
     let mut empty_streak: u32 = 0;
@@ -227,14 +233,31 @@ pub fn watch(
             break;
         }
 
+        if iterations.is_multiple_of(rollup_every) {
+            // Yesterday + today: yesterday may have been completed since the last pass.
+            if let Err(e) = store.rollup_since(&db::day_string(1)) {
+                tracing::warn!("Daily roll-up error: {:#}", e);
+            }
+        }
+
         if iterations.is_multiple_of(purge_every) {
-            match store.purge_old_data(retention_days) {
+            match store.purge_old_data(raw_retention_days) {
                 Ok(0) => {}
-                Ok(n) => tracing::info!(
-                    "Purged {} snapshot(s) older than {} days.",
-                    n,
-                    retention_days
-                ),
+                Ok(n) => {
+                    tracing::info!(
+                        "Purged {} snapshot(s) older than {} days (daily aggregates kept).",
+                        n,
+                        raw_retention_days
+                    );
+                    // A large purge (e.g. right after the v2 migration) leaves a lot of
+                    // free pages: give the space back to the disk.
+                    if n >= VACUUM_AFTER_PURGE_SNAPSHOTS {
+                        match store.vacuum() {
+                            Ok(()) => tracing::info!("Database compacted after purge."),
+                            Err(e) => tracing::warn!("Vacuum error: {:#}", e),
+                        }
+                    }
+                }
                 Err(e) => tracing::warn!("Purge error: {:#}", e),
             }
         }
