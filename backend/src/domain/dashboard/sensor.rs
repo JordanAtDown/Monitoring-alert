@@ -33,6 +33,17 @@ pub struct MonthDetail {
     pub highest: String,
 }
 
+/// One calendar month against the same month a year earlier, ready to put in a table.
+#[derive(Debug, Serialize)]
+pub struct SeasonRow {
+    /// "novembre 2026".
+    pub label: String,
+    /// The figure of the same month a year earlier, then of this one, then the change.
+    pub before: String,
+    pub after: String,
+    pub change: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Fact {
     pub label: &'static str,
@@ -51,6 +62,9 @@ pub struct SensorPage {
     pub reference: Option<Reference>,
     pub legend: Vec<&'static str>,
     pub months: Vec<MonthDetail>,
+    /// Each month against the same month a year earlier, newest first; empty before thirteen
+    /// months of history.
+    pub seasons: Vec<SeasonRow>,
     /// For those who want the statistics.
     pub technical: Vec<Fact>,
 }
@@ -110,7 +124,40 @@ fn peak_line(t: &trends::Trend) -> Option<Line> {
     })
 }
 
-fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
+/// The same month, a year apart. The season cancels out — both sides are the same time of year —
+/// so whatever is left is the machine. It is the cleanest answer to "is it the weather?", and the
+/// only one that needs no assumption at all; it just takes thirteen months of history to exist.
+fn season_line(pairs: &[trends::YearOverYear]) -> Option<Line> {
+    let p = pairs.first()?;
+    let month = wording::month_year(&p.first_day);
+    let before = wording::month_year(&p.previous_first_day);
+    let text = if p.delta.abs() < STABLE_BAND {
+        format!(
+            "À saison égale, {month} est au même niveau que {before} ({}) : sur un an, rien n'a bougé pour ce capteur.",
+            wording::temp(p.median)
+        )
+    } else if p.delta > 0.0 {
+        format!(
+            "À saison égale, {month} est {} plus chaud que {before} ({} contre {}). La saison n'explique pas cet écart : les deux mois sont la même période de l'année.",
+            wording::temp(p.delta),
+            wording::temp(p.median),
+            wording::temp(p.previous_median)
+        )
+    } else {
+        format!(
+            "À saison égale, {month} est {} plus frais que {before} ({} contre {}).",
+            wording::temp(p.delta.abs()),
+            wording::temp(p.median),
+            wording::temp(p.previous_median)
+        )
+    };
+    Some(Line {
+        kind: "story",
+        spans: vec![span(text, false)],
+    })
+}
+
+fn story(t: &trends::Trend, machine: Option<f64>, pairs: &[trends::YearOverYear]) -> Vec<Line> {
     let plain = |text: String| Line {
         kind: "story",
         spans: vec![span(text, false)],
@@ -167,6 +214,7 @@ fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
             span(format!(", soit {outcome}"), false),
         ],
     }];
+    lines.extend(season_line(pairs));
     lines.extend(peak_line(t));
     if verdict == Verdict::Warmer {
         lines.push(Line {
@@ -214,6 +262,8 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
         subtitle.push(format!("capteur « {tech} »"));
     }
 
+    let months = trends::monthly(&trend.points);
+    let seasons = trends::year_over_year(&months);
     let sufficient = trend.baseline.is_some();
     let technical = match (sufficient, trend.slope_per_month) {
         (true, Some(slope)) => vec![
@@ -273,7 +323,7 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
         name,
         subtitle: subtitle.join(" · "),
         slot: found.map(|(i, _)| i),
-        story: story(&trend, facts.machine_drift()),
+        story: story(&trend, facts.machine_drift(), &seasons),
         rolling: trend
             .rolling
             .iter()
@@ -287,14 +337,23 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
             label: format!("Au début : {}", wording::temp(b)),
         }),
         legend,
-        months: trends::monthly(&trend.points)
-            .into_iter()
+        months: months
+            .iter()
             .map(|m| MonthDetail {
                 label: wording::month_year(&m.first_day),
                 days: m.days,
                 usual: wording::temp(m.median),
                 lowest: wording::temp(m.min),
                 highest: wording::temp(m.max),
+            })
+            .collect(),
+        seasons: seasons
+            .iter()
+            .map(|p| SeasonRow {
+                label: wording::month_year(&p.first_day),
+                before: wording::temp(p.previous_median),
+                after: wording::temp(p.median),
+                change: wording::signed(p.delta),
             })
             .collect(),
         technical,

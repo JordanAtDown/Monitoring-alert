@@ -34,6 +34,20 @@ function detail(row: SensorView): { element: HTMLElement; draw: () => void } {
 
   const chart = h("div", { class: "chart", role: "img", "aria-label": `Courbe de la température de ${page.name} dans le temps` });
   element.append(chart, h("ul", { class: "legend" }, ...page.legend.map(legendItem)), h("p", { class: "hint" }, "Glissez sur la courbe pour zoomer, double-cliquez pour revenir. Les bandes grises alternées marquent les mois."));
+  if (page.seasons.length > 0) {
+    // The same month a year apart: the comparison the season cannot distort, so it is open.
+    element.append(
+      h(
+        "details",
+        { open: true },
+        h("summary", {}, "Le même mois, un an avant"),
+        textTable(
+          ["Mois", "Un an avant", "Ce mois-ci", "Écart"],
+          page.seasons.map((s) => [s.label, s.before, s.after, s.change]),
+        ),
+      ),
+    );
+  }
   element.append(
     h(
       "details",

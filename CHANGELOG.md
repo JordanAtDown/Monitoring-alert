@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Le même mois, un an avant.** La page d'un capteur compare chaque mois au même mois de l'année précédente : la
+  saison s'annule, il ne reste que la machine. Elle n'apparaît qu'à partir de 13 mois de suivi (au moins 10 jours de
+  mesures de chaque côté), donc pas avant que l'historique ne le permette.
 - **Les pointes de température sont enfin regardées.** Le p95 de chaque journée était stocké depuis toujours et
   n'entrait dans aucun calcul. L'écart est maintenant mesuré aussi sur ces pointes (avec sa propre marge), et la
   page d'un capteur le signale quand elles montent nettement plus que la température habituelle : c'est la forme

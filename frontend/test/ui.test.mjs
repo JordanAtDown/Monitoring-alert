@@ -325,6 +325,41 @@ test("a sensor opens in place with its story, its curve and its figures", async 
   page.close();
 });
 
+test("the same month a year apart is shown as its own table, open", async () => {
+  const sensor = fixture("sensor-disk1.json");
+  sensor.seasons = [
+    { label: "novembre 2026", before: "48,8 °C", after: "52,9 °C", change: "+4,1 °C" },
+    { label: "octobre 2026", before: "50,1 °C", after: "53,7 °C", change: "+3,6 °C" },
+  ];
+  const page = await openPage({ page: "details", sensor });
+  const row = [...page.d.querySelectorAll("#components tbody tr")].find((r) => r.textContent.startsWith("Température du disque"));
+  click(page, row);
+  await page.settle();
+  const seasons = [...page.d.querySelectorAll(".detail details")].find((d) => d.querySelector("summary").textContent === "Le même mois, un an avant");
+  assert.ok(seasons, "the season comparison has its own section");
+  assert.ok(seasons.hasAttribute("open"), "it is the comparison the season cannot distort: open by default");
+  assert.deepEqual([...seasons.querySelectorAll("thead th")].map((c) => c.textContent), ["Mois", "Un an avant", "Ce mois-ci", "Écart"]);
+  const rows = [...seasons.querySelectorAll("tr")].filter((tr) => tr.querySelector('th[scope="row"]'));
+  assert.deepEqual(
+    rows.map((tr) => [...tr.children].map((c) => c.textContent)),
+    [
+      ["novembre 2026", "48,8 °C", "52,9 °C", "+4,1 °C"],
+      ["octobre 2026", "50,1 °C", "53,7 °C", "+3,6 °C"],
+    ],
+  );
+  page.close();
+});
+
+test("without thirteen months of history no season table is drawn", async () => {
+  const page = await openPage({ page: "details" });
+  const row = [...page.d.querySelectorAll("#components tbody tr")].find((r) => r.textContent.startsWith("Température du disque"));
+  click(page, row);
+  await page.settle();
+  const summaries = [...page.d.querySelectorAll(".detail summary")].map((s) => s.textContent);
+  assert.ok(!summaries.includes("Le même mois, un an avant"), summaries.join("|"));
+  page.close();
+});
+
 // ── Update ───────────────────────────────────────────────────────────────────
 
 test("without a newer version there is no update button and the footer says so", async () => {

@@ -338,3 +338,86 @@ fn the_peaks_of_a_sensor_are_given_in_its_technical_details() {
     assert!(peaks.text.contains("+6,0 °C"), "{}", peaks.text);
     assert!(peaks.text.contains("p95"), "{}", peaks.text);
 }
+
+/// One sensor with `days` days of history, warming `per_day` degrees a day.
+fn long_history(days: i64, per_day: f64) -> Facts {
+    let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let stats: Vec<DayStat> = (0..days)
+        .map(|i| {
+            let m = 40.0 + per_day * i as f64;
+            DayStat {
+                day: start + chrono::Duration::days(i),
+                n: 288,
+                min: m - 2.0,
+                median: m,
+                p95: m + 3.0,
+                max: m + 5.0,
+            }
+        })
+        .collect();
+    let today = start + chrono::Duration::days(days);
+    Facts {
+        summaries: vec![trends::summarize(
+            "AMD Ryzen 7",
+            "Core (Tctl/Tdie)",
+            "idle",
+            &stats,
+            today,
+        )],
+        groups: vec![("AMD Ryzen 7".into(), "Core (Tctl/Tdie)".into(), stats)],
+        seen: vec![("AMD Ryzen 7".into(), "Core (Tctl/Tdie)".into())],
+        since: Some("2024-01-01".into()),
+        today,
+    }
+}
+
+fn cpu_page(facts: &Facts) -> sensor::SensorPage {
+    sensor::build(facts, "AMD Ryzen 7", "Core (Tctl/Tdie)", "idle")
+}
+
+#[test]
+fn the_same_month_a_year_apart_is_told_as_a_sentence() {
+    let page = cpu_page(&long_history(400, 0.01));
+    let text: String = page
+        .story
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.text.clone()))
+        .collect();
+    assert!(text.contains("À saison égale, janvier 2025"), "{text}");
+    assert!(text.contains("plus chaud que janvier 2024"), "{text}");
+    // The point of the comparison: the season cannot be the explanation.
+    assert!(
+        text.contains("La saison n'explique pas cet écart"),
+        "{text}"
+    );
+
+    assert_eq!(page.seasons.len(), 1);
+    assert_eq!(page.seasons[0].label, "janvier 2025");
+    assert_eq!(page.seasons[0].change, "+3,7 °C");
+    // January 2024 is centred on its 16th day: 40,0 + 15 × 0,01.
+    assert_eq!(page.seasons[0].before, "40,1 °C");
+}
+
+#[test]
+fn a_sensor_unchanged_from_one_year_to_the_next_says_so() {
+    let page = cpu_page(&long_history(400, 0.0));
+    let text: String = page
+        .story
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.text.clone()))
+        .collect();
+    assert!(text.contains("sur un an, rien n'a bougé"), "{text}");
+}
+
+#[test]
+fn without_thirteen_months_there_is_no_season_comparison() {
+    let page = cpu_page(&five(2.0, 0.0, 0.0, 0.0, 0.0));
+    assert!(page.seasons.is_empty());
+    assert!(
+        !page
+            .story
+            .iter()
+            .any(|l| l.spans.iter().any(|s| s.text.contains("saison égale"))),
+        "nothing to compare before thirteen months"
+    );
+}

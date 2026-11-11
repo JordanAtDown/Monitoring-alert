@@ -213,7 +213,12 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
    quotidien** au lieu de la médiane. Un refroidissement qui ne suit plus se voit là en premier : la
    température habituelle bouge à peine pendant que les pointes montent. Quand les pointes montent nettement
    plus que l'habituel, la page du capteur le dit.
-7. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui
+7. **Le même mois, un an avant** : chaque mois est comparé au même mois de l'année précédente (médiane des médianes
+   quotidiennes, au moins 10 jours de mesures de chaque côté). C'est la seule comparaison qui annule la saison par
+   construction, sans hypothèse. Elle n'existe qu'à partir de **13 mois de suivi** : avant, la page ne l'affiche
+   pas. La page du capteur la présente en tableau et en une phrase (« À saison égale, novembre 2026 est … plus chaud
+   que novembre 2025 »).
+8. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui
    représente le composant, pour qu'un processeur à douze cœurs ne pèse pas plus qu'un disque). L'**excès**
    d'un composant = son écart − cette dérive commune.
 

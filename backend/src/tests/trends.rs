@@ -352,3 +352,63 @@ fn a_series_without_enough_history_has_no_peak_comparison() {
     assert_eq!(t.peak_delta, None);
     assert_eq!(t.peak_baseline, None);
 }
+
+fn month(key: &str, days: usize, median: f64) -> trends::Month {
+    trends::Month {
+        key: key.to_string(),
+        first_day: format!("{key}-01"),
+        days,
+        median,
+        min: median - 2.0,
+        max: median + 2.0,
+    }
+}
+
+#[test]
+fn each_month_is_set_against_the_same_month_a_year_earlier() {
+    // 400 days from 2024-01-01, warming 0.01 °C a day: only January has both of its sides
+    // (February 2025 has three days, December 2023 does not exist).
+    let t = trend_of(&series(400, |i| 40.0 + 0.01 * i as f64));
+    let pairs = trends::year_over_year(&trends::monthly(&t.points));
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0].key, "2025-01");
+    assert_eq!(pairs[0].previous_key, "2024-01");
+    // A year apart at 0.01 °C a day: about 3,7 °C, with the season cancelled out.
+    assert!(
+        (pairs[0].delta - 3.66).abs() < 0.05,
+        "delta = {}",
+        pairs[0].delta
+    );
+    assert!(pairs[0].median > pairs[0].previous_median);
+}
+
+#[test]
+fn a_month_the_pc_was_barely_on_is_not_compared() {
+    let full = trends::year_over_year(&[month("2024-03", 31, 40.0), month("2025-03", 31, 45.0)]);
+    assert_eq!(full.len(), 1);
+    assert_eq!(full[0].delta, 5.0);
+    assert_eq!((full[0].days, full[0].previous_days), (31, 31));
+
+    // Four days on either side is not a month to compare.
+    assert!(
+        trends::year_over_year(&[month("2024-03", 31, 40.0), month("2025-03", 4, 45.0)]).is_empty()
+    );
+    assert!(
+        trends::year_over_year(&[month("2024-03", 4, 40.0), month("2025-03", 31, 45.0)]).is_empty()
+    );
+    // And without the month a year earlier there is nothing to compare at all.
+    assert!(trends::year_over_year(&[month("2025-03", 31, 45.0)]).is_empty());
+}
+
+#[test]
+fn months_a_year_apart_are_paired_newest_first() {
+    let months = [
+        month("2024-01", 31, 40.0),
+        month("2024-02", 28, 41.0),
+        month("2025-01", 31, 42.0),
+        month("2025-02", 28, 44.0),
+    ];
+    let pairs = trends::year_over_year(&months);
+    let keys: Vec<&str> = pairs.iter().map(|p| p.key.as_str()).collect();
+    assert_eq!(keys, ["2025-02", "2025-01"]);
+}

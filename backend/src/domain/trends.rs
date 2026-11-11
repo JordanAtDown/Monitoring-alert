@@ -17,6 +17,7 @@
 
 use chrono::NaiveDate;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// Load categories, from the lightest to the heaviest.
 pub const LOAD_CATEGORIES: [&str; 4] = ["idle", "light", "moderate", "heavy"];
@@ -50,6 +51,8 @@ const MAD_TO_SIGMA: f64 = 1.4826;
 const MEDIAN_SE_FACTOR: f64 = 1.2533;
 /// Two-sided 95 % normal quantile.
 const Z95: f64 = 1.96;
+/// Minimum days with data in a calendar month before its median is set against another month's.
+pub const MIN_MONTH_DAYS: usize = 10;
 /// Maximum number of points of the sparkline given for each sensor.
 const SPARKLINE_POINTS: usize = 60;
 
@@ -456,6 +459,61 @@ pub fn monthly(points: &[Point]) -> Vec<Month> {
                 min: list.iter().map(|p| p.min).fold(f64::INFINITY, f64::min),
                 max: list.iter().map(|p| p.max).fold(f64::NEG_INFINITY, f64::max),
             }
+        })
+        .collect()
+}
+
+/// One calendar month set against the same month a year earlier.
+///
+/// This is the only comparison here that controls for the season by construction: both sides are
+/// the same time of year, so whatever the room does every November cancels out. It needs thirteen
+/// months of history before it says anything, which is why the drift against the first days of
+/// monitoring remains the main figure.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct YearOverYear {
+    /// `YYYY-MM` of the later month, and a day of it to name it.
+    pub key: String,
+    pub first_day: String,
+    /// The same, for the month a year earlier.
+    pub previous_key: String,
+    pub previous_first_day: String,
+    pub median: f64,
+    pub previous_median: f64,
+    /// Later month minus earlier month.
+    pub delta: f64,
+    pub days: usize,
+    pub previous_days: usize,
+}
+
+/// `"2026-11"` → `"2025-11"`.
+fn a_year_earlier(key: &str) -> Option<String> {
+    let (year, month) = key.split_once('-')?;
+    Some(format!("{:04}-{month}", year.parse::<i32>().ok()? - 1))
+}
+
+/// Pairs each month with the same month a year earlier, newest first. A month is only used when
+/// both sides have at least [`MIN_MONTH_DAYS`] days with data: the median of a month the PC was
+/// barely switched on would compare nothing.
+pub fn year_over_year(months: &[Month]) -> Vec<YearOverYear> {
+    let by_key: BTreeMap<&str, &Month> = months.iter().map(|m| (m.key.as_str(), m)).collect();
+    months
+        .iter()
+        .rev()
+        .filter(|m| m.days >= MIN_MONTH_DAYS)
+        .filter_map(|m| {
+            let previous_key = a_year_earlier(&m.key)?;
+            let previous = by_key.get(previous_key.as_str())?;
+            (previous.days >= MIN_MONTH_DAYS).then(|| YearOverYear {
+                key: m.key.clone(),
+                first_day: m.first_day.clone(),
+                previous_key,
+                previous_first_day: previous.first_day.clone(),
+                median: m.median,
+                previous_median: previous.median,
+                delta: m.median - previous.median,
+                days: m.days,
+                previous_days: previous.days,
+            })
         })
         .collect()
 }

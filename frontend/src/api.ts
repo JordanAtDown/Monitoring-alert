@@ -163,6 +163,8 @@ export interface SensorPage {
   reference: Reference | null;
   legend: string[];
   months: { label: string; days: number; usual: string; lowest: string; highest: string }[];
+  /** Each month against the same month a year earlier; empty before thirteen months of history. */
+  seasons: { label: string; before: string; after: string; change: string }[];
   technical: { label: string; text: string }[];
 }
 
