@@ -16,10 +16,10 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   installation par utilisateur **sans droits administrateur**, entrée dans les Applications installées,
   raccourci vers le tableau de bord, mise à jour en relançant l'installateur. Il détecte la base de
   données de l'installation actuelle (page « Base de données ») et la conserve ou la remplace. Il ne
-  demande l'administrateur que pour supprimer l'ancien service Windows d'une 1.x. 
+  demande l'administrateur que pour supprimer l'ancien service Windows d'une 1.x.
 - `monitoring.exe db locate [--porcelain]` (où est la base actuelle, ce qu'elle contient, sans rien
   modifier), `install --in-place` (exécutable déjà en place) et `install --db-path <fichier>`.
-- La CI compile le script de l'installateur à chaque push ; la release publie l'installateur et l'exécutable.
+- La CI compile le script de l'installateur à chaque push ; la release publie l'installateur `monitoring_X.Y.Z.exe` (seul fichier téléchargeable).
 - **Tableau de bord web** (`http://127.0.0.1:8787/`, TypeScript + uPlot, thèmes clair et sombre)
   pour suivre la dérive des températures sur toute la durée de la collecte : tableau de tous les
   capteurs (écart à la référence, pente en °C/mois, mini-courbe), graphique par capteur et par
