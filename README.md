@@ -258,7 +258,17 @@ Le frontend est embarqué dans l'exécutable par `backend/build.rs`. Sans build 
 fonctionne (page de remplacement) ; un `cargo build --release` est refusé
 (`MONITORING_ALERT_ALLOW_NO_FRONTEND=1` pour passer outre).
 
-Pour essayer le tout sans Windows : `monitoring serve` avec un faux serveur LHM (un script qui sert
-un JSON `/data.json` sur `lhm_port`).
+### Voir le tableau de bord en local
+
+```bash
+tools/demo.sh                              # données de démonstration (14 mois, plusieurs disques, une dérive lente)
+tools/demo.sh /mnt/e/monitoring.db/temperatures.db   # vos propres données : la base est COPIÉE, jamais modifiée
+tools/demo.sh --update [base]              # ouvre aussi une 2e adresse qui simule « une mise à jour est disponible »
+```
+
+Le script construit le tableau de bord et le programme, lance un faux LibreHardwareMonitor qui rejoue les capteurs de la
+base, puis le vrai programme, et affiche l'adresse (`http://127.0.0.1:18797/`, ou `DEMO_PORT`). Ctrl+C arrête tout et
+supprime la copie. Pour voir l'état « problème », arrêtez le faux LibreHardwareMonitor (le script donne la commande).
+`npm run dev` (dans `frontend/`) recharge la page à chaque modification, avec le programme lancé à côté.
 
 Conventions du projet (commits, branche, tests, documentation) : voir [CLAUDE.md](CLAUDE.md).
