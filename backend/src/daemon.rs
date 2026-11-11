@@ -20,6 +20,40 @@ use crate::application::status::CollectorStatus;
 /// Delay before the collector is restarted after an unexpected failure.
 const COLLECTOR_RESTART_DELAY_SECS: u64 = 30;
 
+/// How long the daemon waits for the database to become reachable at startup: at logon a
+/// secondary or network drive may not be mounted yet, and nothing would restart the
+/// process afterwards.
+const DB_OPEN_ATTEMPTS: u32 = 30;
+const DB_OPEN_RETRY_SECS: u64 = 10;
+
+/// Opens (and migrates) the database, retrying while it is unreachable.
+pub fn open_database_with_retries(
+    db_path: &Path,
+    attempts: u32,
+    delay_secs: u64,
+    stop: &AtomicBool,
+) -> Result<()> {
+    for attempt in 1..=attempts {
+        match sqlite::init_db(db_path) {
+            Ok(conn) => {
+                drop(conn);
+                return Ok(());
+            }
+            Err(e) if attempt < attempts => {
+                tracing::warn!(
+                    "Database not reachable ({e:#}) — attempt {attempt}/{attempts}, retrying in \
+                     {delay_secs}s (is its drive ready?)"
+                );
+                if sleep_interruptible(delay_secs, stop) {
+                    return Ok(());
+                }
+            }
+            Err(e) => return Err(e).context("Failed to open database"),
+        }
+    }
+    Ok(())
+}
+
 /// Runs the collection loop, restarting it if it ever fails or panics: with no
 /// service manager around, nothing else would bring it back.
 pub fn supervise_collector(
@@ -65,7 +99,7 @@ pub fn supervise_collector(
 pub fn run(cfg: &AppConfig, db_path: &Path, stop: Arc<AtomicBool>) -> Result<()> {
     let listener = http::bind(&cfg.web_host, cfg.web_port)?;
     // Opening the database also migrates it to the current schema.
-    drop(sqlite::init_db(db_path).context("Failed to open database")?);
+    open_database_with_retries(db_path, DB_OPEN_ATTEMPTS, DB_OPEN_RETRY_SECS, &stop)?;
 
     let status = Arc::new(CollectorStatus::new(cfg.collect_interval_secs));
     let path = db_path.to_path_buf();

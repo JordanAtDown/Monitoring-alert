@@ -234,3 +234,62 @@ fn the_monitor_refuses_to_start_when_the_store_cannot_be_opened() {
     .unwrap_err();
     assert!(format!("{error:#}").contains("disk on fire"));
 }
+
+// ── Waiting for the database at startup ───────────────────────
+
+mod database_at_startup {
+    use crate::daemon::open_database_with_retries;
+    use std::sync::atomic::AtomicBool;
+
+    #[test]
+    fn an_available_database_opens_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let stop = AtomicBool::new(false);
+        open_database_with_retries(&dir.path().join("t.db"), 3, 0, &stop).unwrap();
+    }
+
+    #[test]
+    fn a_database_that_never_appears_is_an_error_after_the_last_attempt() {
+        let dir = tempfile::tempdir().unwrap();
+        // The "folder" of the database is a regular file: it can never be created.
+        let blocker = dir.path().join("E-drive");
+        std::fs::write(&blocker, b"not a directory").unwrap();
+        let stop = AtomicBool::new(false);
+
+        let error =
+            open_database_with_retries(&blocker.join("db").join("t.db"), 2, 0, &stop).unwrap_err();
+        assert!(format!("{error:#}").contains("Failed to open database"));
+    }
+
+    #[test]
+    fn a_drive_that_becomes_ready_later_is_picked_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("E-drive");
+        std::fs::write(&blocker, b"not ready").unwrap();
+        let db = blocker.join("t.db");
+
+        // The "drive" appears 300 ms in, i.e. before the second attempt (1 s later).
+        let unblock = {
+            let blocker = blocker.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                std::fs::remove_file(&blocker).unwrap();
+                std::fs::create_dir(&blocker).unwrap();
+            })
+        };
+        let stop = AtomicBool::new(false);
+        open_database_with_retries(&db, 5, 1, &stop).unwrap();
+        unblock.join().unwrap();
+        assert!(db.is_file());
+    }
+
+    #[test]
+    fn a_stop_request_ends_the_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("E-drive");
+        std::fs::write(&blocker, b"x").unwrap();
+        let stop = AtomicBool::new(true);
+        // Would otherwise wait 10 x 10 s.
+        open_database_with_retries(&blocker.join("t.db"), 10, 10, &stop).unwrap();
+    }
+}

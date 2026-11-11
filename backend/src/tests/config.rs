@@ -299,4 +299,61 @@ monthly_report_time    = "08:00"
             (90, 8787, 8085)
         );
     }
+
+    /// A real v1.x config: database on another drive, install under Program Files,
+    /// a monthly report enabled, a custom log folder.
+    const REAL_V1_CONFIG: &str = r#"# =============================================================
+#  MonitoringAlert — configuration
+# =============================================================
+
+install_dir = "C:\\Program Files\\MonitoringAlert"
+db_path = "E:\\monitoring.db\\temperatures.db"
+log_dir = "C:\\Users\\Test\\AppData\\Local\\Programs\\MonitoringAlert\\log"
+reports_dir = "C:\\Users\\Test\\AppData\\Local\\Programs\\MonitoringAlert\\rapports"
+collect_interval_secs = 300
+retention_days = 365
+lhm_host = "127.0.0.1"
+lhm_port = 8085
+log_level = "info"
+daily_report_enabled = false
+daily_report_time    = "08:00"    # HH:MM (24h)
+weekly_report_enabled = false
+weekly_report_day     = "MON"     # MON TUE WED THU FRI SAT SUN
+weekly_report_time    = "08:00"
+monthly_report_enabled = true
+monthly_report_day     = 1        # 1-28
+monthly_report_time    = "19:00"
+"#;
+
+    #[test]
+    fn a_real_v1_config_keeps_the_database_on_its_other_drive() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, REAL_V1_CONFIG).unwrap();
+
+        let ConfigMigration::Rewritten { removed_keys, .. } = migrate_config_file(&path).unwrap()
+        else {
+            panic!("expected a rewrite");
+        };
+        assert_eq!(removed_keys.len(), 10);
+
+        let cfg = AppConfig::load_from(&path);
+        // The existing history is found again, wherever it lives.
+        assert_eq!(
+            cfg.db_path,
+            std::path::Path::new(r"E:\monitoring.db\temperatures.db")
+        );
+        assert_eq!(
+            cfg.log_dir,
+            std::path::Path::new(r"C:\Users\Test\AppData\Local\Programs\MonitoringAlert\log")
+        );
+        assert_eq!(
+            cfg.install_dir.as_deref(),
+            Some(std::path::Path::new(r"C:\Program Files\MonitoringAlert"))
+        );
+        assert_eq!((cfg.collect_interval_secs, cfg.lhm_port), (300, 8085));
+        // The migrated file no longer mentions the reports at all.
+        let migrated = fs::read_to_string(&path).unwrap();
+        assert!(!migrated.contains("report"), "{migrated}");
+    }
 }
