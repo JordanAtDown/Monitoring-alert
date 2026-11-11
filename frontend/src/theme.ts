@@ -6,12 +6,12 @@ export interface Theme {
   inkMuted: string;
   grid: string;
   axis: string;
-  /** Categorical slot 1 — the sensor being looked at. */
-  series: string;
-  /** Diverging poles: warmer than the baseline / cooler than the baseline. */
-  warm: string;
-  cool: string;
+  /** Categorical slots 1–8, in the fixed order of the palette (see style.css). */
+  palette: string[];
 }
+
+/** Colors of the components: fixed by position in the list, never by what is currently shown. */
+export const SERIES_COUNT = 8;
 
 export function readTheme(): Theme {
   const style = getComputedStyle(document.documentElement);
@@ -23,9 +23,7 @@ export function readTheme(): Theme {
     inkMuted: get("--ink-muted"),
     grid: get("--grid"),
     axis: get("--axis"),
-    series: get("--series-1"),
-    warm: get("--diverge-warm"),
-    cool: get("--diverge-cool"),
+    palette: Array.from({ length: SERIES_COUNT }, (_, i) => get(`--series-${i + 1}`)),
   };
 }
 

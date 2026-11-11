@@ -1,13 +1,10 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import type { Trend } from "./api";
 import { clear, h } from "./dom";
-import { fmtInt, fmtLongDay, fmtMonthShort, fmtSigned, fmtTemp, parseDay } from "./format";
+import { fmtLongDay, fmtMonthShort, fmtSigned, fmtTemp, parseDay } from "./format";
 import { readTheme, withAlpha, type Theme } from "./theme";
 
 const DAY = 86400;
-/** A drift of this many °C paints the shading at full intensity. */
-const FULL_SHADE_DELTA = 6;
 const MONTH_LABEL_MIN_PX = 38;
 
 /** First instant of each month intersecting [from, to], as unix seconds (UTC). */
@@ -28,45 +25,53 @@ function monthStarts(from: number, to: number): number[] {
   }
 }
 
-/**
- * The drift chart of one sensor at one load level.
- *
- *  - dots: the median of each day, with a faint min–p95 band behind
- *  - line: the 30-day rolling median — the signal to follow
- *  - dashed: the baseline (median of the first 30 days)
- *  - dotted: the least-squares trend
- *  - shading between the baseline and the rolling median, warm above / cool below
- *  - month bands and labels, so a seasonal swing is easy to recognise
- */
-export interface ChartOptions {
-  /** The faint band from the lowest to the 95th percentile of each day. */
-  band: boolean;
-  /** The least-squares line through all the days. */
-  trendLine: boolean;
+/** One line of the chart: a value per day (the 30-day usual temperature of one sensor). */
+export interface ChartSeries {
+  id: string;
+  label: string;
+  color: string;
+  /** "YYYY-MM-DD" → value */
+  values: Map<string, number>;
 }
 
-export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOptions): () => void {
+export interface ChartInput {
+  series: ChartSeries[];
+  /** `temp`: values are °C. `delta`: values are the change since the beginning (0 = the beginning). */
+  unit: "temp" | "delta";
+  /** A dashed horizontal line, and what to call it. */
+  reference: { value: number; label: string } | null;
+}
+
+const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+
+/** Axis number with the decimals the step needs, a real minus sign, and "+" in `delta` mode. */
+function axisNumber(v: number, decimals: number, signed: boolean): string {
+  const text = Math.abs(v).toFixed(decimals).replace(".", ",");
+  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}${text} °`;
+}
+
+/**
+ * The curves: one line per series, nothing else. Months alternate light/dark in the background so a
+ * seasonal swing is easy to recognise. The legend and the choice of lines live in the page (HTML).
+ */
+export function drawChart(host: HTMLElement, input: ChartInput): () => void {
   clear(host);
   const theme = readTheme();
+  const delta = input.unit === "delta";
+  const fmtValue = delta ? (v: number) => fmtSigned(v) : fmtTemp;
 
-  const xs = trend.points.map((p) => parseDay(p.day));
-  const rollingByDay = new Map(trend.rolling.map((r) => [r.day, r.value]));
-  const median = trend.points.map((p) => p.median);
-  const rolling = trend.points.map((p) => rollingByDay.get(p.day) ?? null);
-  const baseline = trend.points.map(() => trend.baseline);
-  const slopePerDay = trend.slope_per_month === null ? null : trend.slope_per_month / 30.4375;
-  const trendLine = xs.map((x) =>
-    slopePerDay === null || trend.fit_start === null
-      ? null
-      : trend.fit_start + slopePerDay * ((x - xs[0]) / DAY),
-  );
+  const days = [...new Set(input.series.flatMap((s) => [...s.values.keys()]))].sort();
+  const xs = days.map(parseDay);
+  const columns = input.series.map((s) => days.map((d) => s.values.get(d) ?? null));
 
-  let lo = Math.min(...trend.points.map((p) => p.min));
-  let hi = Math.max(...trend.points.map((p) => p.p95));
-  if (trend.baseline !== null) {
-    lo = Math.min(lo, trend.baseline);
-    hi = Math.max(hi, trend.baseline);
+  const all = columns.flat().filter((v): v is number => v !== null);
+  let lo = Math.min(...all);
+  let hi = Math.max(...all);
+  if (input.reference) {
+    lo = Math.min(lo, input.reference.value);
+    hi = Math.max(hi, input.reference.value);
   }
+  const range: [number, number] = delta ? [Math.min(Math.floor(lo - 0.5), -1), Math.max(Math.ceil(hi + 0.5), 1)] : [Math.floor(lo - 1), Math.ceil(hi + 1)];
 
   const tooltip = h("div", { class: "tooltip", role: "presentation", hidden: true });
   const frame = h("div", { class: "chart-frame" }, tooltip);
@@ -81,171 +86,64 @@ export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOp
     ctx.beginPath();
     ctx.rect(left, top, width, height);
     ctx.clip();
-    const starts = monthStarts(min, max);
-    starts.forEach((start, i) => {
-      const next = Date.UTC(new Date(start * 1000).getUTCFullYear(), new Date(start * 1000).getUTCMonth() + 1, 1) / 1000;
+    for (const start of monthStarts(min, max)) {
+      const d = new Date(start * 1000);
+      const next = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1000;
       const x0 = u.valToPos(start, "x", true);
       const x1 = u.valToPos(next, "x", true);
-      const month = new Date(start * 1000).getUTCMonth();
+      const month = d.getUTCMonth();
       if (month % 2 === 1) {
         ctx.fillStyle = withAlpha(t.ink, 0.045);
         ctx.fillRect(x0, top, x1 - x0, height);
       }
       if ((x1 - x0) / dpr >= MONTH_LABEL_MIN_PX) {
-        const january = month === 0;
-        const label = january ? `${fmtMonthShort(start)} ${new Date(start * 1000).getUTCFullYear()}` : fmtMonthShort(start);
         ctx.fillStyle = t.inkMuted;
-        ctx.font = `${11 * dpr}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+        ctx.font = `${11 * dpr}px ${FONT}`;
         ctx.textBaseline = "top";
-        ctx.fillText(label, Math.max(x0, left) + 4 * dpr, top + 4 * dpr);
-      }
-      void i;
-    });
-    ctx.restore();
-  };
-
-  const bandAndShading = (u: uPlot, t: Theme): void => {
-    const { left, top, width, height } = u.bbox;
-    const ctx = u.ctx;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(left, top, width, height);
-    ctx.clip();
-
-    // min–p95 band, one polygon per run of consecutive days (only when asked for).
-    ctx.fillStyle = withAlpha(t.series, 0.1);
-    let run: number[] = [];
-    const flush = (): void => {
-      if (run.length > 1) {
-        ctx.beginPath();
-        run.forEach((i, k) => {
-          const x = u.valToPos(xs[i], "x", true);
-          const y = u.valToPos(trend.points[i].p95, "y", true);
-          if (k === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        });
-        for (let k = run.length - 1; k >= 0; k--) {
-          ctx.lineTo(u.valToPos(xs[run[k]], "x", true), u.valToPos(trend.points[run[k]].min, "y", true));
-        }
-        ctx.closePath();
-        ctx.fill();
-      }
-      run = [];
-    };
-    for (let i = 0; options.band && i < xs.length; i++) {
-      if (run.length && xs[i] - xs[run[run.length - 1]] > 2 * DAY) flush();
-      run.push(i);
-    }
-    flush();
-
-    // Drift shading between the baseline and the rolling median.
-    if (trend.baseline !== null) {
-      const yBase = u.valToPos(trend.baseline, "y", true);
-      for (let i = 0; i + 1 < xs.length; i++) {
-        const a = rolling[i];
-        const b = rolling[i + 1];
-        if (a === null || b === null || xs[i + 1] - xs[i] > 7 * DAY) continue;
-        const delta = (a + b) / 2 - trend.baseline;
-        const strength = Math.min(Math.abs(delta) / FULL_SHADE_DELTA, 1);
-        ctx.fillStyle = withAlpha(delta >= 0 ? t.warm : t.cool, 0.1 + 0.32 * strength);
-        const x0 = u.valToPos(xs[i], "x", true);
-        const x1 = u.valToPos(xs[i + 1], "x", true) + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(x0, u.valToPos(a, "y", true));
-        ctx.lineTo(x1, u.valToPos(b, "y", true));
-        ctx.lineTo(x1, yBase);
-        ctx.lineTo(x0, yBase);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillText(month === 0 ? `${fmtMonthShort(start)} ${d.getUTCFullYear()}` : fmtMonthShort(start), Math.max(x0, left) + 4 * dpr, top + 4 * dpr);
       }
     }
     ctx.restore();
   };
 
-  /** Selective direct labels + the end dot (with its surface ring). */
-  const endLabels = (u: uPlot, t: Theme): void => {
-    const { left, top, width } = u.bbox;
+  const referenceLabel = (u: uPlot, t: Theme): void => {
+    if (!input.reference) return;
+    const { left } = u.bbox;
     const dpr = devicePixelRatio;
     const ctx = u.ctx;
     ctx.save();
-    ctx.font = `${12 * dpr}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-    ctx.textBaseline = "middle";
-
-    let last = -1;
-    for (let i = rolling.length - 1; i >= 0; i--) {
-      if (rolling[i] !== null) {
-        last = i;
-        break;
-      }
-    }
-    if (last >= 0) {
-      const value = rolling[last] as number;
-      const x = u.valToPos(xs[last], "x", true);
-      const y = u.valToPos(value, "y", true);
-      if (x <= left + width + 1) {
-        ctx.beginPath();
-        ctx.arc(x, y, 6 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = t.surface;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, 4 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = t.series;
-        ctx.fill();
-        ctx.fillStyle = t.ink;
-        ctx.fillText(fmtTemp(value), x + 10 * dpr, y);
-      }
-    }
-    if (trend.baseline !== null) {
-      const y = u.valToPos(trend.baseline, "y", true);
-      ctx.fillStyle = t.inkSecondary;
-      ctx.textBaseline = "bottom";
-      ctx.fillText(`Au début : ${fmtTemp(trend.baseline)}`, left + 6 * dpr, y - 5 * dpr);
-    }
+    ctx.font = `${12 * dpr}px ${FONT}`;
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = t.inkSecondary;
+    ctx.fillText(input.reference.label, left + 6 * dpr, u.valToPos(input.reference.value, "y", true) - 5 * dpr);
     ctx.restore();
-    void top;
   };
-
-  const dash = (width: number, color: string, pattern: number[]): uPlot.Series => ({
-    stroke: color,
-    width,
-    dash: pattern,
-    points: { show: false },
-  });
 
   const series: uPlot.Series[] = [
     {},
-    {
-      label: "Un jour",
-      stroke: withAlpha(theme.series, 0.5),
-      width: 0,
-      paths: () => null,
-      points: { show: true, size: 4, width: 0, fill: withAlpha(theme.series, 0.5), stroke: "transparent" },
-    },
-    { label: "30 derniers jours", stroke: theme.series, width: 2.5, points: { show: false } },
-    { label: "Au début", ...dash(1.5, theme.inkSecondary, [6, 4]) },
+    ...input.series.map((s): uPlot.Series => ({ label: s.label, stroke: s.color, width: 2.5, spanGaps: true, points: { show: false } })),
   ];
-  if (options.trendLine) series.push({ label: "Tendance", ...dash(1.5, theme.inkMuted, [2, 3]) });
+  const data: (number | null)[][] = [xs, ...columns];
+  if (input.reference) {
+    series.push({ label: input.reference.label, stroke: theme.inkSecondary, width: 1.5, dash: [6, 4], points: { show: false } });
+    data.push(days.map(() => (input.reference as { value: number }).value));
+  }
 
   const axisBase = {
     stroke: theme.inkMuted,
     grid: { stroke: theme.grid, width: 1 },
     ticks: { stroke: theme.axis, width: 1, size: 4 },
-    font: '12px system-ui, -apple-system, "Segoe UI", sans-serif',
+    font: `12px ${FONT}`,
   };
 
+  const size = (): { width: number; height: number } => ({ width: Math.max(frame.clientWidth, 320), height: 360 });
   const opts: uPlot.Options = {
-    width: Math.max(frame.clientWidth, 320),
-    height: 380,
-    padding: [14, 96, 0, 0],
+    ...size(),
+    padding: [14, 16, 0, 0],
     legend: { show: false },
     tzDate: (ts) => uPlot.tzDate(new Date(ts * 1000), "Etc/UTC"),
-    scales: { x: { time: true }, y: { range: () => [Math.floor(lo - 1), Math.ceil(hi + 1)] } },
-    cursor: {
-      x: true,
-      y: false,
-      drag: { x: true, y: false, setScale: true },
-      points: { size: 9, width: 2, stroke: theme.series, fill: theme.surface },
-    },
+    scales: { x: { time: true }, y: { range: () => range } },
+    cursor: { x: true, y: false, drag: { x: true, y: false, setScale: true } },
     select: { show: true, left: 0, top: 0, width: 0, height: 0 },
     axes: [
       {
@@ -254,17 +152,22 @@ export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOp
           splits.map((s, i) => {
             const step = i > 0 ? s - splits[i - 1] : (splits[1] ?? s) - s;
             const d = new Date(s * 1000);
-            return step < 28 * DAY
-              ? `${d.getUTCDate()} ${fmtMonthShort(s)}`
-              : `${fmtMonthShort(s)} ${String(d.getUTCFullYear()).slice(2)}`;
+            return step < 28 * DAY ? `${d.getUTCDate()} ${fmtMonthShort(s)}` : `${fmtMonthShort(s)} ${String(d.getUTCFullYear()).slice(2)}`;
           }),
       },
-      { ...axisBase, size: 56, values: (_u, splits) => splits.map((v) => `${fmtInt(v)} °`) },
+      {
+        ...axisBase,
+        size: 64,
+        values: (_u, splits) => {
+          const step = splits.length > 1 ? Math.abs(splits[1] - splits[0]) : 1;
+          return splits.map((v) => axisNumber(v, step < 1 ? 1 : 0, delta));
+        },
+      },
     ],
     series,
     hooks: {
-      drawClear: [(u) => monthBands(u, theme), (u) => bandAndShading(u, theme)],
-      draw: [(u) => endLabels(u, theme)],
+      drawClear: [(u) => monthBands(u, theme)],
+      draw: [(u) => referenceLabel(u, theme)],
       setCursor: [
         (u) => {
           const idx = u.cursor.idx;
@@ -272,20 +175,14 @@ export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOp
             tooltip.hidden = true;
             return;
           }
-          const p = trend.points[idx];
-          const roll = rolling[idx];
           clear(tooltip);
-          const rows: HTMLElement[] = [
-            h("div", { class: "tt-date" }, fmtLongDay(xs[idx])),
-            ttRow("Ce jour-là", fmtTemp(p.median), theme.series, true),
-          ];
-          if (roll !== null) rows.push(ttRow("Sur 30 jours", fmtTemp(roll), theme.series, false));
-          rows.push(ttRow("Entre", `${fmtTemp(p.min)} et ${fmtTemp(p.p95)}`, null, false));
-          if (trend.baseline !== null && roll !== null) {
-            rows.push(ttRow("Depuis le début", fmtSigned(roll - trend.baseline), null, false));
-          }
-          rows.push(h("div", { class: "tt-n" }, `${fmtInt(p.n)} mesures ce jour-là`));
-          tooltip.append(...rows);
+          const rows = input.series
+            .map((s, k) => ({ s, value: columns[k][idx] }))
+            .filter((r): r is { s: ChartSeries; value: number } => r.value !== null)
+            .sort((a, b) => b.value - a.value);
+          tooltip.append(h("div", { class: "tt-date" }, fmtLongDay(xs[idx])));
+          for (const { s, value } of rows) tooltip.append(ttRow(s.label, fmtValue(value), s.color));
+          if (rows.length === 0) tooltip.append(h("div", { class: "tt-n" }, "Pas de mesure ce jour-là"));
           tooltip.hidden = false;
           const left = (u.cursor.left ?? 0) + u.bbox.left / devicePixelRatio;
           const flip = left > frame.clientWidth * 0.6;
@@ -296,12 +193,8 @@ export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOp
     },
   };
 
-  const data: uPlot.AlignedData = options.trendLine
-    ? [xs, median, rolling, baseline, trendLine]
-    : [xs, median, rolling, baseline];
-  const plot = new uPlot(opts, data, frame);
-
-  const resize = new ResizeObserver(() => plot.setSize({ width: Math.max(frame.clientWidth, 320), height: 380 }));
+  const plot = new uPlot(opts, data as uPlot.AlignedData, frame);
+  const resize = new ResizeObserver(() => plot.setSize(size()));
   resize.observe(frame);
   return () => {
     resize.disconnect();
@@ -309,14 +202,9 @@ export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOp
   };
 }
 
-function ttRow(label: string, value: string, key: string | null, strong: boolean): HTMLElement {
-  const swatch = key ? h("span", { class: "tt-key" }) : h("span", { class: "tt-key tt-key-none" });
-  if (key) swatch.style.background = key;
-  return h(
-    "div",
-    { class: "tt-row" },
-    swatch,
-    h("span", { class: strong ? "tt-value tt-strong" : "tt-value" }, value),
-    h("span", { class: "tt-label" }, label),
-  );
+/** A tooltip line: a short stroke of the series color, the value first, then the name. */
+function ttRow(label: string, value: string, color: string): HTMLElement {
+  const swatch = h("span", { class: "tt-key" });
+  swatch.style.background = color;
+  return h("div", { class: "tt-row" }, swatch, h("span", { class: "tt-value tt-strong" }, value), h("span", { class: "tt-label" }, label));
 }

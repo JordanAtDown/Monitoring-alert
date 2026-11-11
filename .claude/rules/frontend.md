@@ -15,15 +15,23 @@ paths:
 - Types de l'API dans `src/api.ts` : ils reflètent le JSON de `backend/src/application/queries.rs`. Les
   changer ensemble.
 
+## Organisation
+
+Quatre pages (`src/views/` : `home`, `curves`, `details`, `status`), un menu par liens `#page=…` (l'adresse garde la page, le
+niveau de charge et le capteur ouvert). `main.ts` = coque, routage et flux de données ; `state.ts` = état partagé ;
+`components.ts` = classement des capteurs en composants (Processeur, Carte graphique, Carte mère, Boîtier, Disque N) ;
+`widgets.ts` = morceaux partagés. Le filtre « Le PC est… » est **dans chaque carte** qu'il change, jamais dans une barre.
+
 ## Graphiques (skill `dataviz` avant tout code de graphique)
 
 - Couleurs = **jetons CSS** (`--series-1`, `--diverge-warm`…) définis dans `style.css` pour le clair et le
   sombre ; le canvas les lit via `theme.ts` au moment du dessin. Pas de couleur codée en dur dans le JS.
-- Palette validée avec `validate_palette.js` du skill `dataviz` (une série catégorielle + pôles divergents).
-  Revalider si on ajoute une série.
+- Palette de 8 séries catégorielles (`--series-1…8`) validée avec `validate_palette.js` du skill `dataviz`, clair et
+  sombre. **Un composant garde sa couleur** (rang dans la liste, pas dans la sélection) ; au-delà de 8, gris. Les mini-courbes
+  prennent le pôle chaud / froid / gris de la tendance, le mot de la tendance restant à côté.
 - Un seul axe y. Pas de double axe.
 - Le texte porte les jetons d'encre, jamais la couleur de la série.
-- Un graphique a toujours : légende (≥ 2 séries), infobulle, vue tableau, et fonctionne au clavier là où
+- Un graphique a toujours : légende (ici les cases à cocher), infobulle, vue tableau, et fonctionne au clavier là où
   c'est possible.
 - Les mois en alternance claire/foncée sont voulus : sans capteur ambiant, la saisonnalité doit se voir.
 - Pas d'alerte, pas de vocabulaire d'urgence (« critique », « danger »…) : l'écart est un chiffre à regarder.

@@ -106,25 +106,28 @@ supprime l'ancien système.
 **<http://127.0.0.1:8787/>** — il répond à une question : *les températures de mon PC ont-elles changé depuis le début ?*
 Il est écrit en langage courant ; les termes techniques sont dans « Détails techniques ».
 
-De haut en bas :
-- **État du système** : la page surveille elle-même que tout fonctionne. Une ligne « ✓ Tout fonctionne » (ou « ⚠ 2 points à
-  vérifier », « ✕ Un problème empêche le suivi ») et, dessous, la cause en une phrase. Le détail des vérifications (relevé
-  des températures, capteurs qui répondent, base de données, résumés quotidiens, démarrage automatique, mises à jour) est
-  déroulable. Le titre de l'onglet reprend l'état (✓ / ⚠ / ✕) : un onglet épinglé suffit pour voir que tout va bien.
-  Si le programme lui-même ne répond plus, la page le dit.
-- **Comment lire cette page ?** : cinq lignes d'explication, ouvertes la première fois.
-- **En résumé** : « Depuis le 8 avril (environ 7 mois de suivi), quand le PC est au repos : 4 composants plus chauds,
-  9 stables, 2 plus froids », et le changement le plus marqué.
-- **Le PC est…** (au repos, charge légère, moyenne, élevée) : on ne compare que des situations identiques. « Au repos »
-  est le plus parlant.
-- **Vos composants**, regroupés **par type** (processeur, carte graphique, carte mère, disques : tous les disques ensemble,
-  chacun sous son nom) : température *au début* (les 30 premiers jours de suivi), *ces 30 derniers jours*, et l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) avec
-  l'écart. « Stable » veut dire moins de 1,5 °C d'écart : la plupart des capteurs ne mesurent qu'au degré près.
-- **Le composant choisi** : une phrase qui explique ses chiffres, sa courbe (un point par jour, ligne pleine = température
-  habituelle sur 30 jours, tirets = niveau du début, zone teintée = écart, mois alternés en fond), deux options (plage de
-  chaque jour, tendance générale), une vue « chiffres, mois par mois » et les « Détails techniques ».
-- **Vos données** : ce qui est conservé, pour combien de temps, et où.
-- En haut à droite, un bouton **Mise à jour disponible** quand une nouvelle version existe (voir plus bas).
+Quatre pages, dans le menu en haut :
+- **Accueil** : « Depuis le 8 avril (environ 7 mois de suivi), quand le PC est au repos : 3 composants plus chauds,
+  3 stables, 1 plus froid », le changement le plus marqué, puis **une carte par composant** : Processeur, Carte graphique,
+  Carte mère, Boîtier, Disque 1, Disque 2… (chacun avec son modèle). Une carte donne la température *au début* (les 30
+  premiers jours de suivi), *ces 30 derniers jours*, l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) et une
+  mini-courbe colorée selon la tendance. « Stable » veut dire moins de 1,5 °C d'écart : la plupart des capteurs ne mesurent
+  qu'au degré près. Toucher une carte ouvre sa courbe.
+- **Courbes** : tous les composants sur un même graphique, chacun avec sa couleur ; une case par composant pour le
+  masquer et mieux voir les autres. Au choix : les températures, ou l'écart depuis le début. Mois alternés en fond pour
+  repérer la saisonnalité, vue « chiffres, mois par mois ».
+- **Détails** : tous les capteurs, composant par composant. Cliquer une ligne l'ouvre : une phrase qui explique ses
+  chiffres, sa courbe et les « Détails techniques ».
+- **État** : la page surveille elle-même que tout fonctionne (relevé des températures, capteurs qui répondent, base de
+  données, résumés quotidiens, démarrage automatique, mises à jour) et dit en une phrase ce qui ne va pas ; ce qui est
+  conservé, pour combien de temps et où ; la version. Une pastille en haut de chaque page (« ✓ Tout fonctionne », « ⚠ 2
+  points à vérifier », « ✕ Un problème empêche le suivi ») et le titre de l'onglet reprennent l'état : un onglet épinglé
+  suffit pour voir que tout va bien. Si le programme lui-même ne répond plus, la page le dit.
+
+**Le PC est…** (au repos, charge légère, moyenne, élevée) : on ne compare que des situations identiques. Ce choix est
+dans chaque page, juste au-dessus des chiffres qu'il change. « Au repos » est le plus parlant.
+
+En haut à droite, un bouton **Mise à jour disponible** quand une nouvelle version existe (voir plus bas).
 
 Tant qu'il y a moins de **60 jours** de suivi (et 40 jours avec mesures), aucun changement n'est annoncé : la page dit
 combien il en faut. Une installation qui vient de la 1.x reprend tout son historique et n'attend pas.

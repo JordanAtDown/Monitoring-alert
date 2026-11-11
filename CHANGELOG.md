@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Supervision dans le tableau de bord** (`/api/health`) : la page vérifie que tout fonctionne et le dit en clair — relevé
+  des températures (LibreHardwareMonitor injoignable, silence de plus de 3 intervalles, aucune température), capteurs qui
+  ne répondent plus (nommés), base de données (taille, dernière écriture), résumés quotidiens (dernière réussite ou erreur),
+  démarrage automatique (Windows), mises à jour. Chaque anomalie est décrite en une phrase (pas de consigne) ; une mise à jour
+  disponible ne rend jamais la page orange. Le titre de l'onglet et une pastille en haut de chaque page reprennent l'état (✓ / ⚠ / ✕).
+- **Bouton « Mise à jour disponible »** dans le tableau de bord, avec les trois étapes à suivre (télécharger, lancer,
+  suivre l'assistant). Le programme demande une fois par jour à GitHub la dernière version (requête anonyme,
+  rien sur la machine) et l'expose sur `/api/update` ; il ne télécharge ni n'installe rien tout seul.
+  `check_updates = false` désactive la recherche. Seuls des liens `https://github.com/` sont proposés.
+- **Courbes de tous les composants sur un même graphique**, chacun avec sa couleur fixe et une case pour l'afficher ou le
+  masquer ; au choix, les températures ou l'écart depuis le début (pour voir une petite dérive). Le niveau de charge
+  (au repos, charge légère…) se choisit juste au-dessus du graphique.
+- `tools/demo.sh` : voir le tableau de bord en local (données de démonstration ou copie de votre base, faux LibreHardwareMonitor).
+
+### Changed
+- **Tableau de bord réécrit en langage courant, en quatre pages** (Accueil, Courbes, Détails, État) :
+  l'accueil donne la synthèse (« 3 composants plus chauds, 3 stables, 1 plus froid ») et une carte par composant ;
+  les détails listent chaque capteur ; l'état regroupe les vérifications, les données conservées et la version.
+  Les capteurs sont rangés **par composant** : Processeur (y compris la sonde « CPU » de la carte mère), Carte graphique,
+  Carte mère, Boîtier, puis Disque 1, Disque 2… chacun avec son modèle. Les mini-courbes prennent la couleur de la tendance.
+  Les termes statistiques (médiane, p95, pente) restent dans « Détails techniques ».
+- Mesures brutes : `raw_retention_days` (minimum 7) remplace `retention_days` (minimum 360). **90 jours** par
+  défaut pour une installation neuve ; la migration d'une 1.x **conserve la durée choisie** (`retention_days`
+  devient `raw_retention_days`). Les mesures brutes sont agrégées par jour avant d'être supprimées, et les
+  agrégats sont conservés sans limite.
+- L'ancienneté de l'historique (`check`, journal de démarrage, tableau de bord) se compte depuis le **premier résumé
+  quotidien** et non plus depuis la première mesure brute : après la purge des mesures brutes, `check` annonçait
+  « 51 j » alors que 217 jours de résumés existaient.
+
+### Removed
+- Du graphique d'un capteur : la plage de chaque jour, la droite de tendance et la zone teintée (tout est dans les
+  chiffres « mois par mois » et les « Détails techniques »).
+
 ## [2.0.0] — 2026-11-11
 
 Version majeure : le service Windows, les rapports et les notifications disparaissent au
@@ -14,15 +48,6 @@ profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base d
 conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ### Added
-- **Supervision dans le tableau de bord** (`/api/health`) : la page vérifie que tout fonctionne et le dit en clair — relevé
-  des températures (LibreHardwareMonitor injoignable, silence de plus de 3 intervalles, aucune température), capteurs qui
-  ne répondent plus (nommés), base de données (taille, dernière écriture), résumés quotidiens (dernière réussite ou erreur),
-  démarrage automatique (Windows), mises à jour. Chaque anomalie est décrite en une phrase (pas de consigne) ; une mise à jour disponible ne rend jamais
-  la page orange. Le titre de l'onglet reprend l'état (✓ / ⚠ / ✕).
-- **Bouton « Mise à jour disponible »** dans le tableau de bord, avec les trois étapes à suivre (télécharger, lancer,
-  suivre l'assistant). Le programme demande une fois par jour à GitHub la dernière version (requête anonyme,
-  rien sur la machine) et l'expose sur `/api/update` ; il ne télécharge ni n'installe rien tout seul.
-  `check_updates = false` désactive la recherche. Seuls des liens `https://github.com/` sont proposés.
 - **Installateur Windows** (`monitoring_X.Y.Z.exe`, Inno Setup) : assistant en français,
   installation par utilisateur **sans droits administrateur**, entrée dans les Applications installées,
   raccourci vers le tableau de bord, mise à jour en relançant l'installateur. Il détecte la base de
@@ -53,13 +78,6 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   test qui impose le sens des dépendances.
 
 ### Changed
-- **Tableau de bord réécrit en langage courant** : une phrase de synthèse (« 4 composants plus chauds, 9 stables,
-  2 plus froids »), des capteurs regroupés par type de composant (processeur, carte graphique, carte mère, disques — tous
-  les disques ensemble, chacun sous son nom) avec des noms lisibles,
-  « au début » / « ces 30 derniers jours » / « Plus chaud · Stable · Plus froid », une phrase qui explique chaque courbe,
-  un encart « Comment lire cette page ? » et un encart « Vos données » (ce qui est conservé, combien de temps, où).
-  Les termes statistiques (médiane, p95, pente) passent dans « Détails techniques » ; la plage de chaque jour et la
-  tendance générale deviennent des options du graphique.
 - **Le produit s'appelle « Monitoring »** (seul le nom du dépôt garde `monitoring-alert`) : installateur
   `monitoring_X.Y.Z.exe` (seul fichier publié), application « Monitoring » dans les Applications installées
   et le menu Démarrer, exécutable `monitoring.exe` (au lieu de `monitoring-alert.exe`), copie sans fenêtre
@@ -70,17 +88,13 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   l'exécutable), sans jamais écraser une configuration existante.
 - **Plus de service Windows** : un seul processus d'arrière-plan, sans droits administrateur
   (sauf pour supprimer l'ancien service). Le collecteur est relancé automatiquement s'il échoue.
-- Mesures brutes : `raw_retention_days` (minimum 7) remplace `retention_days` (minimum 360). **90 jours** par
-  défaut pour une installation neuve ; la migration d'une 1.x **conserve la durée choisie** (`retention_days`
-  devient `raw_retention_days`). Les mesures brutes sont agrégées par jour avant d'être supprimées, et les
-  agrégats sont conservés sans limite.
+- Mesures brutes conservées **90 jours** par défaut (`raw_retention_days`, minimum 7, remplace
+  `retention_days`, minimum 360). Elles sont agrégées par jour avant d'être supprimées ; la base
+  migrée est compactée après la première grosse purge.
 - Migration automatique de la base : copie de sécurité `temperatures.db.v1.bak`, puis agrégation de
   tout l'historique existant.
 - `check` ne modifie plus rien et vérifie le tableau de bord, le démarrage automatique et les
   reliquats de la 1.x.
-- L'ancienneté de l'historique (`check`, journal de démarrage, tableau de bord) se compte depuis le **premier résumé
-  quotidien** et non plus depuis la première mesure brute : après la purge des mesures brutes, `check` annonçait
-  « 51 j » alors que 217 jours de résumés existaient.
 - `install_dir` et `db_path` valent par défaut le dossier de `config.toml` (installation possible
   sans droits administrateur).
 - Dossiers renommés : `monitoring-alert/` → `backend/`, nouveau `frontend/`.
