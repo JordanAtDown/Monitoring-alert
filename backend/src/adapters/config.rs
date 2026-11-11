@@ -124,3 +124,173 @@ impl AppConfig {
         }
     }
 }
+
+// ──────────────────────────────────────────────────────────────
+// Migration of a v1.x config file
+// ──────────────────────────────────────────────────────────────
+
+/// Keys of the v1.x configuration that no longer do anything.
+pub const OBSOLETE_KEYS: &[&str] = &[
+    "reports_dir",
+    "daily_report_enabled",
+    "daily_report_time",
+    "weekly_report_enabled",
+    "weekly_report_day",
+    "weekly_report_time",
+    "monthly_report_enabled",
+    "monthly_report_day",
+    "monthly_report_time",
+    "retention_days",
+];
+
+/// The obsolete keys present in a config file's text.
+pub fn obsolete_keys_in(text: &str) -> Vec<String> {
+    let Ok(table) = text.parse::<toml::Table>() else {
+        return Vec::new();
+    };
+    OBSOLETE_KEYS
+        .iter()
+        .filter(|k| table.contains_key(**k))
+        .map(|k| k.to_string())
+        .collect()
+}
+
+fn string_line(key: &str, value: &Option<String>, example: &str, comment: &str) -> String {
+    let mut out = format!("\n{comment}\n");
+    match value {
+        Some(v) => out.push_str(&format!("{key} = {}\n", toml::Value::String(v.clone()))),
+        None => out.push_str(&format!(
+            "# {key} = {}\n",
+            toml::Value::String(example.into())
+        )),
+    }
+    out
+}
+
+fn number_line<T: Copy + Into<i64>>(
+    key: &str,
+    value: Option<T>,
+    default: i64,
+    comment: &str,
+) -> String {
+    match value {
+        Some(v) => format!("\n{comment}\n{key} = {}\n", v.into()),
+        None => format!("\n{comment}\n# {key} = {default}\n"),
+    }
+}
+
+/// Writes a config file in the current format, carrying over the values of `raw`.
+pub(crate) fn render_config(raw: &RawConfig) -> String {
+    let mut out = String::from(
+        "# =============================================================\n\
+         #  MonitoringAlert — configuration\n\
+         #\n\
+         #  Les lignes commençant par # montrent la valeur par défaut.\n\
+         #  Après modification : monitoring-alert.exe restart\n\
+         # =============================================================\n",
+    );
+    out += &string_line(
+        "install_dir",
+        &raw.install_dir,
+        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert",
+        "# Dossier des exécutables (défaut : le dossier de ce fichier)",
+    );
+    out += &string_line(
+        "db_path",
+        &raw.db_path,
+        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db",
+        "# Base de données de températures (défaut : temperatures.db à côté de ce fichier)",
+    );
+    out += &string_line(
+        "log_dir",
+        &raw.log_dir,
+        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert",
+        "# Dossier des logs (défaut : le dossier de la base de données)",
+    );
+    out += &number_line(
+        "collect_interval_secs",
+        raw.collect_interval_secs.map(|v| v as i64),
+        300,
+        "# Intervalle de collecte en secondes (minimum 60)",
+    );
+    out += &number_line(
+        "raw_retention_days",
+        raw.raw_retention_days.map(i64::from),
+        90,
+        "# Jours de mesures brutes conservées (minimum 7). Les agrégats quotidiens sont conservés sans limite.",
+    );
+    out += &string_line(
+        "lhm_host",
+        &raw.lhm_host,
+        "127.0.0.1",
+        "# Adresse du serveur HTTP de LibreHardwareMonitor (Options › Remote Web Server)",
+    );
+    out += &number_line(
+        "lhm_port",
+        raw.lhm_port.map(i64::from),
+        8085,
+        "# Port du serveur HTTP de LibreHardwareMonitor",
+    );
+    out += &string_line(
+        "web_host",
+        &raw.web_host,
+        "127.0.0.1",
+        "# Adresse d'écoute du tableau de bord. \"0.0.0.0\" l'ouvre au réseau local, SANS authentification.",
+    );
+    out += &number_line(
+        "web_port",
+        raw.web_port.map(i64::from),
+        i64::from(DEFAULT_WEB_PORT),
+        "# Port du tableau de bord : http://127.0.0.1:8787/",
+    );
+    out += &string_line(
+        "log_level",
+        &raw.log_level,
+        "info",
+        "# Niveau de log : error | warn | info | debug | trace",
+    );
+    out
+}
+
+/// Where the previous version of a rewritten file is kept: `config.toml.v1.bak`,
+/// never overwriting an earlier backup (`.v1.bak2`, `.v1.bak3`…).
+fn backup_path(path: &Path) -> PathBuf {
+    let mut candidate = PathBuf::from(format!("{}.v1.bak", path.display()));
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = PathBuf::from(format!("{}.v1.bak{n}", path.display()));
+        n += 1;
+    }
+    candidate
+}
+
+/// Rewrites a v1.x `config.toml` without its obsolete keys, keeping the old file
+/// next to it. A missing, current or unreadable file is left untouched.
+pub fn migrate_config_file(
+    path: &Path,
+) -> anyhow::Result<crate::application::ports::ConfigMigration> {
+    use crate::application::ports::ConfigMigration;
+    use anyhow::Context;
+
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(ConfigMigration::Current);
+    };
+    let removed_keys = obsolete_keys_in(&text);
+    if removed_keys.is_empty() {
+        return Ok(ConfigMigration::Current);
+    }
+    let raw: RawConfig = toml::from_str(&text).unwrap_or_default();
+
+    let backup = backup_path(path);
+    std::fs::copy(path, &backup)
+        .with_context(|| format!("Sauvegarde de {} vers {}", path.display(), backup.display()))?;
+
+    let tmp = PathBuf::from(format!("{}.new", path.display()));
+    std::fs::write(&tmp, render_config(&raw))
+        .with_context(|| format!("Écriture de {}", tmp.display()))?;
+    std::fs::rename(&tmp, path).with_context(|| format!("Remplacement de {}", path.display()))?;
+    Ok(ConfigMigration::Rewritten {
+        backup,
+        removed_keys,
+    })
+}

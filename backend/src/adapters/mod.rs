@@ -5,8 +5,11 @@
 //! the application knows they exist.
 
 pub mod config;
+pub mod deploy;
 pub mod http;
 pub mod lhm;
 pub mod logging;
+pub mod pe;
 pub mod sqlite;
-pub mod windows_service;
+#[cfg(windows)]
+pub mod windows;

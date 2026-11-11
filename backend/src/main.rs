@@ -1,34 +1,20 @@
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use monitoring_alert::adapters::sqlite::{self as db, SqliteStore};
-use monitoring_alert::adapters::{config, lhm, logging, windows_service as service};
+use monitoring_alert::adapters::{config, http, lhm, logging};
 use monitoring_alert::application::collect::collect_and_store;
-use monitoring_alert::application::monitor::{run_monitor, MonitorSettings};
-use monitoring_alert::application::ports::{OverallStats, TemperatureStore};
-use monitoring_alert::application::status::CollectorStatus;
+use monitoring_alert::application::install;
+use monitoring_alert::application::ports::{DeployPlan, HostSystem, OverallStats, ReadModel};
 use monitoring_alert::daemon;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-
-#[cfg(windows)]
-use windows_service::{define_windows_service, service_dispatcher};
-
-#[cfg(windows)]
-define_windows_service!(ffi_service_main, handle_service_main);
-
-#[cfg(windows)]
-fn handle_service_main(args: Vec<std::ffi::OsString>) {
-    if let Err(e) = service::windows::run_service_main(args) {
-        tracing::error!("Service error: {:#}", e);
-    }
-}
 
 #[derive(Parser)]
 #[command(
     name = "monitoring-alert",
     version,
-    about = "Moniteur de température long terme — service Windows"
+    about = "Suivi long terme de la dérive des températures — collecte + tableau de bord local"
 )]
 struct Cli {
     /// Chemin vers la base de données (priorité sur config.toml)
@@ -41,42 +27,27 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Installe ou met à jour (copie les fichiers, nettoie une installation v1.x, démarrage automatique)
+    Install,
+    /// Arrête le processus d'arrière-plan et retire le démarrage automatique
+    Uninstall,
+    /// Démarre le processus d'arrière-plan
+    Start,
+    /// Arrête le processus d'arrière-plan
+    Stop,
+    /// Redémarre le processus d'arrière-plan (à faire après avoir modifié config.toml)
+    Restart,
+    /// Lance la collecte et le tableau de bord web au premier plan (c'est ce que fait le démarrage automatique)
+    Serve,
     /// Collecte un snapshot unique (mode debug)
     Collect,
-    /// Boucle de collecte à intervalles réguliers
-    Watch {
-        /// Intervalle entre les collectes (secondes)
-        #[arg(long, default_value = "300")]
-        interval: u64,
-    },
-    /// Lance la collecte et le tableau de bord web (au premier plan)
-    Serve,
-    /// Vérifie la configuration, la base de données, le service et LHM
+    /// Vérifie la configuration, la base de données, LHM et le tableau de bord
     Check,
-    /// Gestion du service Windows
-    Service {
-        #[command(subcommand)]
-        action: ServiceAction,
-    },
     /// Maintenance de la base de données
     Db {
         #[command(subcommand)]
         action: DbAction,
     },
-}
-
-#[derive(Subcommand)]
-enum ServiceAction {
-    /// Installe le service Windows
-    Install,
-    /// Désinstalle le service Windows
-    Uninstall,
-    /// Démarre le service
-    Start,
-    /// Arrête le service
-    Stop,
-    /// Affiche l'état du service (installé, actif, PID)
-    Status,
 }
 
 #[derive(Subcommand)]
@@ -86,6 +57,70 @@ enum DbAction {
     /// Compacte la base de données et libère l'espace disque (à faire après une purge)
     Vacuum,
 }
+
+// ── Host system ──────────────────────────────────────────────────────────────
+
+#[cfg(windows)]
+fn host() -> Result<Box<dyn HostSystem>> {
+    Ok(Box::new(monitoring_alert::adapters::windows::WindowsHost))
+}
+
+#[cfg(not(windows))]
+fn host() -> Result<Box<dyn HostSystem>> {
+    bail!("Cette commande n'est disponible que sous Windows")
+}
+
+fn data_dir() -> PathBuf {
+    config::AppConfig::default_config_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// The files of this installation: where this executable runs from, and where it goes.
+fn deploy_plan(cfg: &config::AppConfig) -> Result<DeployPlan> {
+    let data_dir = data_dir();
+    Ok(DeployPlan {
+        source_exe: std::env::current_exe().context("Chemin de l'exécutable introuvable")?,
+        install_dir: cfg.install_dir.clone().unwrap_or_else(|| data_dir.clone()),
+        data_dir,
+    })
+}
+
+fn print_report(report: &install::Report) {
+    for line in &report.lines {
+        println!("  • {line}");
+    }
+}
+
+fn dashboard_url(cfg: &config::AppConfig) -> String {
+    let host = if cfg.web_host == "0.0.0.0" {
+        "127.0.0.1"
+    } else {
+        &cfg.web_host
+    };
+    format!("http://{host}:{}/", cfg.web_port)
+}
+
+fn start_daemon(cfg: &config::AppConfig) -> Result<()> {
+    if http::ping(&cfg.web_host, cfg.web_port) {
+        println!("Déjà démarré : {}", dashboard_url(cfg));
+        return Ok(());
+    }
+    let plan = deploy_plan(cfg)?;
+    let daemon_exe = plan.daemon_exe();
+    if !daemon_exe.is_file() {
+        bail!(
+            "{} introuvable : lancez d'abord `monitoring-alert install`",
+            daemon_exe.display()
+        );
+    }
+    host()?.start_daemon(&daemon_exe)?;
+    println!("Démarré : {}", dashboard_url(cfg));
+    Ok(())
+}
+
+// ── Commands ─────────────────────────────────────────────────────────────────
 
 fn run_cli() -> Result<()> {
     let cli = Cli::parse();
@@ -97,50 +132,51 @@ fn run_cli() -> Result<()> {
     let _ = logging::init(&log_path, &cfg.log_level);
 
     match cli.command {
+        Commands::Install => {
+            let plan = deploy_plan(&cfg)?;
+            println!("Installation de monitoring-alert…");
+            let report = install::install(host()?.as_ref(), &plan)?;
+            print_report(&report);
+            println!();
+            println!("Terminé. Tableau de bord : {}", dashboard_url(&cfg));
+            println!("Base de données conservée : {}", cfg.db_path.display());
+        }
+        Commands::Uninstall => {
+            let report = install::uninstall(host()?.as_ref(), &data_dir())?;
+            print_report(&report);
+            println!("Désinstallé. Les fichiers et la base de données n'ont pas été supprimés.");
+        }
+        Commands::Start => start_daemon(&cfg)?,
+        Commands::Stop => {
+            if host()?.stop_daemon()? {
+                println!("Arrêté.");
+            } else {
+                println!("Le processus d'arrière-plan ne tournait pas.");
+            }
+        }
+        Commands::Restart => {
+            host()?.stop_daemon()?;
+            start_daemon(&cfg)?;
+        }
+        Commands::Serve => {
+            let result = daemon::run(&cfg, &db_path, Arc::new(AtomicBool::new(false)));
+            if let Err(e) = &result {
+                // The background copy has no console: the log file is the only trace.
+                tracing::error!("{e:#}");
+            }
+            result?;
+        }
         Commands::Collect => {
             let store = SqliteStore::new(db::init_db(&db_path)?);
             let source = lhm::LhmSource::new(&cfg.lhm_host, cfg.lhm_port);
             collect_and_store(&store, &source)?;
         }
-        Commands::Watch { interval } => {
-            let stop = AtomicBool::new(false);
-            let source = lhm::LhmSource::new(&cfg.lhm_host, cfg.lhm_port);
-            let settings = MonitorSettings {
-                interval_secs: interval,
-                raw_retention_days: cfg.raw_retention_days,
-            };
-            let open_store = || -> Result<Box<dyn TemperatureStore>> {
-                Ok(Box::new(SqliteStore::new(db::init_db(&db_path)?)))
-            };
-            run_monitor(
-                &open_store,
-                &source,
-                &settings,
-                &CollectorStatus::new(interval),
-                &stop,
-            )?;
-        }
-        Commands::Serve => {
-            daemon::run(&cfg, &db_path, Arc::new(AtomicBool::new(false)))?;
-        }
-        Commands::Service { action } => match action {
-            ServiceAction::Install => {
-                let config_path = config::AppConfig::default_config_path();
-                service::install(&config_path)?;
-            }
-            ServiceAction::Uninstall => service::uninstall()?,
-            ServiceAction::Start => service::start()?,
-            ServiceAction::Stop => service::stop()?,
-            ServiceAction::Status => service::status()?,
-        },
-        Commands::Check => {
-            run_check(&db_path, &cfg);
-        }
+        Commands::Check => run_check(&db_path, &cfg),
         Commands::Db { action } => match action {
             DbAction::Stats => {
-                let store = SqliteStore::new(db::init_db(&db_path)?);
-                let stats = store.overall_stats()?;
-                let size_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
+                let store = db::open_read_model(&db_path)?;
+                let stats = ReadModel::overall_stats(&store)?;
+                let size_bytes = ReadModel::storage_bytes(&store);
                 println!("Base de données : {}", db_path.display());
                 println!(
                     "Taille sur disque : {:.1} MB",
@@ -174,9 +210,9 @@ fn run_cli() -> Result<()> {
     Ok(())
 }
 
-fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
+fn run_check(db_path: &Path, cfg: &config::AppConfig) {
     const SEP: &str = "════════════════════════════════════════════════════════════════";
-    println!("Vérifications pré-démarrage");
+    println!("Vérifications");
     println!("{}", SEP);
     println!();
 
@@ -191,8 +227,8 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
     );
     println!();
 
-    // ── 2. Base de données ────────────────────────────────────
-    match db::init_db(db_path) {
+    // ── 2. Base de données (lecture seule : `check` ne modifie rien) ──
+    match db::open_read_model(db_path) {
         Err(e) => {
             issues += 1;
             println!("  ✗  Base de données inaccessible");
@@ -204,102 +240,112 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
                 );
             }
         }
-        Ok(conn) => {
-            let store = SqliteStore::new(conn);
-            let stats = store.overall_stats().unwrap_or(OverallStats {
+        Ok(store) => {
+            let stats = ReadModel::overall_stats(&store).unwrap_or(OverallStats {
                 total_snapshots: 0,
                 first_ts: None,
                 last_ts: None,
             });
-            let size_mb = std::fs::metadata(db_path)
-                .map(|m| m.len() as f64 / 1_048_576.0)
-                .unwrap_or(0.0);
+            let size_mb = ReadModel::storage_bytes(&store) as f64 / 1_048_576.0;
             println!(
-                "  ✓  Base de données accessible  ({:.1} MB — {} snapshot(s))",
+                "  ✓  Base de données accessible  ({:.1} MB — {} snapshot(s) bruts)",
                 size_mb, stats.total_snapshots
             );
 
-            // Compute days collected from first_ts to today.
-            let days = stats
-                .first_ts
-                .as_deref()
-                .and_then(|s| s.get(..10))
+            let first_day = stats.first_ts.as_deref().and_then(|s| s.get(..10));
+            let days = first_day
                 .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
                 .map(|first| (chrono::Local::now().date_naive() - first).num_days());
-
-            if let Some(d) = days {
-                let first_label = stats
-                    .first_ts
-                    .as_deref()
-                    .and_then(|s| s.get(..10))
-                    .unwrap_or("?");
-                println!(
-                    "     Données collectées : {} j  (depuis le {})",
-                    d, first_label
-                );
-            } else {
-                println!("     Données collectées : aucune mesure encore enregistrée");
-            }
-
-            if let Some(d) = days {
-                let min = monitoring_alert::domain::trends::MIN_SPAN_DAYS;
-                if d >= min {
-                    println!("     Suivi de dérive : disponible (≥ {} j de recul)", min);
-                } else {
-                    let ready = chrono::Local::now().date_naive() + chrono::Duration::days(min - d);
-                    println!(
-                        "     Suivi de dérive : dans {} j (dispo le {}) — il faut {} j de recul",
-                        min - d,
-                        ready,
-                        min
-                    );
+            match (days, first_day) {
+                (Some(d), Some(first)) => {
+                    println!("     Mesures brutes depuis le {first} ({d} j)");
+                    let min = monitoring_alert::domain::trends::MIN_SPAN_DAYS;
+                    if d >= min {
+                        println!("     Suivi de dérive : disponible (≥ {min} j de recul)");
+                    } else {
+                        let ready =
+                            chrono::Local::now().date_naive() + chrono::Duration::days(min - d);
+                        println!(
+                            "     Suivi de dérive : dans {} j (dispo le {ready}) — il faut {min} j de recul",
+                            min - d
+                        );
+                    }
                 }
+                _ => println!("     Aucune mesure encore enregistrée"),
             }
         }
     }
     println!();
 
-    // ── 3. Service Windows ────────────────────────────────────
-    #[cfg(windows)]
-    {
-        let (installed, running) = service::check_state();
-        if !installed {
-            issues += 1;
-            println!("  ✗  Service non installé");
-            println!("     → Lancez install.bat en tant qu'administrateur");
-        } else if running {
-            println!("  ✓  Service installé et actif");
-        } else {
-            issues += 1;
-            println!("  ⚠  Service installé mais arrêté");
-            println!("     → monitoring-alert.exe service start");
+    // ── 3. LibreHardwareMonitor / HTTP ───────────────────────
+    match lhm::read_sensors(&cfg.lhm_host, cfg.lhm_port) {
+        Ok(data) if !data.temperatures.is_empty() => {
+            println!(
+                "  ✓  LibreHardwareMonitor HTTP accessible  ({} sonde(s) de température)",
+                data.temperatures.len()
+            );
         }
-        println!();
+        Ok(_) => {
+            issues += 1;
+            println!("  ⚠  LibreHardwareMonitor accessible mais aucune sonde trouvée");
+            println!("     → Vérifiez que LHM surveille bien votre matériel");
+        }
+        Err(e) => {
+            issues += 1;
+            println!(
+                "  ✗  LibreHardwareMonitor HTTP inaccessible ({}:{})",
+                cfg.lhm_host, cfg.lhm_port
+            );
+            println!("     Erreur : {}", e);
+            println!("     → Lancez LHM en tant qu'administrateur");
+            println!("     → Activez Options › Remote Web Server › Run dans LHM");
+        }
     }
+    println!();
 
-    // ── 4. LibreHardwareMonitor / HTTP ───────────────────────
-    {
-        match lhm::read_sensors(&cfg.lhm_host, cfg.lhm_port) {
-            Ok(data) if !data.temperatures.is_empty() => {
-                println!(
-                    "  ✓  LibreHardwareMonitor HTTP accessible  ({} sonde(s) de température)",
-                    data.temperatures.len()
-                );
-            }
-            Ok(_) => {
+    // ── 4. Tableau de bord / processus d'arrière-plan ────────
+    if http::ping(&cfg.web_host, cfg.web_port) {
+        println!(
+            "  ✓  Processus d'arrière-plan actif — {}",
+            dashboard_url(cfg)
+        );
+    } else {
+        issues += 1;
+        println!(
+            "  ✗  Le tableau de bord ne répond pas ({}:{})",
+            cfg.web_host, cfg.web_port
+        );
+        println!("     → monitoring-alert.exe start   (ou install.bat si ce n'est pas installé)");
+    }
+    println!();
+
+    // ── 5. Démarrage automatique + reliquats de la v1.x (Windows) ──
+    if let Ok(host) = host() {
+        match host.autostart_enabled() {
+            Ok(true) => println!("  ✓  Démarrage automatique à l'ouverture de session"),
+            _ => {
                 issues += 1;
-                println!("  ⚠  LibreHardwareMonitor accessible mais aucune sonde trouvée");
-                println!("     → Vérifiez que LHM surveille bien votre matériel");
+                println!("  ✗  Démarrage automatique non configuré");
+                println!("     → Lancez install.bat");
             }
-            Err(e) => {
+        }
+        if let Ok(left) = host.legacy_findings(&data_dir()) {
+            if !left.is_empty() {
                 issues += 1;
-                println!(
-                    "  ✗  LibreHardwareMonitor HTTP inaccessible ({}:{})",
-                    cfg.lhm_host, cfg.lhm_port
-                );
-                println!("     Erreur : {}", e);
-                println!("     → Lancez LHM en tant qu'administrateur");
-                println!("     → Activez Options › Remote Web Server › Run dans LHM");
+                println!("  ⚠  Reliquats de la version 1.x détectés");
+                if left.service {
+                    println!("     • service Windows « MonitoringAlert »");
+                }
+                for task in &left.tasks {
+                    println!("     • tâche planifiée {task}");
+                }
+                if left.aumid {
+                    println!("     • enregistrement des notifications toast");
+                }
+                for script in &left.scripts {
+                    println!("     • script {script}");
+                }
+                println!("     → Relancez install.bat en administrateur : ils sont supprimés automatiquement");
             }
         }
         println!();
@@ -318,12 +364,5 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
 }
 
 fn main() -> Result<()> {
-    #[cfg(windows)]
-    {
-        if service_dispatcher::start(service::SERVICE_NAME, ffi_service_main).is_ok() {
-            return Ok(());
-        }
-    }
-
     run_cli()
 }

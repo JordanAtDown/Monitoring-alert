@@ -96,3 +96,88 @@ pub trait ReadModel {
     /// Size of the storage, in bytes.
     fn storage_bytes(&self) -> u64;
 }
+
+// ──────────────────────────────────────────────────────────────
+// The host system: installation, start-up, cleanup of a v1.x installation
+// ──────────────────────────────────────────────────────────────
+
+/// What is left of a v1.x installation (Windows service + scheduled report tasks + toast registration).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct LegacyFindings {
+    /// The `MonitoringAlert` Windows service is registered.
+    pub service: bool,
+    /// Scheduled tasks of the old reports that still exist.
+    pub tasks: Vec<String>,
+    /// The toast-notification registration (AUMID) exists.
+    pub aumid: bool,
+    /// Old scripts left in the data directory.
+    pub scripts: Vec<String>,
+}
+
+impl LegacyFindings {
+    pub fn is_empty(&self) -> bool {
+        !self.service && self.tasks.is_empty() && !self.aumid && self.scripts.is_empty()
+    }
+}
+
+/// Outcome of the configuration file migration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigMigration {
+    /// No config file, or it already is in the current format.
+    Current,
+    /// The file used obsolete keys: it was rewritten, the old one kept as `backup`.
+    Rewritten {
+        backup: std::path::PathBuf,
+        removed_keys: Vec<String>,
+    },
+}
+
+/// File name of the background executable.
+pub const DAEMON_EXE_NAME: &str = "monitoring-daemon.exe";
+
+/// Where the files of an installation go.
+#[derive(Debug, Clone)]
+pub struct DeployPlan {
+    /// The executable being run (the one of the downloaded archive, or the installed one).
+    pub source_exe: std::path::PathBuf,
+    /// Directory of the executables.
+    pub install_dir: std::path::PathBuf,
+    /// Directory of `config.toml`, the database and the logs.
+    pub data_dir: std::path::PathBuf,
+}
+
+impl DeployPlan {
+    pub fn cli_exe(&self) -> std::path::PathBuf {
+        self.install_dir.join("monitoring-alert.exe")
+    }
+
+    /// The background copy of the executable (no console window).
+    pub fn daemon_exe(&self) -> std::path::PathBuf {
+        self.install_dir.join(DAEMON_EXE_NAME)
+    }
+}
+
+/// Everything the installer needs from the operating system.
+pub trait HostSystem {
+    fn legacy_findings(&self, data_dir: &std::path::Path) -> Result<LegacyFindings>;
+    /// Stops and unregisters the v1.x Windows service. Fails if it cannot (e.g. not administrator).
+    fn remove_legacy_service(&self) -> Result<()>;
+    fn remove_legacy_tasks(&self) -> Result<()>;
+    fn remove_legacy_aumid(&self) -> Result<()>;
+    fn remove_legacy_scripts(&self, data_dir: &std::path::Path) -> Result<Vec<String>>;
+
+    /// Rewrites a v1.x `config.toml` without its obsolete keys.
+    fn migrate_config(&self, config_path: &std::path::Path) -> Result<ConfigMigration>;
+
+    /// Puts the executables, the default config and the helper scripts in place.
+    /// Returns what was written, one line per file.
+    fn deploy(&self, plan: &DeployPlan) -> Result<Vec<String>>;
+
+    /// Stops the background process; `false` if it was not running.
+    fn stop_daemon(&self) -> Result<bool>;
+    fn start_daemon(&self, daemon_exe: &std::path::Path) -> Result<()>;
+    fn autostart_enable(&self, daemon_exe: &std::path::Path) -> Result<()>;
+    /// Removes the start-up entry; `false` if there was none.
+    fn autostart_disable(&self) -> Result<bool>;
+    fn autostart_enabled(&self) -> Result<bool>;
+}

@@ -124,3 +124,179 @@ fn the_shipped_config_template_parses_and_is_free_of_obsolete_keys() {
     assert_eq!(cfg.raw_retention_days, 90);
     assert_eq!(cfg.web_port, DEFAULT_WEB_PORT);
 }
+
+// ── Migration of a v1.x config file ───────────────────────────
+
+mod migration {
+    use crate::adapters::config::{
+        migrate_config_file, obsolete_keys_in, render_config, AppConfig, RawConfig,
+    };
+    use crate::application::ports::ConfigMigration;
+    use std::fs;
+
+    const V1_CONFIG: &str = r#"# MonitoringAlert — configuration
+install_dir = "C:\\Program Files\\MonitoringAlert"
+db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
+reports_dir = "C:\\rapports"
+collect_interval_secs = 120
+retention_days = 365
+lhm_host = "192.168.1.5"
+lhm_port = 9000
+log_level = "debug"
+daily_report_enabled = true
+daily_report_time    = "08:00"
+weekly_report_enabled = false
+weekly_report_day     = "MON"
+weekly_report_time    = "08:00"
+monthly_report_enabled = false
+monthly_report_day     = 1
+monthly_report_time    = "08:00"
+"#;
+
+    #[test]
+    fn obsolete_keys_are_detected() {
+        let keys = obsolete_keys_in(V1_CONFIG);
+        assert_eq!(keys.len(), 10);
+        assert!(keys.contains(&"retention_days".to_string()));
+        assert!(obsolete_keys_in("lhm_port = 8085").is_empty());
+        assert!(obsolete_keys_in("not [valid toml").is_empty());
+    }
+
+    #[test]
+    fn a_v1_file_is_rewritten_keeping_its_values_and_backed_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, V1_CONFIG).unwrap();
+
+        let result = migrate_config_file(&path).unwrap();
+        let ConfigMigration::Rewritten {
+            backup,
+            removed_keys,
+        } = result
+        else {
+            panic!("expected a rewrite");
+        };
+        assert_eq!(removed_keys.len(), 10);
+        assert_eq!(fs::read_to_string(&backup).unwrap(), V1_CONFIG);
+        assert!(backup.to_string_lossy().ends_with("config.toml.v1.bak"));
+
+        let migrated = fs::read_to_string(&path).unwrap();
+        assert!(obsolete_keys_in(&migrated).is_empty());
+        // `retention_days` is gone, `raw_retention_days` (its replacement) is only a commented default.
+        assert!(!migrated.lines().any(|l| l.starts_with("retention_days")));
+        for key in [
+            "reports_dir",
+            "daily_report",
+            "weekly_report",
+            "monthly_report",
+        ] {
+            assert!(!migrated.contains(key), "{key} survived the migration");
+        }
+
+        // The values the user had set are carried over, and the loader agrees.
+        let cfg = AppConfig::load_from(&path);
+        assert_eq!(
+            cfg.db_path,
+            std::path::Path::new(
+                r"C:\Users\Jordan\AppData\Local\Programs\MonitoringAlert\temperatures.db"
+            )
+        );
+        assert_eq!(
+            cfg.install_dir.as_deref(),
+            Some(std::path::Path::new(r"C:\Program Files\MonitoringAlert"))
+        );
+        assert_eq!(cfg.collect_interval_secs, 120);
+        assert_eq!((cfg.lhm_host.as_str(), cfg.lhm_port), ("192.168.1.5", 9000));
+        assert_eq!(cfg.log_level, "debug");
+        // New keys get their defaults.
+        assert_eq!(cfg.raw_retention_days, 90);
+        assert_eq!(cfg.web_port, 8787);
+    }
+
+    #[test]
+    fn migrating_twice_does_nothing_the_second_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, V1_CONFIG).unwrap();
+        migrate_config_file(&path).unwrap();
+        let after_first = fs::read_to_string(&path).unwrap();
+
+        assert_eq!(
+            migrate_config_file(&path).unwrap(),
+            ConfigMigration::Current
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), after_first);
+    }
+
+    #[test]
+    fn an_earlier_backup_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(dir.path().join("config.toml.v1.bak"), "precious").unwrap();
+        fs::write(&path, V1_CONFIG).unwrap();
+
+        let ConfigMigration::Rewritten { backup, .. } = migrate_config_file(&path).unwrap() else {
+            panic!("expected a rewrite");
+        };
+        assert!(backup.to_string_lossy().ends_with("config.toml.v1.bak2"));
+        assert_eq!(
+            fs::read_to_string(dir.path().join("config.toml.v1.bak")).unwrap(),
+            "precious"
+        );
+    }
+
+    #[test]
+    fn missing_current_or_broken_files_are_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.toml");
+        assert_eq!(
+            migrate_config_file(&missing).unwrap(),
+            ConfigMigration::Current
+        );
+
+        let current = dir.path().join("current.toml");
+        fs::write(&current, "web_port = 9000\n").unwrap();
+        assert_eq!(
+            migrate_config_file(&current).unwrap(),
+            ConfigMigration::Current
+        );
+        assert_eq!(fs::read_to_string(&current).unwrap(), "web_port = 9000\n");
+
+        let broken = dir.path().join("broken.toml");
+        fs::write(&broken, "reports_dir = [unterminated").unwrap();
+        assert_eq!(
+            migrate_config_file(&broken).unwrap(),
+            ConfigMigration::Current
+        );
+    }
+
+    #[test]
+    fn special_characters_in_values_survive_the_rewrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "reports_dir = \"x\"\ndb_path = \"C:\\\\Données \\\"été\\\"\\\\t.db\"\n",
+        )
+        .unwrap();
+        migrate_config_file(&path).unwrap();
+        assert_eq!(
+            AppConfig::load_from(&path).db_path,
+            std::path::Path::new("C:\\Données \"été\"\\t.db")
+        );
+    }
+
+    #[test]
+    fn the_rendered_template_with_no_values_is_a_valid_default_config() {
+        let text = render_config(&RawConfig::default());
+        assert!(text.parse::<toml::Table>().is_ok());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, &text).unwrap();
+        let cfg = AppConfig::load_from(&path);
+        assert_eq!(
+            (cfg.raw_retention_days, cfg.web_port, cfg.lhm_port),
+            (90, 8787, 8085)
+        );
+    }
+}

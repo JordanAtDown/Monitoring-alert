@@ -245,6 +245,18 @@ fn api_summary(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
 // Socket handling
 // ──────────────────────────────────────────────────────────────
 
+/// Whether a dashboard answers on `host:port` (used to tell if the daemon is running).
+pub fn ping(host: &str, port: u16) -> bool {
+    // 0.0.0.0 means "all interfaces": the loopback one always works.
+    let host = if host == "0.0.0.0" { "127.0.0.1" } else { host };
+    ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .get(&format!("http://{host}:{port}/api/series"))
+        .call()
+        .is_ok()
+}
+
 /// Starts listening. Fails fast (e.g. port already taken) so that a second
 /// instance of the daemon never starts collecting.
 pub fn bind(host: &str, port: u16) -> Result<Arc<tiny_http::Server>> {
