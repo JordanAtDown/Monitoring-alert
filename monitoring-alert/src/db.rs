@@ -94,56 +94,6 @@ pub fn get_overall_stats(conn: &Connection) -> Result<OverallStats> {
     })
 }
 
-pub struct CategoryCount {
-    pub load_cat: String,
-    pub count: i64,
-}
-
-pub fn get_category_distribution(conn: &Connection, days: u32) -> Result<Vec<CategoryCount>> {
-    let mut stmt = conn.prepare(
-        "SELECT load_cat, COUNT(*) as cnt FROM snapshots
-         WHERE datetime(ts) >= datetime('now', ?1)
-         GROUP BY load_cat",
-    )?;
-    let days_str = format!("-{} days", days);
-    let rows = stmt
-        .query_map(params![days_str], |row| {
-            Ok(CategoryCount {
-                load_cat: row.get(0)?,
-                count: row.get(1)?,
-            })
-        })
-        .context("Failed to query category distribution")?;
-    let mut result = Vec::new();
-    for row in rows {
-        result.push(row.context("Failed to read category row")?);
-    }
-    Ok(result)
-}
-
-pub struct SensorKey {
-    pub hardware: String,
-    pub sensor: String,
-}
-
-pub fn get_distinct_sensors(conn: &Connection) -> Result<Vec<SensorKey>> {
-    let mut stmt =
-        conn.prepare("SELECT DISTINCT hardware, sensor FROM readings ORDER BY hardware, sensor")?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(SensorKey {
-                hardware: row.get(0)?,
-                sensor: row.get(1)?,
-            })
-        })
-        .context("Failed to query distinct sensors")?;
-    let mut result = Vec::new();
-    for row in rows {
-        result.push(row.context("Failed to read sensor row")?);
-    }
-    Ok(result)
-}
-
 /// Compacts the database file, reclaiming space freed by DELETE operations.
 ///
 /// Must be called on an idle connection (no active transactions).
@@ -171,29 +121,4 @@ pub fn purge_old_snapshots(conn: &Connection, days: u32) -> Result<usize> {
         )
         .context("Failed to purge old snapshots")?;
     Ok(removed)
-}
-
-pub fn get_avg_for_window(
-    conn: &Connection,
-    hardware: &str,
-    sensor: &str,
-    load_cat: &str,
-    days: u32,
-    offset_days: u32,
-) -> Result<Option<f64>> {
-    let start = format!("-{} days", days + offset_days);
-    let end = format!("-{} days", offset_days);
-    let result = conn
-        .query_row(
-            "SELECT AVG(r.value)
-             FROM readings r
-             JOIN snapshots s ON r.snapshot_id = s.id
-             WHERE r.hardware = ?1 AND r.sensor = ?2 AND s.load_cat = ?3
-               AND datetime(s.ts) >= datetime('now', ?4)
-               AND datetime(s.ts) < datetime('now', ?5)",
-            params![hardware, sensor, load_cat, start, end],
-            |row| row.get::<_, Option<f64>>(0),
-        )
-        .context("Failed to query average for window")?;
-    Ok(result)
 }

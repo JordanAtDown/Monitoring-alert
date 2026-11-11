@@ -5,19 +5,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use store::TemperatureStore as _;
 
-#[cfg(windows)]
-use clap::Args;
-#[cfg(windows)]
-use report::ReportPeriod;
-
 mod collector;
 mod config;
 mod db;
 mod logger;
-#[cfg(windows)]
-mod notification;
-mod report;
-mod reporter;
 mod sensors;
 mod service;
 mod store;
@@ -62,21 +53,6 @@ enum Commands {
         #[arg(long, default_value = "300")]
         interval: u64,
     },
-    /// Génère le rapport texte (ASCII)
-    Report {
-        /// Fichier de sortie (stdout si absent)
-        #[arg(short, long)]
-        output: Option<String>,
-    },
-    /// Génère le rapport Markdown et le sauvegarde dans reports_dir
-    ReportMd {
-        /// Dossier de sortie (remplace reports_dir du config)
-        #[arg(short, long)]
-        output_dir: Option<String>,
-        /// Libellé de période dans le nom de fichier (défaut: manuel)
-        #[arg(long, default_value = "manuel")]
-        label: String,
-    },
     /// Vérifie la configuration, la base de données, le service et LHM
     Check,
     /// Gestion du service Windows
@@ -89,63 +65,6 @@ enum Commands {
         #[command(subcommand)]
         action: DbAction,
     },
-    #[cfg(windows)]
-    /// Envoie un rapport toast (appelé par les tâches planifiées)
-    Notify(NotifyArgs),
-    #[cfg(windows)]
-    /// Envoie des toasts fictifs (dry-run) pour tester l'implémentation sans données
-    NotifyDryRun(NotifyDryRunArgs),
-}
-
-#[cfg(windows)]
-#[derive(Args)]
-struct NotifyArgs {
-    /// Rapport journalier
-    #[arg(long, conflicts_with_all = ["weekly", "monthly"])]
-    daily: bool,
-    /// Rapport hebdomadaire
-    #[arg(long, conflicts_with_all = ["daily", "monthly"])]
-    weekly: bool,
-    /// Rapport mensuel
-    #[arg(long, conflicts_with_all = ["daily", "weekly"])]
-    monthly: bool,
-}
-
-/// Scénarios de test disponibles pour `notify-test`.
-#[cfg(windows)]
-#[derive(clap::ValueEnum, Clone, Debug)]
-enum TestScenario {
-    /// ✓ Toutes les températures stables
-    Stable,
-    /// ⚠ 1 alerte — seuil ATTENTION (Δ+6°C sur 30j)
-    Attention,
-    /// 🔴 1 alerte — seuil CRITIQUE (Δ+12°C sur 30j)
-    Critique,
-    /// ⚠ 3 alertes — plusieurs capteurs en drift
-    Multi,
-    /// Envoie les 4 scénarios en séquence (pause de 4 s entre chaque)
-    All,
-}
-
-/// Période de rapport simulée pour `notify-test`.
-#[cfg(windows)]
-#[derive(clap::ValueEnum, Clone, Debug, Default)]
-enum TestPeriod {
-    #[default]
-    Daily,
-    Weekly,
-    Monthly,
-}
-
-#[cfg(windows)]
-#[derive(Args)]
-struct NotifyDryRunArgs {
-    /// Scénario à simuler
-    #[arg(long, default_value = "all")]
-    scenario: TestScenario,
-    /// Période du titre du toast
-    #[arg(long, default_value = "daily")]
-    period: TestPeriod,
 }
 
 #[derive(Subcommand)]
@@ -195,18 +114,6 @@ fn run_cli() -> Result<()> {
                 stop,
             )?;
         }
-        Commands::Report { output } => {
-            let store = store::SqliteStore::new(db::init_db(&db_path)?);
-            report::generate_report(&store, output.as_deref())?;
-        }
-        Commands::ReportMd { output_dir, label } => {
-            let store = store::SqliteStore::new(db::init_db(&db_path)?);
-            let dir = output_dir
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| cfg.reports_dir.clone());
-            let path = report::save_report_md(&store, &dir, &label)?;
-            println!("Rapport généré : {}", path.display());
-        }
         Commands::Service { action } => match action {
             ServiceAction::Install => {
                 let config_path = config::AppConfig::default_config_path();
@@ -254,94 +161,6 @@ fn run_cli() -> Result<()> {
                 );
             }
         },
-        #[cfg(windows)]
-        Commands::Notify(args) => {
-            let period = if args.daily {
-                ReportPeriod::Daily
-            } else if args.weekly {
-                ReportPeriod::Weekly
-            } else if args.monthly {
-                ReportPeriod::Monthly
-            } else {
-                anyhow::bail!("Spécifiez --daily, --weekly ou --monthly");
-            };
-            let period_label = if args.daily {
-                "journalier"
-            } else if args.weekly {
-                "hebdomadaire"
-            } else {
-                "mensuel"
-            };
-            let store = store::SqliteStore::new(db::init_db(&db_path)?);
-
-            // Generate and save the Markdown report; failures are non-fatal.
-            let report_path = report::save_report_md(&store, &cfg.reports_dir, period_label)
-                .inspect_err(|e| tracing::warn!("Rapport MD non généré : {:#}", e))
-                .ok();
-
-            let summary = report::generate_summary(&store, period)?;
-            let sender: Box<dyn reporter::ReportSender> =
-                Box::new(notification::ToastSender { report_path });
-            sender.send(&summary.title, &summary.body)?;
-            // Give Windows time to dispatch the async WinRT toast before the process exits.
-            std::thread::sleep(std::time::Duration::from_secs(3));
-        }
-        #[cfg(windows)]
-        Commands::NotifyDryRun(args) => {
-            let title = match args.period {
-                TestPeriod::Daily => "MonitoringAlert — Rapport Journalier",
-                TestPeriod::Weekly => "MonitoringAlert — Rapport Hebdomadaire",
-                TestPeriod::Monthly => "MonitoringAlert — Rapport Mensuel",
-            };
-
-            // Each scenario mirrors an exact output that generate_summary can produce.
-            let scenarios: &[(&str, &str)] = &[
-                ("stable", "✓ Toutes les températures stables"),
-                ("attention", "⚠ 1 alerte — CPU Package: +6.0°C sur 30j"),
-                (
-                    "critique",
-                    "⚠ 1 alerte — GPU Junction Temperature: +12.0°C sur 30j",
-                ),
-                (
-                    "multi",
-                    "⚠ 3 alertes — GPU Junction Temperature: +12.0°C sur 30j",
-                ),
-            ];
-
-            let to_send: Vec<(&str, &str)> = match args.scenario {
-                TestScenario::Stable => vec![scenarios[0]],
-                TestScenario::Attention => vec![scenarios[1]],
-                TestScenario::Critique => vec![scenarios[2]],
-                TestScenario::Multi => vec![scenarios[3]],
-                TestScenario::All => scenarios.to_vec(),
-            };
-
-            let store = store::SqliteStore::new(db::init_db(&db_path)?);
-            let report_path = report::save_report_md(&store, &cfg.reports_dir, "dry-run")
-                .inspect_err(|e| eprintln!("Rapport MD non généré : {:#}", e))
-                .ok();
-            if let Some(ref p) = report_path {
-                println!("Rapport généré : {}", p.display());
-            }
-
-            let sender: Box<dyn reporter::ReportSender> =
-                Box::new(notification::ToastSender { report_path });
-            let count = to_send.len();
-            for (i, (label, body)) in to_send.into_iter().enumerate() {
-                let test_title = format!("{} [TEST: {}]", title, label);
-                println!("Envoi scénario «{}» : {}", label, body);
-                sender.send(&test_title, body)?;
-                // Pause between toasts so Windows has time to display each one.
-                if i + 1 < count {
-                    std::thread::sleep(std::time::Duration::from_secs(4));
-                }
-            }
-            // Give Windows time to dispatch the last async WinRT toast before the process exits.
-            std::thread::sleep(std::time::Duration::from_secs(3));
-            if count > 1 {
-                println!("{} toasts envoyés.", count);
-            }
-        }
     }
     Ok(())
 }
@@ -357,7 +176,6 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
     // ── 1. Configuration ──────────────────────────────────────
     println!("  ✓  Configuration chargée");
     println!("     DB         : {}", db_path.display());
-    println!("     Rapports   : {}", cfg.reports_dir.display());
     println!(
         "     Intervalle : {} s  —  Rétention : {} j  —  Log : {}",
         cfg.collect_interval_secs, cfg.retention_days, cfg.log_level
@@ -419,7 +237,7 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
             const WINDOWS: &[(i64, &str, &str)] = &[
                 (2, "24h", ""),
                 (14, " 7j", ""),
-                (60, "30j", "  ← utilisé par les notifications"),
+                (60, "30j", ""),
                 (180, "90j", ""),
                 (360, "180j", ""),
             ];
@@ -484,30 +302,6 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
                 println!("     → Lancez LHM en tant qu'administrateur");
                 println!("     → Activez Options › Remote Web Server › Run dans LHM");
             }
-        }
-        println!();
-    }
-
-    // ── 5. AUMID (toast notifications) ───────────────────────
-    #[cfg(windows)]
-    {
-        let key = format!(
-            "HKCU\\Software\\Classes\\AppUserModelId\\{}",
-            notification::TOAST_APP_ID
-        );
-        let aumid_ok = std::process::Command::new("reg")
-            .args(["query", &key])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-
-        if aumid_ok {
-            println!("  ✓  AUMID enregistré — notifications toast disponibles");
-            println!("     → Testez avec : monitoring-alert.exe notify-dry-run");
-        } else {
-            issues += 1;
-            println!("  ✗  AUMID non enregistré — les toasts ne fonctionneront pas");
-            println!("     → Lancez install.bat en tant qu'administrateur");
         }
         println!();
     }

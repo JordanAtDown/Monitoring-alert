@@ -61,7 +61,7 @@ echo  Chemin DB              : !DB_PATH!
 echo.
 
 :: --- 1. Installation de l'exécutable ---
-echo [1/6] Installation de l'executable dans "!INSTALL_DIR!"...
+echo [1/4] Installation de l'executable dans "!INSTALL_DIR!"...
 if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
 copy /Y "%SCRIPT_DIR%%EXE_NAME%" "!INSTALL_DIR!\%EXE_NAME%" >nul
 if %errorLevel% neq 0 (
@@ -71,7 +71,7 @@ if %errorLevel% neq 0 (
 )
 
 :: --- 2. Création du dossier de données et copie des fichiers ---
-echo [2/6] Creation du dossier de donnees "%DATA_DIR%"...
+echo [2/4] Creation du dossier de donnees "%DATA_DIR%"...
 if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
 :: Création du dossier parent de db_path s'il est différent de DATA_DIR
@@ -81,21 +81,14 @@ if not "!DB_PATH!"=="" (
     )
 )
 
-echo        Copie de config.toml, Register-Tasks.ps1, uninstall.bat, update.bat, apply-config.bat...
+echo        Copie de config.toml, uninstall.bat, update.bat, apply-config.bat...
 copy /Y "%CONFIG_FILE%"                    "%DATA_DIR%\config.toml"          >nul
-copy /Y "%SCRIPT_DIR%Register-Tasks.ps1"   "%DATA_DIR%\Register-Tasks.ps1"   >nul
 copy /Y "%SCRIPT_DIR%uninstall.bat"        "%DATA_DIR%\uninstall.bat"        >nul
 copy /Y "%SCRIPT_DIR%update.bat"           "%DATA_DIR%\update.bat"           >nul
 copy /Y "%SCRIPT_DIR%apply-config.bat"     "%DATA_DIR%\apply-config.bat"     >nul
 
-:: --- 3. Enregistrement de l'AUMID pour les notifications toast ---
-echo [3/6] Enregistrement de l'AUMID pour les notifications...
-reg add "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /f >nul
-reg add "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /v "DisplayName" /t REG_SZ /d "Monitoring Alert" /f >nul
-reg add "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /v "IconUri" /t REG_SZ /d "!INSTALL_DIR!\%EXE_NAME%" /f >nul
-
-:: --- 4. Enregistrement et démarrage du service ---
-echo [4/6] Enregistrement du service Windows...
+:: --- 3. Enregistrement et démarrage du service ---
+echo [3/4] Enregistrement du service Windows...
 "!INSTALL_DIR!\%EXE_NAME%" service install
 if %errorLevel% neq 0 (
     echo [ERREUR] L'enregistrement du service a echoue.
@@ -103,7 +96,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [5/6] Demarrage du service...
+echo [4/4] Demarrage du service...
 "!INSTALL_DIR!\%EXE_NAME%" service start
 if %errorLevel% neq 0 (
     echo [ERREUR] Le demarrage du service a echoue.
@@ -111,9 +104,6 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-:: --- 6. Création des tâches planifiées de rapport ---
-echo [6/6] Creation des taches planifiees de rapport (StartWhenAvailable)...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" -ExePath "!INSTALL_DIR!\%EXE_NAME%" -Username "%USERNAME%"
 
 echo.
 echo Installation terminee. Le service MonitoringAlert est actif.
@@ -121,7 +111,7 @@ echo.
 echo  Fichiers installes :
 echo    Executable : !INSTALL_DIR!\%EXE_NAME%
 echo    Donnees    : %DATA_DIR%\
-echo      config.toml    (chemin DB + dossier d'installation + rapports)
+echo      config.toml    (chemin DB + dossier d'installation)
 echo      temperatures.db (creee au 1er demarrage du service)
 echo      uninstall.bat / update.bat
 echo.

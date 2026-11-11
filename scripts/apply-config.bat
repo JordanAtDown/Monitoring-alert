@@ -10,7 +10,6 @@ setlocal EnableDelayedExpansion
 ::  Ce script :
 ::    1. Relit config.toml
 ::    2. Redémarre le service Windows (collecte)
-::    3. Resynchronise les taches planifiees (rapports)
 :: ============================================================
 
 :: --- Vérification des droits admin ---
@@ -42,18 +41,13 @@ echo  Executable    : !INSTALL_DIR!\%EXE_NAME%
 echo.
 
 :: --- 1. Redémarrage du service ---
-echo [1/2] Redemarrage du service...
+echo [1/1] Redemarrage du service...
 "!INSTALL_DIR!\%EXE_NAME%" service stop >nul 2>&1
 timeout /t 2 /nobreak >nul
 "!INSTALL_DIR!\%EXE_NAME%" service start
 if %errorLevel% neq 0 (
     echo [AVERTISSEMENT] Le redemarrage du service a echoue. Verifiez les logs.
 )
-
-:: --- 2. Resynchronisation des tâches planifiées ---
-echo [2/2] Resynchronisation des taches planifiees...
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "%DATA_DIR%\Register-Tasks.ps1" -ExePath "!INSTALL_DIR!\%EXE_NAME%" -Username "%USERNAME%"
 
 echo.
 echo Configuration appliquee.
