@@ -161,7 +161,7 @@ Le workflow `.github/workflows/build.yml` se déclenche sur :
 
 | Fichier | Mettre à jour si… |
 |---|---|
-| `monitoring-alert/README.md` | Changement de comportement visible (install, config, CLI, rapport) |
+| `README.md` | Changement de comportement visible (install, config, CLI, rapport) |
 | `scripts/config.toml` | Ajout ou suppression d'une clé de configuration |
 | `CHANGELOG.md` | Avant chaque release (toujours) |
 

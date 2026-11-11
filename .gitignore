@@ -1,5 +1,5 @@
 # Rust build artifacts
-monitoring-alert/target/
+backend/target/
 # Note: Cargo.lock is committed for binary crates (recommended)
 
 # Database files

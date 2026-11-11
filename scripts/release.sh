@@ -9,7 +9,7 @@
 #    1. Validates the version argument (X.Y.Z format)
 #    2. Verifies the working tree is clean and the branch is main
 #    3. Checks the tag does not already exist
-#    4. Updates the version in monitoring-alert/Cargo.toml
+#    4. Updates the version in backend/Cargo.toml
 #    5. Promotes [Unreleased] → [X.Y.Z] in CHANGELOG.md
 #    6. Runs cargo test to confirm everything still passes
 #    7. Commits the version bump
@@ -24,7 +24,7 @@ TAG="v${VERSION}"
 GITHUB_REPO="jordanatdown/monitoring-alert"
 
 REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-CARGO_TOML="${REPO_ROOT}/monitoring-alert/Cargo.toml"
+CARGO_TOML="${REPO_ROOT}/backend/Cargo.toml"
 CHANGELOG="${REPO_ROOT}/CHANGELOG.md"
 
 # ── 1. Validate semver format ─────────────────────────────────
@@ -89,7 +89,7 @@ awk -v ver="$VERSION" -v tag="$TAG" -v repo="$GITHUB_REPO" '
 
 # ── 6. Run tests ──────────────────────────────────────────────
 echo "==> Running cargo test"
-(cd "${REPO_ROOT}/monitoring-alert" && cargo test --quiet)
+(cd "${REPO_ROOT}/backend" && cargo test --quiet)
 echo "    All tests passed."
 
 # ── 7. Commit ─────────────────────────────────────────────────
@@ -97,7 +97,7 @@ echo "==> Committing version bump"
 git -C "$REPO_ROOT" add \
     "$CARGO_TOML" \
     "$CHANGELOG" \
-    "${REPO_ROOT}/monitoring-alert/Cargo.lock"
+    "${REPO_ROOT}/backend/Cargo.lock"
 git -C "$REPO_ROOT" commit -m "chore(release): bump version to ${VERSION}"
 
 # ── 8. Tag ────────────────────────────────────────────────────

@@ -26,14 +26,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "monitoring-alert -> target"
+          workspaces: "backend -> target"
 
       - name: Check formatting
-        working-directory: monitoring-alert
+        working-directory: backend
         run: cargo fmt --check
 
       - name: Run Clippy
-        working-directory: monitoring-alert
+        working-directory: backend
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
@@ -50,8 +50,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "monitoring-alert -> target"
+          workspaces: "backend -> target"
 
       - name: Run tests
-        working-directory: monitoring-alert
+        working-directory: backend
         run: cargo test --target x86_64-pc-windows-msvc
