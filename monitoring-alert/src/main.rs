@@ -1,19 +1,12 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+#[cfg(windows)]
+use monitoring_alert::sensors;
+use monitoring_alert::store::TemperatureStore as _;
+use monitoring_alert::{collector, config, db, logger, service, store};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use store::TemperatureStore as _;
-
-mod collector;
-mod config;
-mod db;
-mod logger;
-mod sensors;
-mod service;
-mod store;
-#[cfg(test)]
-mod tests;
 
 #[cfg(windows)]
 use windows_service::{define_windows_service, service_dispatcher};
