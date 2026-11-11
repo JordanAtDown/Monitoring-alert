@@ -88,6 +88,28 @@ fn warmer_advice(delta: f64, machine: Option<f64>) -> String {
     }
 }
 
+/// What the hot moments of each day say. They say more about cooling than the usual temperature
+/// does: a heat sink that no longer keeps up lets the peaks climb while the median barely moves,
+/// which is exactly the shape of dust in the fins or paste that has dried out.
+fn peak_line(t: &trends::Trend) -> Option<Line> {
+    let (peak_delta, delta) = (t.peak_delta?, t.delta?);
+    // It has to have risen beyond its own noise, and clearly more than the usual temperature.
+    if peak_delta < wording::stable_band(t.peak_margin) || peak_delta - delta < STABLE_BAND {
+        return None;
+    }
+    Some(Line {
+        kind: "advice",
+        spans: vec![span(
+            format!(
+                "Ses pointes de température ont monté davantage que sa température habituelle ({} contre {}). C'est ce qu'on voit quand le refroidissement ne suit plus dans les moments de forte chaleur : la poussière et la pâte thermique se remarquent là en premier.",
+                wording::signed(peak_delta),
+                wording::signed(delta)
+            ),
+            false,
+        )],
+    })
+}
+
 fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
     let plain = |text: String| Line {
         kind: "story",
@@ -145,6 +167,7 @@ fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
             span(format!(", soit {outcome}"), false),
         ],
     }];
+    lines.extend(peak_line(t));
     if verdict == Verdict::Warmer {
         lines.push(Line {
             kind: "advice",
@@ -200,6 +223,18 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
                     "{} par mois (droite des moindres carrés sur toutes les journées)",
                     wording::signed(slope)
                 ),
+            },
+            Fact {
+                label: "Pointes de la journée",
+                text: match (trend.peak_baseline, trend.peak_current, trend.peak_delta) {
+                    (Some(b), Some(c), Some(d)) => format!(
+                        "{} au début, {} ces 30 derniers jours, soit {}. (p95 : la journée est plus chaude que cette valeur 5 % du temps.)",
+                        wording::temp(b),
+                        wording::temp(c),
+                        wording::signed(d)
+                    ),
+                    _ => "indéterminées".into(),
+                },
             },
             Fact {
                 label: "Marge d'incertitude",

@@ -354,6 +354,10 @@
       "text": "+0,4 °C par mois (droite des moindres carrés sur toutes les journées)"
     },
     {
+      "label": "Pointes de la journée",
+      "text": "41,2 °C au début, 43,0 °C ces 30 derniers jours, soit +1,8 °C. (p95 : la journée est plus chaude que cette valeur 5 % du temps.)"
+    },
+    {
       "label": "Marge d'incertitude",
       "text": "± 1,0 °C sur l'écart (95 %, d'après la dispersion des médianes quotidiennes des deux périodes). Un écart plus petit que cette marge n'est pas annoncé."
     },

@@ -108,6 +108,13 @@ pub struct Trend {
     /// How much of `delta` could be noise: the 95 % margin on the comparison. A change smaller
     /// than this says nothing.
     pub margin: Option<f64>,
+    /// The same comparison made on the **hot moments** of each day (the daily p95) instead of the
+    /// usual temperature. A cooler that no longer keeps up shows there first: the median barely
+    /// moves while the peaks climb.
+    pub peak_baseline: Option<f64>,
+    pub peak_current: Option<f64>,
+    pub peak_delta: Option<f64>,
+    pub peak_margin: Option<f64>,
     /// Last day with a measurement.
     pub last_day: Option<String>,
     /// Days since that day; `0` when it is today's.
@@ -212,16 +219,16 @@ fn drift_margin(baseline: &[f64], recent: &[f64]) -> Option<f64> {
     margin.is_finite().then_some(margin)
 }
 
-/// The daily medians of the last [`ROLLING_WINDOW_DAYS`] calendar days with data: the sample the
-/// latest rolling median is computed from.
-fn recent_window(points: &[DayStat]) -> Vec<f64> {
+/// One daily figure over the last [`ROLLING_WINDOW_DAYS`] calendar days with data: the sample the
+/// latest rolling value is computed from.
+fn recent_window(points: &[DayStat], value: impl Fn(&DayStat) -> f64) -> Vec<f64> {
     let Some(last) = points.last() else {
         return Vec::new();
     };
     points
         .iter()
         .filter(|p| (last.day - p.day).num_days() < ROLLING_WINDOW_DAYS)
-        .map(|p| p.median)
+        .map(value)
         .collect()
 }
 
@@ -267,14 +274,32 @@ pub fn compute_trend(stats: &[DayStat], today: NaiveDate) -> Trend {
     let mut baseline_to = None;
     let mut delta = None;
     let mut margin = None;
+    let mut peak_baseline = None;
+    let mut peak_current = None;
+    let mut peak_delta = None;
+    let mut peak_margin = None;
     let mut slope_per_month = None;
     let mut fit_start = None;
     if sufficient {
         let reference = &points[..BASELINE_DAYS];
         let mut medians: Vec<f64> = reference.iter().map(|p| p.median).collect();
         let base = median_of(&mut medians);
-        margin = drift_margin(&medians, &recent_window(&points));
+        let recent = recent_window(&points, |p| p.median);
+        margin = drift_margin(&medians, &recent);
         baseline = Some(base);
+
+        // The same two windows, read on the high of each day.
+        let mut peaks: Vec<f64> = reference.iter().map(|p| p.p95).collect();
+        let recent_peaks = recent_window(&points, |p| p.p95);
+        if !recent_peaks.is_empty() {
+            let peak_base = median_of(&mut peaks);
+            let mut recent_sorted = recent_peaks.clone();
+            let peak_now = median_of(&mut recent_sorted);
+            peak_baseline = Some(peak_base);
+            peak_current = Some(peak_now);
+            peak_delta = Some(peak_now - peak_base);
+            peak_margin = drift_margin(&peaks, &recent_peaks);
+        }
         baseline_from = Some(fmt_day(reference[0].day));
         baseline_to = Some(fmt_day(reference[BASELINE_DAYS - 1].day));
         delta = rolling.last().map(|(_, v)| v - base);
@@ -296,6 +321,10 @@ pub fn compute_trend(stats: &[DayStat], today: NaiveDate) -> Trend {
         days: points.len(),
         span_days,
         margin,
+        peak_baseline,
+        peak_current,
+        peak_delta,
+        peak_margin,
         last_day: last_day.map(fmt_day),
         quiet_days,
         fresh: last_day.is_some() && quiet_days <= STALE_AFTER_DAYS,

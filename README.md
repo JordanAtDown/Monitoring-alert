@@ -209,7 +209,11 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
    annoncerait chaque mois un changement qui n'est que du bruit. Les médianes quotidiennes sont traitées comme
    indépendantes, ce qu'elles ne sont pas tout à fait (une vague de chaleur dure plusieurs jours) : la marge est
    donc un plancher de l'incertitude réelle. Elle ne sert qu'à **refuser** un verdict, jamais à en accorder un.
-6. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui
+6. **Pointes de la journée** : la même comparaison (référence, période récente, marge) refaite sur le **p95
+   quotidien** au lieu de la médiane. Un refroidissement qui ne suit plus se voit là en premier : la
+   température habituelle bouge à peine pendant que les pointes montent. Quand les pointes montent nettement
+   plus que l'habituel, la page du capteur le dit.
+7. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui
    représente le composant, pour qu'un processeur à douze cœurs ne pèse pas plus qu'un disque). L'**excès**
    d'un composant = son écart − cette dérive commune.
 

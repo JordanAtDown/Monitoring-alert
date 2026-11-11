@@ -22,6 +22,24 @@ fn series(days: i64, f: impl Fn(i64) -> f64) -> Vec<DayStat> {
         .collect()
 }
 
+/// A series whose usual temperature and daily high drift differently.
+fn series_with_peaks(
+    days: i64,
+    median: impl Fn(i64) -> f64,
+    p95: impl Fn(i64) -> f64,
+) -> Vec<DayStat> {
+    (0..days)
+        .map(|i| DayStat {
+            day: day(i),
+            n: 288,
+            min: median(i) - 2.0,
+            median: median(i),
+            p95: p95(i),
+            max: p95(i) + 2.0,
+        })
+        .collect()
+}
+
 /// The day these tests read a series on: the day after its last, so that it still counts as
 /// being measured (freshness is tested on its own, below).
 fn read_day(stats: &[DayStat]) -> NaiveDate {
@@ -313,4 +331,24 @@ fn the_margin_makes_a_small_change_on_a_noisy_series_unsayable() {
         crate::domain::wording::verdict_of(t.delta, Some(0.2)),
         crate::domain::wording::Verdict::Warmer
     );
+}
+
+#[test]
+fn the_daily_highs_are_compared_on_their_own() {
+    // The usual temperature never budges while the hot moments climb 6 °C over the period: the
+    // shape of a cooler that still copes at idle but no longer copes under load.
+    let stats = series_with_peaks(200, |_| 40.0, |i| 50.0 + 6.0 / 170.0 * i as f64);
+    let t = trend_of(&stats);
+    assert!(t.delta.unwrap().abs() < 1e-9, "the median holds");
+    let peak = t.peak_delta.unwrap();
+    assert!((peak - 6.0).abs() < 1e-9, "peak = {peak}");
+    assert_eq!(t.peak_baseline.map(|v| (v * 100.0).round()), Some(5051.0));
+    assert!(t.peak_current.unwrap() > t.peak_baseline.unwrap());
+}
+
+#[test]
+fn a_series_without_enough_history_has_no_peak_comparison() {
+    let t = trend_of(&series_with_peaks(40, |_| 40.0, |_| 50.0));
+    assert_eq!(t.peak_delta, None);
+    assert_eq!(t.peak_baseline, None);
 }

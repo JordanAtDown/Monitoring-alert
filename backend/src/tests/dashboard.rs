@@ -83,6 +83,20 @@ fn five(cpu: f64, gpu: f64, board: f64, disk1: f64, disk2: f64) -> Facts {
     ])
 }
 
+/// The same machine, but the processor's daily highs drift by `peaks` instead of following its
+/// usual temperature. Only `p95` is touched, which is all the peak comparison reads.
+fn with_climbing_peaks(mut facts: Facts, peaks: f64) -> Facts {
+    let slope = peaks / (DAYS - 30) as f64;
+    for (hardware, _, stats) in facts.groups.iter_mut() {
+        if hardware == "AMD Ryzen 7" {
+            for (i, d) in stats.iter_mut().enumerate() {
+                d.p95 = 60.0 + slope * i as f64;
+            }
+        }
+    }
+    facts
+}
+
 fn detail(facts: &Facts) -> String {
     overview::build(facts, "idle").headline.detail.unwrap()
 }
@@ -275,4 +289,52 @@ fn a_noisy_component_has_to_move_further_before_it_is_named() {
         .detail
         .unwrap()
         .starts_with("Un composant se détache : Processeur,"),);
+}
+
+#[test]
+fn peaks_climbing_faster_than_the_usual_temperature_are_pointed_out() {
+    // Idle temperature unchanged, hot moments up 6 °C: the cooler no longer copes under load.
+    let facts = with_climbing_peaks(five(0.0, 0.0, 0.0, 0.0, 0.0), 6.0);
+    let lines = sensor::build(&facts, "AMD Ryzen 7", "Core (Tctl/Tdie)", "idle").story;
+    let advice: Vec<String> = lines
+        .iter()
+        .filter(|l| l.kind == "advice")
+        .map(|l| l.spans.iter().map(|s| s.text.clone()).collect())
+        .collect();
+    assert_eq!(advice.len(), 1, "{advice:?}");
+    assert!(
+        advice[0].starts_with("Ses pointes de température ont monté davantage"),
+        "{}",
+        advice[0]
+    );
+    // `signed` leaves out the sign of a change that rounds to nothing.
+    assert!(advice[0].contains("+6,0 °C contre 0,0 °C"), "{}", advice[0]);
+    assert!(advice[0].contains("pâte thermique"), "{}", advice[0]);
+}
+
+#[test]
+fn peaks_that_follow_the_usual_temperature_are_not_pointed_out() {
+    // Everything rises together: nothing specific to say about the peaks.
+    let facts = with_climbing_peaks(five(6.0, 0.0, 0.0, 0.0, 0.0), 6.0);
+    let lines = sensor::build(&facts, "AMD Ryzen 7", "Core (Tctl/Tdie)", "idle").story;
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.spans.iter().any(|s| s.text.contains("pointes"))),
+        "the peaks moved exactly as much as the median"
+    );
+}
+
+#[test]
+fn the_peaks_of_a_sensor_are_given_in_its_technical_details() {
+    let facts = with_climbing_peaks(five(0.0, 0.0, 0.0, 0.0, 0.0), 6.0);
+    let page = sensor::build(&facts, "AMD Ryzen 7", "Core (Tctl/Tdie)", "idle");
+    let peaks = page
+        .technical
+        .iter()
+        .find(|f| f.label == "Pointes de la journée")
+        .expect("the peaks are reported");
+    assert!(peaks.text.contains("au début"), "{}", peaks.text);
+    assert!(peaks.text.contains("+6,0 °C"), "{}", peaks.text);
+    assert!(peaks.text.contains("p95"), "{}", peaks.text);
 }

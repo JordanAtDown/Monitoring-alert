@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Les pointes de température sont enfin regardées.** Le p95 de chaque journée était stocké depuis toujours et
+  n'entrait dans aucun calcul. L'écart est maintenant mesuré aussi sur ces pointes (avec sa propre marge), et la
+  page d'un capteur le signale quand elles montent nettement plus que la température habituelle : c'est la forme
+  que prend un refroidissement qui ne suit plus dans les moments chauds, alors que la moyenne ne bouge presque pas.
+  Les chiffres sont dans les « Détails techniques » du capteur.
 - **Une marge d'incertitude, pour ne plus annoncer du bruit.** L'écart d'un capteur est accompagné de l'erreur-type
   des deux médianes comparées (estimation robuste, 95 %), et aucun verdict n'est prononcé tant que l'écart ne dépasse
   pas le plus grand des deux seuils : la résolution des capteurs (1,5 °C) ou cette marge. Un capteur bruyant — la
