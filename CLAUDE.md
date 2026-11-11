@@ -7,7 +7,8 @@ rapports, pas de notifications. Détails d'usage et d'architecture : [README.md]
 ```
 backend/    Rust — bibliothèque, CLI (monitoring-alert.exe), démon (copie monitoring-daemon.exe), serveur web
 frontend/   TypeScript (Vite + uPlot) — tableau de bord, embarqué dans l'exécutable par backend/build.rs
-scripts/    install.bat, update.bat, uninstall.bat, config.toml (modèle), release.sh
+installer/  monitoring-alert.iss — installateur Inno Setup (voie principale d'installation)
+scripts/    version portable : install.bat, update.bat, uninstall.bat ; config.toml (modèle) ; release.sh
 ```
 
 Le backend est en **architecture hexagonale simplifiée** : `domain/` (pur) ← `application/` (cas d'usage

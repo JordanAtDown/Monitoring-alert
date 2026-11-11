@@ -1,6 +1,7 @@
 ---
 paths:
   - "scripts/**"
+  - "installer/**"
   - "backend/src/adapters/windows.rs"
   - "backend/src/adapters/deploy.rs"
   - "backend/src/adapters/pe.rs"
@@ -13,9 +14,17 @@ Le code Windows **ne peut pas être exécuté sur la machine de développement**
 fin, et on le vérifie par `cargo clippy --target x86_64-pc-windows-gnu`, par les tests de
 `application/install.rs` (faux hôte) et par `tests/scripts.rs`.
 
-## Principe : la logique est en Rust, les `.bat` sont minces
+## Principe : la logique est en Rust, l'installateur et les `.bat` sont minces
 
-- `install.bat` appelle `monitoring-alert.exe install`, rien de plus. Toute logique d'installation vit dans
+- **Installateur Inno Setup** (`installer/monitoring-alert.iss`, voie principale) : il copie `monitoring-alert.exe`
+  et délègue à `monitoring-alert.exe install --in-place` ; à la désinstallation à `uninstall`. Par utilisateur
+  (`PrivilegesRequired=lowest`) : l'administrateur n'est demandé que si un service 1.x est présent. Le fichier
+  `.iss` est en **UTF-8 avec BOM**, et **aucune ligne n'y commence par `#`** hors directives (le préprocesseur
+  la lirait comme une directive : utiliser la constante `NL`). Il se compile en CI (`ISCC`), c'est la seule
+  validation possible : la regarder après chaque modification (`gh run list`).
+  La page « Base de données » lit `db locate --porcelain` (clés `path`, `default`, `summary`) : changer ces
+  clés = changer le `.iss` (un test les rapproche).
+- `install.bat` (version portable) appelle `monitoring-alert.exe install`, rien de plus. Toute logique d'installation vit dans
   `application/install.rs` (cas d'usage), `adapters/windows.rs` (système), `adapters/deploy.rs` (fichiers).
 - `uninstall.bat` est la seule exception : il n'utilise **que** `sc`, `schtasks`, `reg`, `taskkill` pour
   fonctionner quelle que soit la version installée (1.x ou 2.x) et sans exécutable fonctionnel.
@@ -27,7 +36,8 @@ fin, et on le vérifie par `cargo clippy --target x86_64-pc-windows-gnu`, par le
 ## Garanties à ne jamais casser
 
 1. **La base de données de l'utilisateur n'est jamais supprimée** par l'installation ni par la migration.
-   `uninstall.bat` ne la supprime que sur confirmation explicite.
+   `uninstall.bat` et l'installateur ne suppriment le dossier de données que sur confirmation explicite
+   (non par défaut) ; une base située ailleurs que dans ce dossier n'est jamais supprimée.
 2. **Deux collecteurs n'écrivent jamais dans la même base** : si l'ancien service ne peut pas être
    supprimé, l'installation s'arrête avant de déployer ou de démarrer quoi que ce soit.
 3. `install` est **idempotent** (nouvelle machine, machine 1.x, ou relance après mise à jour).

@@ -12,6 +12,15 @@ profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base d
 conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ### Added
+- **Installateur Windows** (`monitoring-alert-setup-vX.Y.Z.exe`, Inno Setup) : assistant en français,
+  installation par utilisateur **sans droits administrateur**, entrée dans les Applications installées,
+  raccourci vers le tableau de bord, mise à jour en relançant l'installateur. Il détecte la base de
+  données de l'installation actuelle (page « Base de données ») et la conserve ou la remplace. Il ne
+  demande l'administrateur que pour supprimer l'ancien service Windows d'une 1.x. L'archive zip reste
+  disponible comme version portable.
+- `monitoring-alert.exe db locate [--porcelain]` (où est la base actuelle, ce qu'elle contient, sans rien
+  modifier), `install --in-place` (exécutable déjà en place) et `install --db-path <fichier>`.
+- La CI compile le script de l'installateur à chaque push ; la release publie l'installateur à côté de l'archive.
 - **Tableau de bord web** (`http://127.0.0.1:8787/`, TypeScript + uPlot, thèmes clair et sombre)
   pour suivre la dérive des températures sur toute la durée de la collecte : tableau de tous les
   capteurs (écart à la référence, pente en °C/mois, mini-courbe), graphique par capteur et par
@@ -28,7 +37,7 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   planifiées de rapport, enregistrement toast, anciens scripts), migre `config.toml` (sauvegarde
   `config.toml.v1.bak`), crée `monitoring-daemon.exe` (copie sans fenêtre console), active le
   démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus.
-- `uninstall.bat` indépendant de la version installée (1.x ou 2.x) ; conserve la base et
+- `uninstall.bat` (version portable) indépendant de la version installée (1.x ou 2.x) ; conserve la base et
   `config.toml` sauf confirmation.
 - `Register-Tasks.ps1` de transition : une mise à jour lancée par l'ancien `update.bat` aboutit
   à la migration.
@@ -55,6 +64,8 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   (le code est testable hors Windows).
 
 ### Removed
+- La clé `install_dir` (l'exécutable tourne là où il est installé ; ignorée, retirée par la migration : une
+  config 1.x ne ramène donc plus `Program Files`).
 - Les rapports (texte, Markdown), les notifications toast et leur enregistrement, les tâches
   planifiées de rapport, les commandes `report`, `report-md`, `notify`, `notify-dry-run`,
   `service` et `watch`, `apply-config.bat`.

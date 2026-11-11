@@ -36,21 +36,39 @@ Il écoute sur `http://127.0.0.1:8085` (clés `lhm_host` / `lhm_port`).
 
 ## Installation
 
-1. Télécharger l'archive de la dernière release sur
-   [GitHub Releases](https://github.com/jordanatdown/monitoring-alert/releases) et la décompresser.
-2. *(facultatif, installation neuve)* éditer `config.toml` du dossier décompressé.
-3. Lancer **`install.bat`**. Clic droit › *Exécuter en tant qu'administrateur* la première
-   fois **si une version 1.x est installée** (supprimer son service Windows l'exige) ;
-   sinon un double-clic suffit.
-4. Ouvrir **<http://127.0.0.1:8787/>**.
+1. Télécharger **`monitoring-alert-setup-vX.Y.Z.exe`** sur
+   [GitHub Releases](https://github.com/jordanatdown/monitoring-alert/releases) et le lancer.
+   Windows SmartScreen peut afficher « protégé votre ordinateur » (l'installateur n'est pas signé) :
+   *Informations complémentaires › Exécuter quand même*.
+2. L'assistant propose un dossier (par défaut `%LOCALAPPDATA%\Programs\MonitoringAlert`, **aucun droit
+   administrateur**) puis la **base de données** : s'il en trouve une dans l'installation actuelle, il la
+   préremplit avec son contenu (« 4 300 relevés bruts, depuis le … ») ; gardez-la pour conserver tout votre
+   historique, ou choisissez-en une autre.
+3. À la fin, **Ouvrir le tableau de bord** : <http://127.0.0.1:8787/>. Un raccourci est aussi dans le menu Démarrer.
 
-`install.bat` copie les fichiers dans `%LOCALAPPDATA%\Programs\MonitoringAlert\`, active le
-démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus. Il est
-**idempotent** : le relancer ne casse rien.
+L'installateur copie le programme, puis lance `monitoring-alert.exe install --in-place`, qui active le
+démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus. C'est **idempotent** :
+relancer l'installateur met à jour sans rien casser, et `config.toml` n'est jamais écrasé.
+
+Désinstaller : *Paramètres › Applications* (ou le menu Démarrer). Il propose de supprimer aussi le dossier de
+données (non par défaut) ; une base placée dans un autre dossier n'est **jamais** supprimée.
+
+Mise à jour : lancer le nouvel installateur (`/VERYSILENT` pour le faire sans fenêtre).
+
+### Version portable (archive zip)
+
+L'archive `monitoring-alert-vX.Y.Z-windows-x64.zip` contient l'exécutable et trois scripts, sans assistant :
+
+1. La décompresser, *(facultatif)* éditer `config.toml`.
+2. **`install.bat`** (administrateur la première fois si une 1.x est installée) : copie dans
+   `%LOCALAPPDATA%\Programs\MonitoringAlert\`, démarrage automatique, démarrage.
+3. Mise à jour : `update.bat`. Désinstallation : `uninstall.bat`.
 
 ### Migration depuis la version 1.x
 
-C'est automatique, et **la base de données est conservée**. `install.bat` :
+C'est automatique, avec l'installateur comme avec `install.bat`, et **la base de données est conservée**.
+Si un service Windows 1.x est présent, l'installateur propose de se relancer en administrateur (c'est le seul
+cas où il en faut : supprimer ce service l'exige). Il :
 
 | Élément de la v1.x | Ce qui se passe |
 |---|---|
@@ -58,16 +76,13 @@ C'est automatique, et **la base de données est conservée**. `install.bat` :
 | Tâches planifiées de rapport (journalier / hebdo / mensuel) | supprimées |
 | Enregistrement des notifications toast (AUMID) | supprimé |
 | `apply-config.bat`, ancien `Register-Tasks.ps1` | supprimés |
-| `config.toml` | clés obsolètes retirées (`reports_dir`, `*_report_*`, `retention_days`), vos autres valeurs conservées, ancienne version sauvegardée en `config.toml.v1.bak` |
-| `temperatures.db` | **migrée sur place** au premier démarrage : une copie de sécurité `temperatures.db.v1.bak` est écrite, puis l'historique est agrégé par jour |
+| `config.toml` | clés obsolètes retirées (`install_dir`, `reports_dir`, `*_report_*`, `retention_days`), vos autres valeurs (dont `db_path`) conservées, ancienne version sauvegardée en `config.toml.v1.bak` |
+| `temperatures.db` | **migrée sur place** au premier démarrage, où qu'elle soit : une copie de sécurité `temperatures.db.v1.bak` est écrite à côté, puis l'historique est agrégé par jour |
 | Rapports `.md` du dossier `rapports\` | non touchés (supprimez-les si vous n'en voulez plus) |
 
-Mise à jour depuis une 1.x avec l'ancien `update.bat` : ça fonctionne aussi (l'archive
-contient un `Register-Tasks.ps1` de transition qui lance la migration). Les fois suivantes,
-utilisez le nouveau `update.bat`.
-
-Si le dossier `\MonitoringAlert\` vide reste visible dans le Planificateur de tâches, il est
-inoffensif.
+Mise à jour d'une 1.x avec l'ancien `update.bat` : ça fonctionne aussi (l'archive contient un
+`Register-Tasks.ps1` de transition qui lance la migration). Si le dossier `\MonitoringAlert\` vide reste
+visible dans le Planificateur de tâches, il est inoffensif.
 
 > **Mesures brutes** : par défaut seuls les **90 derniers jours** de mesures brutes sont gardés
 > (`raw_retention_days`). Avant toute suppression, elles sont résumées par jour (médiane, min, p95,
@@ -76,14 +91,8 @@ inoffensif.
 
 ### Repartir de zéro (en gardant la base)
 
-Lancer **`uninstall.bat`** (administrateur) puis **`install.bat`**. `uninstall.bat` ne dépend pas
-de la version installée (1.x ou 2.x) et conserve la base et `config.toml` sauf si vous répondez
-« o » à sa dernière question.
-
-### Mise à jour
-
-**`update.bat`** (dans `%LOCALAPPDATA%\Programs\MonitoringAlert\`) télécharge la dernière release et
-lance son installation ; `config.toml` et la base sont conservés.
+Désinstaller (ou `uninstall.bat`, administrateur, qui fonctionne quelle que soit la version installée, 1.x ou
+2.x), en répondant **non** à la suppression des données, puis réinstaller : l'assistant retrouve la base.
 
 ---
 
@@ -139,16 +148,17 @@ Après modification : `monitoring-alert.exe restart`.
 ## Ligne de commande
 
 `monitoring-alert.exe` (console). `monitoring-daemon.exe` est la copie sans fenêtre lancée
-automatiquement ; Task Manager affiche ce nom.
+automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce nom.
 
 | Commande | Rôle |
 |---|---|
-| `install` | Installe / met à jour / migre depuis la 1.x (ce que fait `install.bat`) |
+| `install [--in-place] [--db-path <fichier>]` | Installe / met à jour / migre depuis la 1.x. `--in-place` : l'exécutable est déjà à sa place (installateur). `--db-path` : base à utiliser |
 | `uninstall` | Arrête le processus, retire le démarrage automatique (ne supprime aucun fichier) |
 | `start` · `stop` · `restart` | Gère le processus d'arrière-plan |
 | `serve` | Collecte + tableau de bord au premier plan |
 | `collect` | Une seule collecte (debug) |
 | `check` | Vérifie config, base, LHM, tableau de bord, démarrage automatique, reliquats 1.x. Ne modifie rien |
+| `db locate [--porcelain]` | Où est la base actuelle et ce qu'elle contient (ne modifie rien) |
 | `db stats` · `db vacuum` | Chiffres de la base · compactage |
 | `--db <chemin>` | (global) base à utiliser à la place de celle de `config.toml` |
 
@@ -201,7 +211,8 @@ supprime dans la même transaction ; après une grosse purge le fichier est comp
 ```
 backend/    Rust : la bibliothèque, la CLI, le démon et le serveur web
 frontend/   TypeScript (Vite + uPlot) : le tableau de bord
-scripts/    install.bat, update.bat, uninstall.bat, config.toml, release.sh
+installer/  monitoring-alert.iss : installateur Inno Setup
+scripts/    version portable : install.bat, update.bat, uninstall.bat, config.toml ; release.sh
 ```
 
 ### Architecture du backend (hexagonale simplifiée)
