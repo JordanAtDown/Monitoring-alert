@@ -318,10 +318,6 @@ fn health_turns_bad_when_the_collector_fails() {
     let (_, v) = get(&f, "/api/health");
     assert_eq!(v["overall"], "bad");
     assert_eq!(v["summary"], "Un problème empêche le suivi");
-    assert!(v["checks"][0]["advice"]
-        .as_str()
-        .unwrap()
-        .contains("Remote Web Server"));
 }
 
 #[test]

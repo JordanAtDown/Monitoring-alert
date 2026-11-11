@@ -94,7 +94,6 @@ a { color: var(--series-1); }
 .status { font-size: 18px; font-weight: 650; }
 .problems { margin: 8px 0 0 32px; padding: 0; list-style: none; }
 .problems li { margin-bottom: 8px; }
-.advice-inline { display: block; margin-top: 2px; color: var(--ink-secondary); font-weight: 400; }
 .checks { margin: 8px 0 0 32px; }
 .checks summary { padding: 2px 0; font-size: 14px; }
 .check-list { margin: 6px 0 0; padding: 0; list-style: none; }

@@ -35,8 +35,6 @@ pub struct Check {
     pub title: &'static str,
     pub level: Level,
     pub message: String,
-    /// What to do, when the check is not fine.
-    pub advice: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,23 +81,14 @@ fn mb(bytes: u64) -> String {
     format!("{:.1} Mo", bytes as f64 / 1_048_576.0).replace('.', ",")
 }
 
-fn check(
-    id: &'static str,
-    title: &'static str,
-    level: Level,
-    message: String,
-    advice: Option<&str>,
-) -> Check {
+fn check(id: &'static str, title: &'static str, level: Level, message: String) -> Check {
     Check {
         id,
         title,
         level,
         message,
-        advice: advice.map(str::to_string),
     }
 }
-
-const ADVICE_LHM: &str = "Lancez LibreHardwareMonitor en administrateur et vérifiez que Options › Remote Web Server › Run est coché.";
 
 fn collection_check(i: &HealthInputs) -> Check {
     const TITLE: &str = "Relevé des températures";
@@ -119,9 +108,7 @@ fn collection_check(i: &HealthInputs) -> Check {
             "collection",
             TITLE,
             Level::Bad,
-            format!("Les températures ne sont plus relevées{since} : LibreHardwareMonitor ne répond pas."),
-            Some(ADVICE_LHM),
-        );
+            format!("Les températures ne sont plus relevées{since} : LibreHardwareMonitor ne répond pas."));
     }
     let Some(last) = c.last_success.as_deref() else {
         return check(
@@ -129,7 +116,6 @@ fn collection_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Warn,
             "En attente de la première mesure…".into(),
-            None,
         );
     };
     let age = age_secs(last, i.now).unwrap_or(0);
@@ -138,8 +124,10 @@ fn collection_check(i: &HealthInputs) -> Check {
             "collection",
             TITLE,
             Level::Warn,
-            format!("Aucune mesure depuis {} alors qu'elle devrait avoir lieu {every}.", ago(age).replace("il y a ", "")),
-            Some("Le programme tourne mais ne relève plus rien : redémarrez-le (monitoring.exe restart)."),
+            format!(
+                "Aucune mesure depuis {} alors qu'elle devrait avoir lieu {every}.",
+                ago(age).replace("il y a ", "")
+            ),
         );
     }
     if c.last_sensor_count == 0 {
@@ -148,7 +136,6 @@ fn collection_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Warn,
             "LibreHardwareMonitor répond mais ne fournit aucune température.".into(),
-            Some(ADVICE_LHM),
         );
     }
     check(
@@ -156,7 +143,6 @@ fn collection_check(i: &HealthInputs) -> Check {
         TITLE,
         Level::Ok,
         format!("Dernière mesure {} ({every}).", ago(age)),
-        None,
     )
 }
 
@@ -168,7 +154,6 @@ fn sensors_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Info,
             "Aucune mesure enregistrée pour l'instant.".into(),
-            None,
         );
     };
     // Only judge the sensors against a recent measurement.
@@ -191,7 +176,6 @@ fn sensors_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Info,
             format!("{} capteurs lors de la dernière mesure.", reporting.len()),
-            None,
         );
     }
     if missing.is_empty() {
@@ -200,7 +184,6 @@ fn sensors_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Ok,
             format!("Les {} capteurs répondent.", reporting.len()),
-            None,
         );
     }
     let named: Vec<&str> = missing
@@ -222,9 +205,12 @@ fn sensors_check(i: &HealthInputs) -> Check {
             "{} {plural} : {}{}.",
             missing.len(),
             named.join(", "),
-            if more > 0 { format!(" et {more} autre(s)") } else { String::new() }
+            if more > 0 {
+                format!(" et {more} autre(s)")
+            } else {
+                String::new()
+            }
         ),
-        Some("Un disque en veille ou un composant retiré peut l'expliquer. S'ils reviennent d'eux-mêmes, rien à faire."),
     )
 }
 
@@ -244,7 +230,6 @@ fn database_check(i: &HealthInputs) -> Check {
             mb(i.db_size_bytes),
             i.db_snapshots
         ),
-        None,
     )
 }
 
@@ -257,7 +242,6 @@ fn maintenance_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Warn,
             format!("Le calcul des résumés quotidiens a échoué : {error}"),
-            Some("Vos mesures ne sont pas perdues. Relancez le programme (monitoring.exe restart) ; si cela persiste, regardez le journal."),
         );
     }
     match c.last_rollup.as_deref().and_then(parse) {
@@ -266,14 +250,12 @@ fn maintenance_check(i: &HealthInputs) -> Check {
             TITLE,
             Level::Ok,
             format!("À jour (dernier calcul à {}).", at.format("%H:%M")),
-            None,
         ),
         None => check(
             "maintenance",
             TITLE,
             Level::Info,
             "Premier calcul en attente.".into(),
-            None,
         ),
     }
 }
@@ -286,7 +268,6 @@ fn autostart_check(enabled: bool) -> Check {
             TITLE,
             Level::Ok,
             "Le programme redémarre tout seul à l'ouverture de session.".into(),
-            None,
         )
     } else {
         check(
@@ -294,7 +275,6 @@ fn autostart_check(enabled: bool) -> Check {
             TITLE,
             Level::Warn,
             "Le programme ne redémarrera pas après un redémarrage du PC.".into(),
-            Some("Relancez l'installateur pour réactiver le démarrage automatique."),
         )
     }
 }
@@ -307,7 +287,6 @@ fn updates_check(u: &UpdateSnapshot) -> Check {
             TITLE,
             Level::Info,
             "La recherche de mises à jour est désactivée.".into(),
-            None,
         );
     }
     match (&u.latest, u.available, &u.error) {
@@ -319,28 +298,24 @@ fn updates_check(u: &UpdateSnapshot) -> Check {
                 "La version {} est disponible (vous avez la {}).",
                 latest.version, u.current
             ),
-            Some("Cliquez sur « Mise à jour disponible » en haut de la page."),
         ),
         (Some(_), false, _) => check(
             "updates",
             TITLE,
             Level::Ok,
             format!("Vous avez la dernière version ({}).", u.current),
-            None,
         ),
         (None, _, Some(_)) => check(
             "updates",
             TITLE,
             Level::Info,
             "Impossible de chercher les mises à jour pour le moment (hors ligne ?).".into(),
-            None,
         ),
         (None, _, None) => check(
             "updates",
             TITLE,
             Level::Info,
             "Recherche de mises à jour en cours…".into(),
-            None,
         ),
     }
 }

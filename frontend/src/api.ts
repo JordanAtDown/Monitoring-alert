@@ -46,7 +46,6 @@ export interface Check {
   title: string;
   level: Level;
   message: string;
-  advice: string | null;
 }
 
 export interface Health {

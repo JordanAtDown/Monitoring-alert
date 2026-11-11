@@ -99,7 +99,7 @@ function renderHealth(): void {
   if (problems.length > 0) {
     const list = h("ul", { class: "problems" });
     for (const c of problems) {
-      list.append(h("li", {}, h("strong", {}, `${c.title} : `), c.message, c.advice ? h("span", { class: "advice-inline" }, `Que faire : ${c.advice}`) : null));
+      list.append(h("li", {}, h("strong", {}, `${c.title} : `), c.message));
     }
     host.append(list);
   }

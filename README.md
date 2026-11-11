@@ -108,7 +108,7 @@ Il est écrit en langage courant ; les termes techniques sont dans « Détails t
 
 De haut en bas :
 - **État du système** : la page surveille elle-même que tout fonctionne. Une ligne « ✓ Tout fonctionne » (ou « ⚠ 2 points à
-  vérifier », « ✕ Un problème empêche le suivi ») et, dessous, **ce qu'il faut faire**. Le détail des vérifications (relevé
+  vérifier », « ✕ Un problème empêche le suivi ») et, dessous, la cause en une phrase. Le détail des vérifications (relevé
   des températures, capteurs qui répondent, base de données, résumés quotidiens, démarrage automatique, mises à jour) est
   déroulable. Le titre de l'onglet reprend l'état (✓ / ⚠ / ✕) : un onglet épinglé suffit pour voir que tout va bien.
   Si le programme lui-même ne répond plus, la page le dit.

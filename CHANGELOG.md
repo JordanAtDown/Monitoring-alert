@@ -17,7 +17,7 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
 - **Supervision dans le tableau de bord** (`/api/health`) : la page vérifie que tout fonctionne et le dit en clair — relevé
   des températures (LibreHardwareMonitor injoignable, silence de plus de 3 intervalles, aucune température), capteurs qui
   ne répondent plus (nommés), base de données (taille, dernière écriture), résumés quotidiens (dernière réussite ou erreur),
-  démarrage automatique (Windows), mises à jour. Chaque anomalie dit quoi faire ; une mise à jour disponible ne rend jamais
+  démarrage automatique (Windows), mises à jour. Chaque anomalie est décrite en une phrase (pas de consigne) ; une mise à jour disponible ne rend jamais
   la page orange. Le titre de l'onglet reprend l'état (✓ / ⚠ / ✕).
 - **Bouton « Mise à jour disponible »** dans le tableau de bord, avec les trois étapes à suivre (télécharger, lancer,
   suivre l'assistant). Le programme demande une fois par jour à GitHub la dernière version (requête anonyme,

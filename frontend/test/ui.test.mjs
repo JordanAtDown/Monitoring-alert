@@ -20,7 +20,7 @@ const RELEASE = {
 const UPDATE_AVAILABLE = { current: "2.0.0", enabled: true, available: true, checked_at: "2026-11-11T15:00:00", error: null, latest: RELEASE };
 const UPDATE_NONE = { current: "2.0.0", enabled: true, available: false, checked_at: "2026-11-11T15:00:00", error: null, latest: { ...RELEASE, version: "2.0.0" } };
 
-const check = (id, title, level, message, advice = null) => ({ id, title, level, message, advice });
+const check = (id, title, level, message) => ({ id, title, level, message });
 const HEALTH_OK = {
   overall: "ok",
   summary: "Tout fonctionne",
@@ -160,18 +160,20 @@ test("when everything works the page says so, and the tab says it too", async ()
   page.close();
 });
 
-test("a problem is shown with what to do, and the detail opens by itself", async () => {
+test("a problem is stated plainly under the banner, and the detail opens by itself", async () => {
   const health = {
     overall: "bad",
     summary: "Un problème empêche le suivi",
     checks: [
-      check("collection", "Relevé des températures", "bad", "Les températures ne sont plus relevées (dernière mesure il y a 20 min) : LibreHardwareMonitor ne répond pas.", "Lancez LibreHardwareMonitor en administrateur et vérifiez que Options › Remote Web Server › Run est coché."),
+      check("collection", "Relevé des températures", "bad", "Les températures ne sont plus relevées (dernière mesure il y a 20 min) : LibreHardwareMonitor ne répond pas."),
       ...HEALTH_OK.checks.slice(1),
     ],
   };
   const page = await openPage({ health });
   assert.match(page.text("#health .status")[0], /✕Un problème empêche le suivi/);
-  assert.match(page.text("#health .problems")[0], /Relevé des températures : Les températures ne sont plus relevées.*Que faire : Lancez LibreHardwareMonitor en administrateur/);
+  assert.match(page.text("#health .problems")[0], /Relevé des températures : Les températures ne sont plus relevées.*LibreHardwareMonitor ne répond pas/);
+  // The page states what is wrong; it does not give orders.
+  assert.ok(!page.text("#health")[0].includes("Que faire"));
   assert.ok(page.d.querySelector("#health details.checks").hasAttribute("open"));
   assert.equal(page.title(), "✕ Monitoring (1)");
   page.close();
@@ -183,7 +185,7 @@ test("warnings are counted in the tab title and never called problems", async ()
     summary: "2 points à vérifier",
     checks: [
       check("sensors", "Capteurs", "warn", "1 capteur ne répond plus : Core (GPU).", "Un disque en veille ou un composant retiré peut l'expliquer."),
-      check("autostart", "Démarrage automatique", "warn", "Le programme ne redémarrera pas après un redémarrage du PC.", "Relancez l'installateur."),
+      check("autostart", "Démarrage automatique", "warn", "Le programme ne redémarrera pas après un redémarrage du PC."),
       check("updates", "Mises à jour", "info", "La version 2.1.0 est disponible (vous avez la 2.0.0)."),
     ],
   };

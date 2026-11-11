@@ -129,11 +129,6 @@ fn when_everything_works_the_page_says_so() {
     );
 }
 
-#[test]
-fn every_check_that_is_fine_has_no_advice() {
-    assert!(run(&healthy()).checks.iter().all(|c| c.advice.is_none()));
-}
-
 // ── Collection ────────────────────────────────────────────────
 
 #[test]
@@ -152,7 +147,6 @@ fn a_collector_that_cannot_reach_lhm_is_a_problem_with_a_remedy() {
         c.message.contains("ne sont plus relevées")
             && c.message.contains("dernière mesure il y a 10 min")
     );
-    assert!(c.advice.as_deref().unwrap().contains("Remote Web Server"));
 }
 
 #[test]
@@ -184,7 +178,6 @@ fn a_collector_that_went_silent_is_noticed_even_without_errors() {
         "{}",
         c.message
     );
-    assert!(c.advice.as_deref().unwrap().contains("restart"));
 }
 
 #[test]
@@ -216,7 +209,6 @@ fn a_sensor_that_stopped_reporting_is_named() {
     let c = find(&h, "sensors");
     assert_eq!(c.level, Level::Warn);
     assert_eq!(c.message, "1 capteur ne répond plus : Core (GPU).");
-    assert!(c.advice.is_some());
 }
 
 #[test]
@@ -283,7 +275,6 @@ fn a_failed_daily_summary_is_a_warning_that_reassures_about_the_data() {
     let c = find(&h, "maintenance");
     assert_eq!(c.level, Level::Warn);
     assert!(c.message.contains("database is locked"));
-    assert!(c.advice.as_deref().unwrap().contains("ne sont pas perdues"));
     assert_eq!(h.summary, "1 point à vérifier");
 }
 
@@ -302,11 +293,6 @@ fn a_missing_startup_entry_is_flagged_and_an_unknown_one_is_left_out() {
     s.autostart = Some(false);
     let h = run(&s);
     assert_eq!(find(&h, "autostart").level, Level::Warn);
-    assert!(find(&h, "autostart")
-        .advice
-        .as_deref()
-        .unwrap()
-        .contains("installateur"));
 
     s.autostart = None;
     assert!(run(&s).checks.iter().all(|c| c.id != "autostart"));
