@@ -30,6 +30,8 @@ pub struct UpdateSnapshot {
     pub line: String,
     /// The text of the "update available" button, when there is one.
     pub button: Option<String>,
+    /// When the latest version was published, in words ("20 novembre 2026").
+    pub published: Option<String>,
 }
 
 /// Result of the update checks, written by the checker and read by the web server.
@@ -96,9 +98,15 @@ impl UpdateStatus {
             .as_ref()
             .filter(|_| available)
             .map(|r| format!("Mise à jour disponible : version {}", r.version));
+        let published = inner
+            .latest
+            .as_ref()
+            .and_then(|r| r.published_at.as_deref())
+            .map(crate::domain::wording::date);
         UpdateSnapshot {
             line,
             button,
+            published,
             current: self.current.clone(),
             enabled: self.enabled,
             available,

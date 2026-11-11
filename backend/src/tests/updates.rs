@@ -231,3 +231,17 @@ fn with_the_check_turned_off_the_page_says_so_and_offers_nothing() {
     );
     assert_eq!(snapshot.button, None);
 }
+
+#[test]
+fn the_publication_date_is_written_in_words() {
+    let status = UpdateStatus::new("2.0.0", true);
+    let mut r = release("2.1.0");
+    r.published_at = Some("2026-11-20T10:00:00Z".into());
+    status.record_release(r);
+    assert_eq!(
+        status.snapshot().published.as_deref(),
+        Some("20 novembre 2026")
+    );
+    status.record_release(release("2.1.0"));
+    assert_eq!(status.snapshot().published, None);
+}

@@ -35,6 +35,7 @@ fn updates() -> UpdateSnapshot {
         error: None,
         line: String::new(),
         button: None,
+        published: None,
     }
 }
 
