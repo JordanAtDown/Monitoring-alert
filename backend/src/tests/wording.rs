@@ -1,5 +1,5 @@
 use crate::domain::wording::{
-    date, month_year, plural, signed, span_in_words, temp, verdict_of, Verdict,
+    bytes, date, int, month_year, plural, signed, span_in_words, temp, verdict_of, Verdict,
 };
 
 #[test]
@@ -45,4 +45,15 @@ fn plurals_follow_the_count() {
     assert_eq!(plural(0, "jour", "jours"), "jour");
     assert_eq!(plural(1, "jour", "jours"), "jour");
     assert_eq!(plural(2, "jour", "jours"), "jours");
+}
+
+#[test]
+fn integers_and_sizes_are_written_the_french_way() {
+    assert_eq!(int(0), "0");
+    assert_eq!(int(999), "999");
+    assert_eq!(int(6654), "6\u{202f}654");
+    assert_eq!(int(1234567), "1\u{202f}234\u{202f}567");
+    assert_eq!(bytes(512), "0,5 Ko");
+    assert_eq!(bytes(1937632), "1,8 Mo");
+    assert_eq!(bytes(3 * 1024 * 1024 * 1024), "3,0 Go");
 }

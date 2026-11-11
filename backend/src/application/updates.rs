@@ -26,6 +26,10 @@ pub struct UpdateSnapshot {
     pub latest: Option<ReleaseInfo>,
     pub checked_at: Option<String>,
     pub error: Option<String>,
+    /// One line for the page footer: which version runs and whether it is the latest.
+    pub line: String,
+    /// The text of the "update available" button, when there is one.
+    pub button: Option<String>,
 }
 
 /// Result of the update checks, written by the checker and read by the web server.
@@ -72,7 +76,29 @@ impl UpdateStatus {
                 .latest
                 .as_ref()
                 .is_some_and(|r| is_newer(&r.version, &self.current));
+        let v = &self.current;
+        let line = match (&inner.latest, available) {
+            _ if !self.enabled => format!("Monitoring {v} — recherche de mises à jour désactivée"),
+            (Some(latest), true) => {
+                format!(
+                    "Monitoring {v} — la version {} est disponible",
+                    latest.version
+                )
+            }
+            (Some(_), false) => format!("Monitoring {v} — à jour"),
+            (None, _) if inner.error.is_some() => {
+                format!("Monitoring {v} — impossible de chercher les mises à jour pour le moment")
+            }
+            (None, _) => format!("Monitoring {v} — recherche de mises à jour en cours…"),
+        };
+        let button = inner
+            .latest
+            .as_ref()
+            .filter(|_| available)
+            .map(|r| format!("Mise à jour disponible : version {}", r.version));
         UpdateSnapshot {
+            line,
+            button,
             current: self.current.clone(),
             enabled: self.enabled,
             available,

@@ -187,3 +187,47 @@ fn when_checking_is_turned_off_nothing_is_ever_available() {
     let s = status.snapshot();
     assert!(!s.enabled && !s.available);
 }
+
+// ── The line and the button the page shows ────────────────────
+
+#[test]
+fn the_page_gets_its_sentences_for_every_state_of_the_check() {
+    let status = UpdateStatus::new("2.0.0", true);
+    assert_eq!(
+        status.snapshot().line,
+        "Monitoring 2.0.0 — recherche de mises à jour en cours…"
+    );
+    assert_eq!(status.snapshot().button, None);
+
+    status.record_error("offline");
+    assert_eq!(
+        status.snapshot().line,
+        "Monitoring 2.0.0 — impossible de chercher les mises à jour pour le moment"
+    );
+
+    status.record_release(release("2.0.0"));
+    assert_eq!(status.snapshot().line, "Monitoring 2.0.0 — à jour");
+    assert_eq!(status.snapshot().button, None);
+
+    status.record_release(release("2.1.0"));
+    assert_eq!(
+        status.snapshot().line,
+        "Monitoring 2.0.0 — la version 2.1.0 est disponible"
+    );
+    assert_eq!(
+        status.snapshot().button.as_deref(),
+        Some("Mise à jour disponible : version 2.1.0")
+    );
+}
+
+#[test]
+fn with_the_check_turned_off_the_page_says_so_and_offers_nothing() {
+    let status = UpdateStatus::new("2.0.0", false);
+    status.record_release(release("9.9.9"));
+    let snapshot = status.snapshot();
+    assert_eq!(
+        snapshot.line,
+        "Monitoring 2.0.0 — recherche de mises à jour désactivée"
+    );
+    assert_eq!(snapshot.button, None);
+}

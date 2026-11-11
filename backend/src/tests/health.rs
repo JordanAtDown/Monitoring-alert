@@ -33,6 +33,8 @@ fn updates() -> UpdateSnapshot {
         }),
         checked_at: Some(NOW.into()),
         error: None,
+        line: String::new(),
+        button: None,
     }
 }
 

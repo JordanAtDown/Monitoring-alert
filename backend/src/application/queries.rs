@@ -10,6 +10,7 @@ use crate::application::ports::{LatestSnapshot, ReadModel, SeriesInfo};
 use crate::application::status::{CollectorStatus, StatusSnapshot};
 use crate::application::updates::{UpdateSnapshot, UpdateStatus};
 use crate::domain::trends::{self, SensorSummary, Trend};
+use crate::domain::wording;
 
 /// Static facts about the running instance.
 pub struct AppInfo {
@@ -38,6 +39,13 @@ pub struct DbInfo {
     pub raw_retention_days: u32,
 }
 
+/// A sentence about the stored data, with its heading.
+#[derive(Serialize)]
+pub struct DataFact {
+    pub title: &'static str,
+    pub text: String,
+}
+
 #[derive(Serialize)]
 pub struct StatusResponse {
     pub version: &'static str,
@@ -46,6 +54,8 @@ pub struct StatusResponse {
     pub lhm: LhmInfo,
     pub db: DbInfo,
     pub latest: Option<LatestSnapshot>,
+    /// What is kept, for how long and where, in words.
+    pub data: Vec<DataFact>,
 }
 
 pub fn is_load_category(load: &str) -> bool {
@@ -59,7 +69,38 @@ pub fn status(
 ) -> Result<StatusResponse> {
     let stats = read.overall_stats()?;
     let history_since = stats.history_start_day().map(str::to_string);
+    let size = read.storage_bytes();
+    let minutes = (collector.snapshot().interval_secs / 60).max(1);
+    let data = vec![
+        DataFact {
+            title: "Résumé de chaque jour",
+            text: format!(
+                " pour tous les capteurs{} : conservé sans limite. C'est lui qui permet de suivre l'évolution sur des mois.",
+                history_since
+                    .as_deref()
+                    .map_or(String::new(), |d| format!(", depuis le {}", wording::date(d)))
+            ),
+        },
+        DataFact {
+            title: "Mesures détaillées",
+            text: format!(
+                " ({}) : conservées {} jours, {} relevés actuellement. Avant d'être supprimées, elles sont résumées.",
+                if minutes == 1 {
+                    "une par minute".to_string()
+                } else {
+                    format!("une toutes les {minutes} minutes")
+                },
+                info.raw_retention_days,
+                wording::int(stats.total_snapshots)
+            ),
+        },
+        DataFact {
+            title: "Fichier",
+            text: format!(" : {} ({})", info.db_path, wording::bytes(size)),
+        },
+    ];
     Ok(StatusResponse {
+        data,
         version: env!("CARGO_PKG_VERSION"),
         now: now_string(),
         collector: collector.snapshot(),

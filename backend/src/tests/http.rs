@@ -278,6 +278,35 @@ fn status_tells_where_the_database_is_and_since_when_the_history_goes() {
     assert_eq!(v["db"]["history_since"], clock::day_string(366));
 }
 
+#[test]
+fn status_tells_what_is_kept_in_words() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/status");
+    let data = v["data"].as_array().unwrap();
+    let titles: Vec<&str> = data.iter().map(|d| d["title"].as_str().unwrap()).collect();
+    assert_eq!(
+        titles,
+        ["Résumé de chaque jour", "Mesures détaillées", "Fichier"]
+    );
+    assert!(data[0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("conservé sans limite"));
+    assert!(data[1]["text"]
+        .as_str()
+        .unwrap()
+        .contains("une toutes les 5 minutes"));
+    assert!(data[1]["text"]
+        .as_str()
+        .unwrap()
+        .contains("conservées 90 jours, 1 relevés"));
+    let file = data[2]["text"].as_str().unwrap();
+    assert!(
+        file.starts_with(r" : E:\monitoring.db\temperatures.db ("),
+        "{file}"
+    );
+}
+
 // ── /api/health ───────────────────────────────────────────────
 
 #[test]

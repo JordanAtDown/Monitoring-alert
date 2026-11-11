@@ -98,6 +98,34 @@ pub fn signed(v: f64) -> String {
     format!("{sign}{} °C", one_decimal(v.abs()))
 }
 
+/// "6 654" (a narrow no-break space between thousands, as in French).
+pub fn int(n: i64) -> String {
+    let digits = n.unsigned_abs().to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push('\u{202f}');
+        }
+        out.push(c);
+    }
+    if n < 0 {
+        out.insert(0, '-');
+    }
+    out
+}
+
+/// "11,6 Mo".
+pub fn bytes(n: u64) -> String {
+    let n = n as f64;
+    if n < 1024.0 * 1024.0 {
+        format!("{} Ko", one_decimal(n / 1024.0))
+    } else if n < 1024.0 * 1024.0 * 1024.0 {
+        format!("{} Mo", one_decimal(n / 1024.0 / 1024.0))
+    } else {
+        format!("{} Go", one_decimal(n / 1024.0 / 1024.0 / 1024.0))
+    }
+}
+
 const MONTHS: [&str; 12] = [
     "janvier",
     "février",
