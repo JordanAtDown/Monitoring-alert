@@ -1,0 +1,19 @@
+{
+  "name": "monitoring-alert-web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Dashboard of monitoring-alert: long-term temperature drift. Built into web/dist and embedded in the Rust executable.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "uplot": "1.6.32"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
+  }
+}

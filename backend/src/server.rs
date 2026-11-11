@@ -52,7 +52,6 @@ pub struct Reply {
     pub status: u16,
     pub content_type: &'static str,
     pub body: Vec<u8>,
-    pub cacheable: bool,
 }
 
 impl Reply {
@@ -62,7 +61,6 @@ impl Reply {
                 status: 200,
                 content_type: "application/json; charset=utf-8",
                 body,
-                cacheable: false,
             },
             Err(e) => {
                 tracing::error!("JSON serialization failed: {e}");
@@ -77,7 +75,6 @@ impl Reply {
             content_type: "application/json; charset=utf-8",
             body: serde_json::to_vec(&serde_json::json!({ "error": message }))
                 .unwrap_or_else(|_| b"{}".to_vec()),
-            cacheable: false,
         }
     }
 }
@@ -175,14 +172,12 @@ fn static_file(path: &str) -> Reply {
         Some(asset) => Reply {
             status: 200,
             content_type: asset.mime,
-            body: asset.body.into_owned(),
-            cacheable: path.starts_with("/assets/"),
+            body: asset.body.to_vec(),
         },
         None => Reply {
             status: 404,
             content_type: "text/plain; charset=utf-8",
             body: b"not found".to_vec(),
-            cacheable: false,
         },
     }
 }
@@ -310,15 +305,12 @@ fn header(name: &str, value: &str) -> Result<tiny_http::Header> {
 }
 
 fn respond(request: tiny_http::Request, reply: Reply) -> Result<()> {
-    let cache = if reply.cacheable {
-        "public, max-age=3600"
-    } else {
-        "no-store"
-    };
+    // File names are not content-hashed: always revalidate, so an upgraded
+    // executable never serves a script that does not match its API.
     let response = tiny_http::Response::from_data(reply.body)
         .with_status_code(reply.status)
         .with_header(header("Content-Type", reply.content_type)?)
-        .with_header(header("Cache-Control", cache)?)
+        .with_header(header("Cache-Control", "no-store")?)
         .with_header(header("X-Content-Type-Options", "nosniff")?)
         .with_header(header(
             "Content-Security-Policy",

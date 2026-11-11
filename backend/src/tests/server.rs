@@ -289,6 +289,25 @@ fn the_dashboard_page_is_served_at_the_root() {
 }
 
 #[test]
+fn every_dashboard_file_is_served_with_its_content_type() {
+    let f = fixture();
+    for (path, mime) in [
+        ("/index.html", "text/html"),
+        ("/assets/app.js", "text/javascript"),
+        ("/assets/app.css", "text/css"),
+        ("/favicon.svg", "image/svg+xml"),
+    ] {
+        let reply = route(&f.state, "GET", path, HOST);
+        assert_eq!(reply.status, 200, "{path}");
+        assert!(
+            reply.content_type.starts_with(mime),
+            "{path}: {}",
+            reply.content_type
+        );
+    }
+}
+
+#[test]
 fn a_missing_database_is_an_error_not_a_panic() {
     let mut f = fixture();
     f.state.db_path = f.state.db_path.with_file_name("missing.db");
