@@ -18,7 +18,7 @@
 # db_path = "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
 
 # Dossier des fichiers de log (défaut : même répertoire que db_path)
-# Les fichiers sont nommés monitoring-alert-YYYY-MM-DD.log (rotation quotidienne)
+# Les fichiers sont nommés monitoring-alert.YYYY-MM-DD.log (rotation quotidienne)
 # Exemple : "D:\\Logs\\MonitoringAlert"
 # log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert"
 

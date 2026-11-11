@@ -7,14 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- `scripts/Register-Tasks.ps1` : la création de la tâche planifiée mensuelle
-  échouait silencieusement dès que le chemin de l'exécutable contenait un
-  espace (ex. `C:\Program Files\MonitoringAlert\...`) — `schtasks.exe`
-  reconstruit sa ligne de commande depuis une chaîne texte et cassait sur
-  le guillemet imbriqué. Remplacé par un trigger CIM natif
-  (`MSFT_TaskMonthlyTrigger`) via `Register-ScheduledTask`, comme pour les
-  tâches journalière et hebdomadaire.
+Version majeure : le service Windows, les rapports et les notifications disparaissent au
+profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base de données est
+conservée et migrée automatiquement** (voir « Migration » dans le README).
+
+### Added
+- **Tableau de bord web** (`http://127.0.0.1:8787/`, TypeScript + uPlot, thèmes clair et sombre)
+  pour suivre la dérive des températures sur toute la durée de la collecte : tableau de tous les
+  capteurs (écart à la référence, pente en °C/mois, mini-courbe), graphique par capteur et par
+  niveau de charge (médianes quotidiennes + bande min–p95, médiane glissante 30 j, référence,
+  droite de tendance, mois alternés pour repérer la saisonnalité), vue tableau mensuelle, état de
+  la collecte. Aucune alerte : ce sont des chiffres à regarder.
+- Serveur HTTP local en lecture seule (`/api/status`, `/api/series`, `/api/trend`, `/api/summary`),
+  uniquement sur la boucle locale par défaut, contrôle de l'en-tête `Host`, refuse de démarrer si
+  le port est pris. Clés `web_host` et `web_port` (défaut `127.0.0.1:8787`).
+- Table `daily_stats` (n, min, médiane, p95, max, moyenne par jour, capteur et niveau de charge),
+  **jamais purgée**, et version de schéma (`PRAGMA user_version`).
+- Commandes `install`, `uninstall`, `start`, `stop`, `restart`, `serve`.
+- `install` : idempotent, supprime automatiquement une installation 1.x (service Windows, tâches
+  planifiées de rapport, enregistrement toast, anciens scripts), migre `config.toml` (sauvegarde
+  `config.toml.v1.bak`), crée `monitoring-daemon.exe` (copie sans fenêtre console), active le
+  démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus.
+- `uninstall.bat` indépendant de la version installée (1.x ou 2.x) ; conserve la base et
+  `config.toml` sauf confirmation.
+- `Register-Tasks.ps1` de transition : une mise à jour lancée par l'ancien `update.bat` aboutit
+  à la migration.
+- Mode WAL (lecture du tableau de bord pendant l'écriture), snapshot et relevés écrits dans une
+  seule transaction.
+- Architecture hexagonale simplifiée du backend (`domain` / `application` / `adapters`), avec un
+  test qui impose le sens des dépendances.
+
+### Changed
+- **Plus de service Windows** : un seul processus d'arrière-plan, sans droits administrateur
+  (sauf pour supprimer l'ancien service). Le collecteur est relancé automatiquement s'il échoue.
+- Mesures brutes conservées **90 jours** par défaut (`raw_retention_days`, minimum 7, remplace
+  `retention_days`, minimum 360). Elles sont agrégées par jour avant d'être supprimées ; la base
+  migrée est compactée après la première grosse purge.
+- Migration automatique de la base : copie de sécurité `temperatures.db.v1.bak`, puis agrégation de
+  tout l'historique existant.
+- `check` ne modifie plus rien et vérifie le tableau de bord, le démarrage automatique et les
+  reliquats de la 1.x.
+- `install_dir` et `db_path` valent par défaut le dossier de `config.toml` (installation possible
+  sans droits administrateur).
+- `update.bat` lance l'installation de la nouvelle version et se relance depuis `%TEMP%`.
+- Dossiers renommés : `monitoring-alert/` → `backend/`, nouveau `frontend/`.
+- Lecture des capteurs et chargement de la configuration disponibles sur toutes les plateformes
+  (le code est testable hors Windows).
+
+### Removed
+- Les rapports (texte, Markdown), les notifications toast et leur enregistrement, les tâches
+  planifiées de rapport, les commandes `report`, `report-md`, `notify`, `notify-dry-run`,
+  `service` et `watch`, `apply-config.bat`.
+- Clés de configuration `reports_dir`, `daily_report_*`, `weekly_report_*`, `monthly_report_*`,
+  `retention_days` (ignorées si elles subsistent, retirées par la migration).
+- Dépendances `minijinja`, `windows`, `windows-service`.
+
+### Dependencies
+- Ajout de `tiny_http` et `serde_json` (backend), `winreg` (Windows uniquement), et côté frontend
+  `uplot`, `vite`, `typescript`.
 
 ## [1.3.21] — 2026-04-14
 

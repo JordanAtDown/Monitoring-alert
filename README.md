@@ -1,596 +1,243 @@
-# monitoring-alert — Moniteur de température long terme
+# monitoring-alert — Suivi long terme de la dérive des températures
 
-Service Windows de surveillance thermique pour détecter les dérives dues à la
-poussière, une pâte thermique dégradée ou un ventilateur défaillant.
+Collecte les températures de la machine toutes les 5 minutes et les affiche sur un
+**tableau de bord local** pour voir, sur des mois, si elles dérivent : poussière,
+pâte thermique qui sèche, ventilateur qui faiblit.
+
+Il n'envoie **aucune notification** : c'est un outil à regarder, pas une alerte.
+
+```
+LibreHardwareMonitor ──HTTP──▶ monitoring-daemon ──▶ temperatures.db
+ (admin, serveur :8085)         collecte + serveur web      ▲
+                                      │                     │
+                                      └──▶ http://127.0.0.1:8787  (navigateur)
+```
+
+Un seul processus d'arrière-plan, sans fenêtre, démarré à l'ouverture de session.
+Pas de service Windows. De l'ordre de **12 Mo de mémoire** (mesuré sur la version release, sous Linux).
 
 ---
 
 ## Prérequis
 
-| Logiciel | Version minimale | Notes |
-|---|---|---|
-| LibreHardwareMonitor | dernière version | Remote Web Server activé (voir ci-dessous) |
+| Logiciel | Notes |
+|---|---|
+| LibreHardwareMonitor | dernière version, **Remote Web Server** activé (ci-dessous) |
 
 ### Activer le Remote Web Server dans LibreHardwareMonitor
 
 1. Ouvrir LibreHardwareMonitor **en tant qu'administrateur** (requis pour lire les capteurs)
-2. Aller dans **Options → Remote Web Server** → cocher **Run**
-3. Laisser LibreHardwareMonitor tourner en tâche de fond
+2. **Options → Remote Web Server** → cocher **Run**
+3. Le laisser tourner en tâche de fond
 
-Le serveur écoute par défaut sur `http://127.0.0.1:8085`. L'adresse et le port sont
-configurables dans `config.toml` via les clés `lhm_host` et `lhm_port`.
+Il écoute sur `http://127.0.0.1:8085` (clés `lhm_host` / `lhm_port`).
 
 ---
 
 ## Installation
 
-### 1. Télécharger la dernière release
+1. Télécharger l'archive de la dernière release sur
+   [GitHub Releases](https://github.com/jordanatdown/monitoring-alert/releases) et la décompresser.
+2. *(facultatif, installation neuve)* éditer `config.toml` du dossier décompressé.
+3. Lancer **`install.bat`**. Clic droit › *Exécuter en tant qu'administrateur* la première
+   fois **si une version 1.x est installée** (supprimer son service Windows l'exige) ;
+   sinon un double-clic suffit.
+4. Ouvrir **<http://127.0.0.1:8787/>**.
 
-Télécharger l'archive depuis la page [Releases](https://github.com/jordanatdown/monitoring-alert/releases)
-et extraire le contenu dans un dossier temporaire :
+`install.bat` copie les fichiers dans `%LOCALAPPDATA%\Programs\MonitoringAlert\`, active le
+démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus. Il est
+**idempotent** : le relancer ne casse rien.
 
-```
-monitoring-alert-v0.x.x\
-├── monitoring-alert.exe
-├── config.toml       ← à éditer avant l'installation
-├── install.bat
-├── uninstall.bat
-└── update.bat
-```
+### Migration depuis la version 1.x
 
-### 2. Éditer `config.toml`
+C'est automatique, et **la base de données est conservée**. `install.bat` :
 
-Configurer au minimum `install_dir` et `db_path` (voir la section
-[Configuration](#configuration) pour la liste complète des options).
+| Élément de la v1.x | Ce qui se passe |
+|---|---|
+| Service Windows `MonitoringAlert` | arrêté et supprimé (si ça échoue : l'installation s'arrête, relancez en administrateur) |
+| Tâches planifiées de rapport (journalier / hebdo / mensuel) | supprimées |
+| Enregistrement des notifications toast (AUMID) | supprimé |
+| `apply-config.bat`, ancien `Register-Tasks.ps1` | supprimés |
+| `config.toml` | clés obsolètes retirées (`reports_dir`, `*_report_*`, `retention_days`), vos autres valeurs conservées, ancienne version sauvegardée en `config.toml.v1.bak` |
+| `temperatures.db` | **migrée sur place** au premier démarrage : une copie de sécurité `temperatures.db.v1.bak` est écrite, puis l'historique est agrégé par jour |
+| Rapports `.md` du dossier `rapports\` | non touchés (supprimez-les si vous n'en voulez plus) |
 
-```toml
-install_dir = "C:\\Program Files\\MonitoringAlert"
-db_path     = "C:\\Users\\<VotreNom>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
-```
+Mise à jour depuis une 1.x avec l'ancien `update.bat` : ça fonctionne aussi (l'archive
+contient un `Register-Tasks.ps1` de transition qui lance la migration). Les fois suivantes,
+utilisez le nouveau `update.bat`.
 
-### 3. Lancer `install.bat` en tant qu'administrateur
+Si le dossier `\MonitoringAlert\` vide reste visible dans le Planificateur de tâches, il est
+inoffensif.
 
-Le script effectue les étapes suivantes :
+> **Mesures brutes** : par défaut seuls les **90 derniers jours** de mesures brutes sont gardés
+> (`raw_retention_days`). Avant toute suppression, elles sont résumées par jour (médiane, min, p95,
+> max) dans une table qui n'est **jamais purgée** : c'est elle qui permet de suivre la dérive sur toute
+> la durée. Après la migration, la base peut donc rétrécir nettement.
 
-1. Copie `monitoring-alert.exe` dans `install_dir`
-2. Crée `%LOCALAPPDATA%\Programs\MonitoringAlert\` et y dépose `config.toml`, `uninstall.bat`, `update.bat`
-3. Enregistre l'AUMID `MonitoringAlert.TemperatureMonitor` dans le registre (nécessaire pour les notifications toast)
-4. Enregistre et démarre le service Windows
-5. Crée les tâches planifiées de rapport selon la configuration
+### Repartir de zéro (en gardant la base)
 
-Le dossier temporaire peut ensuite être supprimé.
+Lancer **`uninstall.bat`** (administrateur) puis **`install.bat`**. `uninstall.bat` ne dépend pas
+de la version installée (1.x ou 2.x) et conserve la base et `config.toml` sauf si vous répondez
+« o » à sa dernière question.
 
-### Après installation
+### Mise à jour
 
-```
-C:\Program Files\MonitoringAlert\
-    monitoring-alert.exe
+**`update.bat`** (dans `%LOCALAPPDATA%\Programs\MonitoringAlert\`) télécharge la dernière release et
+lance son installation ; `config.toml` et la base sont conservés.
 
-%LOCALAPPDATA%\Programs\MonitoringAlert\   (ex. C:\Users\Jordan\AppData\Local\Programs\MonitoringAlert\)
-    config.toml                ← toute la configuration
-    temperatures.db            ← base de données (créée au 1er démarrage)
-    monitoring-alert-YYYY-MM-DD.log  ← logs du service (rotation quotidienne)
-    uninstall.bat
-    update.bat
+---
 
-Planificateur de tâches\MonitoringAlert\
-    RapportJournalier    ← si daily_report_enabled = true
-    RapportHebdomadaire  ← si weekly_report_enabled = true
-    RapportMensuel       ← si monthly_report_enabled = true
-```
+## Le tableau de bord
 
-Le service :
-- Tourne sous le nom **MonitoringAlert**
-- Démarre automatiquement au démarrage de Windows
-- Se redémarre automatiquement après un crash (3 tentatives, délai 5 s)
-- Est visible dans `services.msc` ou via `sc query MonitoringAlert`
+**<http://127.0.0.1:8787/>**
+
+- **En-tête** : état de la collecte (dernière mesure, LibreHardwareMonitor joignable ou non).
+  Si LHM est arrêté, vous le voyez ici, sans être dérangé.
+- **Charge de la machine** (Repos / Léger / Modéré / Intense) : une température n'a de sens qu'à
+  charge équivalente ; on compare toujours « repos » avec « repos ». *Repos* est le plus sensible.
+- **Tableau de tous les capteurs**, du plus fort écart au plus faible : température actuelle,
+  référence, médiane 30 jours, **écart**, **pente** en °C/mois, mini-courbe, durée de suivi.
+- **Graphique de dérive** du capteur choisi :
+  - points : médiane de chaque jour, avec une bande claire du min au p95 ;
+  - ligne : médiane glissante sur 30 jours (le signal à suivre) ;
+  - tiretés : la **référence** (médiane des 30 premiers jours) ;
+  - pointillés : droite de tendance ;
+  - zone teintée entre la référence et la ligne, plus marquée quand l'écart grandit
+    (chaude au-dessus, froide au-dessous) ;
+  - **mois alternés** en fond : un été chaud ressemble à une dérive, la saisonnalité doit se voir.
+  Glisser pour zoomer, double-clic pour revenir. Une *vue tableau* mensuelle est dépliable sous le graphique.
+
+Tant qu'il y a moins de **60 jours** de suivi (et 40 jours avec mesures), aucune dérive n'est
+affichée : seules les médianes quotidiennes le sont.
+
+> **Limite connue** : il n'y a pas de capteur de température ambiante. Une saison chaude peut
+> donc se voir comme une dérive de quelques degrés. Regardez la courbe sur plus d'un an et
+> comparez les mêmes mois.
+
+Le serveur n'écoute que sur **cette machine** et ne fait que lire. `web_host = "0.0.0.0"` l'ouvre
+au réseau local, **sans authentification** : à ne faire que sur un réseau de confiance.
 
 ---
 
 ## Configuration
 
-**Fichier :** `%LOCALAPPDATA%\Programs\MonitoringAlert\config.toml`
+`%LOCALAPPDATA%\Programs\MonitoringAlert\config.toml` — toutes les clés sont facultatives.
+Après modification : `monitoring-alert.exe restart`.
 
-C'est le seul fichier à modifier. Toutes les options sont regroupées ici.
-
-```toml
-# =============================================================
-#  MonitoringAlert — configuration complète
-# =============================================================
-
-# Dossier d'installation de l'exécutable
-install_dir = "C:\\Program Files\\MonitoringAlert"
-
-# Chemin complet de la base de données SQLite
-# → placer sur un lecteur sauvegardé si souhaité
-db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
-
-# Dossier des fichiers de log (défaut : même répertoire que db_path)
-# log_dir = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\logs"
-
-# Intervalle de collecte du service (en secondes, minimum 60)
-# Défaut : 300 (toutes les 5 minutes)
-collect_interval_secs = 300
-
-# Adresse IP du serveur HTTP de LibreHardwareMonitor
-lhm_host = "127.0.0.1"
-
-# Port du serveur HTTP de LibreHardwareMonitor
-lhm_port = 8085
-
-# =============================================================
-#  Rapports automatiques via notifications Windows
-# =============================================================
-
-# Rapport journalier
-daily_report_enabled = true
-daily_report_time    = "08:00"    # HH:MM (format 24h)
-
-# Rapport hebdomadaire
-weekly_report_enabled = false
-weekly_report_day     = "MON"     # MON TUE WED THU FRI SAT SUN
-weekly_report_time    = "08:00"
-
-# Rapport mensuel
-monthly_report_enabled = false
-monthly_report_day     = 1        # 1–28
-monthly_report_time    = "08:00"
-```
-
-### Référence des clés
-
-| Clé | Type | Défaut | Description |
-|---|---|---|---|
-| `install_dir` | chemin | `C:\Program Files\MonitoringAlert` | Dossier de l'exécutable |
-| `db_path` | chemin | même dossier que `config.toml` | Chemin de la base SQLite |
-| `log_dir` | chemin | même dossier que `db_path` | Dossier des fichiers de log |
-| `lhm_host` | chaîne | `"127.0.0.1"` | Adresse du serveur HTTP de LibreHardwareMonitor |
-| `lhm_port` | entier | `8085` | Port du serveur HTTP de LibreHardwareMonitor |
-| `collect_interval_secs` | entier ≥ 60 | `300` | Intervalle entre deux collectes (secondes) |
-| `retention_days` | entier ≥ 360 | `365` | Durée de rétention des données (jours) |
-| `log_level` | `"error"` … `"trace"` | `"info"` | Niveau de log (utiliser `"debug"` pour diagnostiquer) |
-| `daily_report_enabled` | booléen | `true` | Activer le rapport journalier |
-| `daily_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport journalier |
-| `weekly_report_enabled` | booléen | `false` | Activer le rapport hebdomadaire |
-| `weekly_report_day` | `"MON"`…`"SUN"` | `"MON"` | Jour d'envoi du rapport hebdomadaire |
-| `weekly_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport hebdomadaire |
-| `monthly_report_enabled` | booléen | `false` | Activer le rapport mensuel |
-| `monthly_report_day` | entier 1–28 | `1` | Jour du mois d'envoi du rapport mensuel |
-| `monthly_report_time` | `"HH:MM"` | `"08:00"` | Heure d'envoi du rapport mensuel |
-
-### Appliquer les changements
-
-| Modification | Action |
-|---|---|
-| `db_path` | Redémarrer le service : `sc stop MonitoringAlert && sc start MonitoringAlert` |
-| `collect_interval_secs` | Redémarrer le service |
-| `retention_days` | Redémarrer le service |
-| `log_level` | Redémarrer le service |
-| Paramètres de rapport | Lancer `apply-config.bat` en tant qu'administrateur |
-| Tous les autres | Lancer `apply-config.bat` en tant qu'administrateur |
-
-`apply-config.bat` relit `config.toml`, redémarre le service et resynchronise
-les tâches planifiées — sans télécharger de nouvelle version.
-
----
-
-## Notifications de rapport
-
-Les rapports sont envoyés sous forme de **notifications toast Windows** à l'heure
-configurée. Ils comparent les températures des 30 derniers jours par rapport aux
-30 jours précédents, à charge identique (idle et heavy séparément).
-
-**Exemple de notification :**
-```
-MonitoringAlert — Rapport Journalier
-⚠ 2 alertes — GPU Temperature: +7.0°C sur 30j
-```
-
-Ou si tout va bien :
-```
-MonitoringAlert — Rapport Journalier
-✓ Toutes les températures stables
-```
-
-### Fonctionnement technique
-
-Le service Windows tourne en session SYSTEM (Session 0) et ne peut pas afficher
-de notifications à l'écran. `install.bat` crée donc des **tâches planifiées Windows**
-qui s'exécutent dans la session de l'utilisateur connecté et appellent :
-
-```powershell
-monitoring-alert.exe notify --daily    # rapport journalier
-monitoring-alert.exe notify --weekly   # rapport hebdomadaire
-monitoring-alert.exe notify --monthly  # rapport mensuel
-```
-
-Les tâches sont créées avec **`StartWhenAvailable`** : si le PC était éteint à
-l'heure prévue, la notification est envoyée dès la prochaine ouverture de session.
-
-Ces tâches sont visibles dans le **Planificateur de tâches** sous
-`Bibliothèque\MonitoringAlert`.
-
-### Déclencher manuellement une notification
-
-```powershell
-monitoring-alert.exe notify --daily
-monitoring-alert.exe notify --weekly
-monitoring-alert.exe notify --monthly
-```
-
-### Tester les toasts sans données (`notify-dry-run`)
-
-Envoie des messages fictifs qui répliquent chaque variante possible du toast,
-sans accéder à la base de données. Utile pour vérifier que l'AUMID est bien
-enregistré et que les toasts s'affichent correctement.
-
-```powershell
-# Tous les scénarios en séquence (pause de 4 s entre chaque)
-monitoring-alert.exe notify-dry-run
-
-# Scénario précis
-monitoring-alert.exe notify-dry-run --scenario stable
-monitoring-alert.exe notify-dry-run --scenario attention
-monitoring-alert.exe notify-dry-run --scenario critique
-monitoring-alert.exe notify-dry-run --scenario multi
-
-# Avec titre hebdomadaire ou mensuel
-monitoring-alert.exe notify-dry-run --scenario all --period weekly
-```
-
-| Scénario | Corps du toast |
-|---|---|
-| `stable` | `✓ Toutes les températures stables` |
-| `attention` | `⚠ 1 alerte — CPU Package: +6.0°C sur 30j` |
-| `critique` | `⚠ 1 alerte — GPU Junction Temperature: +12.0°C sur 30j` |
-| `multi` | `⚠ 3 alertes — GPU Junction Temperature: +12.0°C sur 30j` |
-
-Le titre est suffixé `[TEST: <scénario>]` pour distinguer les toasts de test
-des vrais rapports dans le centre de notifications.
-
-### Notifications pendant les sessions de jeu
-
-Les notifications Windows peuvent apparaître par-dessus un jeu en mode
-fenêtré ou borderless. Ce comportement est contrôlé par Windows, pas par
-l'application.
-
-Pour désactiver les interruptions pendant les parties, activez
-**Focus Assist → Priorité uniquement** ou **Alarmes uniquement** dans
-`Paramètres → Système → Notifications` (Windows 10) ou
-`Paramètres → Système → Ne pas déranger` (Windows 11).
-
-Sur Windows 11, l'option **"Activer Ne pas déranger automatiquement → Lors
-de l'utilisation d'une application en plein écran"** bloque les toasts
-uniquement pendant les jeux en plein écran exclusif.
-
----
-
-## Mise à jour
-
-Lancer `update.bat` (dans `%LOCALAPPDATA%\Programs\MonitoringAlert\`) **en tant qu'administrateur**.
-
-Le script :
-1. Arrête le service
-2. Télécharge l'archive zip de la dernière release depuis GitHub
-3. Remplace l'exécutable **et** les scripts (`Register-Tasks.ps1`, `apply-config.bat`, `uninstall.bat`)
-4. Redémarre le service
-5. **Resynchronise les tâches planifiées** avec la configuration actuelle de `config.toml`
-
-`config.toml` et `temperatures.db` sont conservés intacts.
-
----
-
-## Désinstallation
-
-Lancer `uninstall.bat` (dans `C:\ProgramData\MonitoringAlert\`) **en tant qu'administrateur**.
-
-Le script :
-1. Arrête et supprime le service Windows
-2. Supprime le dossier d'installation (exe)
-3. Supprime les tâches planifiées de rapport
-4. Supprime l'AUMID du registre
-5. Demande confirmation avant de supprimer `C:\ProgramData\MonitoringAlert\` (DB + config)
-
----
-
-## Utilisation en ligne de commande
-
-```powershell
-# Collecte unique (test / debug)
-monitoring-alert.exe collect
-
-# Boucle de collecte (même logique que le service)
-monitoring-alert.exe watch --interval 300
-
-# Rapport détaillé sur stdout
-monitoring-alert.exe report
-
-# Rapport dans un fichier
-monitoring-alert.exe report -o rapport.txt
-
-# Envoyer une notification toast manuellement
-monitoring-alert.exe notify --daily
-monitoring-alert.exe notify --weekly
-monitoring-alert.exe notify --monthly
-
-# Tester les toasts sans données (dry-run)
-monitoring-alert.exe notify-dry-run                          # envoie les 4 scénarios en séquence
-monitoring-alert.exe notify-dry-run --scenario stable        # ✓ Toutes les températures stables
-monitoring-alert.exe notify-dry-run --scenario attention     # ⚠ 1 alerte — seuil ATTENTION
-monitoring-alert.exe notify-dry-run --scenario critique      # ⚠ 1 alerte — seuil CRITIQUE
-monitoring-alert.exe notify-dry-run --scenario multi         # ⚠ 3 alertes
-monitoring-alert.exe notify-dry-run --scenario all --period weekly  # titre hebdomadaire
-
-# Utiliser une DB spécifique (override config.toml)
-monitoring-alert.exe --db "D:\autre\temperatures.db" report
-
-# Gestion du service
-monitoring-alert.exe service install
-monitoring-alert.exe service start
-monitoring-alert.exe service stop
-monitoring-alert.exe service uninstall
-monitoring-alert.exe service status        # état du service (installé, actif, PID)
-
-# Vérification pré-démarrage
-monitoring-alert.exe check                 # config, DB, service, LHM, AUMID
-
-# Maintenance de la base de données
-monitoring-alert.exe db stats              # taille, nb snapshots, dates
-monitoring-alert.exe db vacuum             # compacte et libère l'espace disque
-```
-
----
-
-## Lecture du rapport
-
-Le rapport compare les **moyennes à charge identique** sur 5 fenêtres :
-
-| Fenêtre | Période courante | Période de référence | Signal typique |
-|---|---|---|---|
-| 24h | dernières 24h | 24h précédentes | Pic ponctuel, ventilateur bloqué |
-| 7j | 7 derniers jours | 7j précédents | Début d'encrassement |
-| 30j | 30 derniers jours | 30j précédents | Poussière, pâte qui sèche |
-| 90j | 90 derniers jours | 90j précédents | Tendance saisonnière courte |
-| 180j | 180 derniers jours | 180j précédents | Dérive annuelle, vieillissement matériel |
-
-Les catégories de charge sont analysées séparément :
-
-| Catégorie | Charge effective |
-|---|---|
-| `idle` | 0–14 % |
-| `light` | 15–39 % |
-| `moderate` | 40–74 % |
-| `heavy` | 75–100 % |
-
-Seuils d'alerte :
-
-| Delta | Statut |
-|---|---|
-| ≥ 10 °C | 🔴 CRITIQUE ← nettoyer ! |
-| ≥ 5 °C | ⚠ ATTENTION |
-| ≥ 2 °C | ↑ légère hausse |
-| ≤ −2 °C | ↓ amélioration |
-| autre | ✓ stable |
-
----
-
-## Algorithme de détection de dérive thermique
-
-### 1. Collecte des données
-
-À chaque intervalle (par défaut 300 s), le service interroge l'API HTTP de LibreHardwareMonitor (`http://lhm_host:lhm_port/data.json`) pour lire :
-- toutes les sondes de température disponibles (CPU, GPU, chipset, stockage…)
-- la charge CPU (%) et la charge GPU (%)
-
-Un **snapshot** est enregistré en base avec l'horodatage, les charges CPU/GPU et la
-catégorie de charge calculée. Chaque lecture de sonde constitue une ligne **reading**
-liée au snapshot.
-
-### 2. Catégorisation de la charge — charge effective
-
-La catégorie est calculée à partir de la **charge effective** :
-
-```
-charge_effective = max(charge_cpu, charge_gpu)
-```
-
-Pourquoi `max` et non `cpu` seul ? Un scénario de jeu typique présente GPU 90 % /
-CPU 15 %. Si l'on utilisait uniquement la charge CPU, le snapshot serait classé
-`light` et les températures GPU enregistrées pendant cette session seraient comparées
-à des périodes de navigation web au lieu d'autres sessions de jeu — la comparaison
-serait sans sens.
-
-En prenant le maximum, les sessions à fort usage GPU sont correctement classées
-`heavy` et comparées exclusivement à d'autres sessions `heavy`.
-
-| Catégorie | Charge effective |
-|---|---|
-| `idle` | 0–14 % |
-| `light` | 15–39 % |
-| `moderate` | 40–74 % |
-| `heavy` | 75–100 % |
-
-### 3. Agrégation par fenêtre temporelle
-
-Pour chaque fenêtre d'analyse (24 h, 7 j, 30 j, 90 j, 180 j), on calcule :
-
-```
-moyenne_courante  = AVG(temp)  WHERE timestamp ∈ [now - W,     now[
-                                 AND load_cat   = <catégorie>
-                                 AND hardware   = <matériel>
-                                 AND sensor     = <sonde>
-
-moyenne_reference = AVG(temp)  WHERE timestamp ∈ [now - 2W,    now - W[
-                                 AND load_cat   = <catégorie>
-                                 AND hardware   = <matériel>
-                                 AND sensor     = <sonde>
-```
-
-Si l'une des deux fenêtres ne contient aucune donnée pour un couple
-(matériel, sonde, catégorie), la comparaison est ignorée pour ce couple.
-
-### 4. Calcul du delta et seuils d'alerte
-
-```
-delta = moyenne_courante − moyenne_reference
-```
-
-| Delta | Statut | Interprétation |
+| Clé | Défaut | Rôle |
 |---|---|---|
-| ≥ 10 °C | 🔴 CRITIQUE | Dérive majeure — nettoyer d'urgence |
-| ≥ 5 °C | ⚠ ATTENTION | Dérive notable à surveiller |
-| ≥ 2 °C | ↑ légère hausse | Tendance ascendante |
-| ≤ −2 °C | ↓ amélioration | Refroidissement ou charge réduite |
-| autre | ✓ stable | Aucune dérive significative |
-
-Une **alerte** est déclenchée si `delta ≥ 5 °C` (ATTENTION ou CRITIQUE).
-Le rapport liste les alertes par delta décroissant et inclut toutes les fenêtres
-d'analyse.
+| `install_dir` | dossier du fichier | Dossier des exécutables |
+| `db_path` | `temperatures.db` à côté du fichier | Base SQLite |
+| `log_dir` | dossier de la base | Logs (`monitoring-alert.AAAA-MM-JJ.log`, rotation quotidienne) |
+| `collect_interval_secs` | `300` | Intervalle de collecte (minimum 60) |
+| `raw_retention_days` | `90` | Jours de mesures brutes conservées (minimum 7) |
+| `lhm_host` / `lhm_port` | `127.0.0.1` / `8085` | Serveur HTTP de LibreHardwareMonitor |
+| `web_host` / `web_port` | `127.0.0.1` / `8787` | Écoute du tableau de bord |
+| `log_level` | `info` | `error` · `warn` · `info` · `debug` · `trace` |
 
 ---
 
-## Structure de la base de données
+## Ligne de commande
 
-Deux tables SQLite :
+`monitoring-alert.exe` (console). `monitoring-daemon.exe` est la copie sans fenêtre lancée
+automatiquement ; Task Manager affiche ce nom.
 
-- **`snapshots`** — un enregistrement par mesure (timestamp, charge CPU/GPU, catégorie de charge)
-- **`readings`** — une ligne par capteur par snapshot (matériel, nom du capteur, valeur °C)
-
-### Croissance et rétention
-
-Estimation de la taille avec 10 sondes et une collecte toutes les 5 min :
-
-| Période | Taille estimée |
+| Commande | Rôle |
 |---|---|
-| 1 mois | ~7 MB |
-| 6 mois | ~42 MB |
-| 1 an | ~90 MB |
-
-Le service purge automatiquement les données anciennes **au démarrage puis toutes les
-24 h**. La durée de rétention est contrôlée par `retention_days` dans `config.toml`
-(défaut : 365 jours, minimum : 360 jours). Le défaut d'un an permet d'activer
-immédiatement la fenêtre saisonnière 180j. La valeur minimale de 360 jours est
-imposée car l'algorithme compare une fenêtre courante de 180 jours à la fenêtre
-précédente de 180 jours.
+| `install` | Installe / met à jour / migre depuis la 1.x (ce que fait `install.bat`) |
+| `uninstall` | Arrête le processus, retire le démarrage automatique (ne supprime aucun fichier) |
+| `start` · `stop` · `restart` | Gère le processus d'arrière-plan |
+| `serve` | Collecte + tableau de bord au premier plan |
+| `collect` | Une seule collecte (debug) |
+| `check` | Vérifie config, base, LHM, tableau de bord, démarrage automatique, reliquats 1.x. Ne modifie rien |
+| `db stats` · `db vacuum` | Chiffres de la base · compactage |
+| `--db <chemin>` | (global) base à utiliser à la place de celle de `config.toml` |
 
 ---
 
-## Causes possibles d'une dérive thermique
+## Comment la dérive est calculée
 
-- **Poussière** : nettoyer les filtres et radiateurs à l'air comprimé
-- **Pâte thermique** : renouveler si le système a plus de 2–3 ans
-- **Ventilateur défaillant** : vérifier le bruit et la vitesse de rotation
+1. Toutes les 5 minutes, un *snapshot* : températures de tous les capteurs + charge CPU/GPU.
+2. **Catégorie de charge** : charge effective = **max(CPU, GPU)** (un jeu à GPU 90 % / CPU 15 % est
+   *intense*). `idle` < 15 % ≤ `light` < 40 % ≤ `moderate` < 75 % ≤ `heavy`.
+3. **Agrégats quotidiens** par (jour, capteur, catégorie) : nombre de mesures, min, médiane, p95, max, moyenne.
+   Un jour compte à partir de 6 mesures. Le jour en cours est exclu (incomplet).
+4. **Référence** : médiane des médianes des 30 premiers jours. **Médiane glissante** : médiane des médianes
+   des 30 derniers jours calendaires (≥ 10 jours dans la fenêtre).
+5. **Écart** = médiane glissante actuelle − référence. **Pente** = droite des moindres carrés sur toutes les
+   médianes quotidiennes, en °C/mois.
+
+Rien ne déclenche d'alerte : ce sont des chiffres à regarder.
+
+---
+
+## Base de données
+
+SQLite, mode WAL (le tableau de bord lit pendant que le collecteur écrit).
+
+| Table | Contenu | Conservation |
+|---|---|---|
+| `snapshots` | `ts` (heure locale), `cpu_load`, `gpu_load`, `load_cat` | `raw_retention_days` |
+| `readings` | une température par capteur et par snapshot | `raw_retention_days` |
+| `daily_stats` | `day, hardware, sensor, load_cat, n, min, median, p95, max, avg` | **illimitée** |
+
+Version du schéma : `PRAGMA user_version` (2). La purge supprime des jours entiers et agrège ce qu'elle
+supprime dans la même transaction ; après une grosse purge le fichier est compacté (`VACUUM`).
 
 ---
 
 ## Supervision
 
-### Vérification pré-démarrage (`check`)
-
-La commande `check` effectue un diagnostic complet de l'installation sans avoir
-besoin de données existantes :
-
-```powershell
-monitoring-alert.exe check
-```
-
-Exemple de sortie :
-
-```
-Vérifications pré-démarrage
-════════════════════════════════════════════════════════════════
-
-  ✓  Configuration chargée
-     DB         : C:\ProgramData\MonitoringAlert\temperatures.db
-     Intervalle : 300 s  —  Rétention : 365 j  —  Log : info
-
-  ✓  Base de données accessible  (0.0 MB — 0 snapshot(s))
-
-  ✓  Service installé et actif
-
-  ✓  LibreHardwareMonitor HTTP accessible (127.0.0.1:8085)  (12 sonde(s) de température)
-
-  ✓  AUMID enregistré — notifications toast disponibles
-     → Testez avec : monitoring-alert.exe notify-dry-run
-
-════════════════════════════════════════════════════════════════
-  Tout est opérationnel. ✓
-```
-
-| Vérification | Ce qui est testé | Action si ✗ |
-|---|---|---|
-| Configuration | Valeurs chargées depuis `config.toml` | Vérifier le fichier de config |
-| Base de données | Ouverture + accès en écriture | Vérifier que le répertoire existe |
-| Service | Installé + en cours d'exécution | `service install` puis `service start` |
-| LHM HTTP | `GET http://lhm_host:lhm_port/data.json` | Lancer LHM admin + activer Options › Remote Web Server › Run |
-| AUMID | Clé registre pour les toasts | Relancer `install.bat` admin |
-
-### État du service
-
-```powershell
-monitoring-alert.exe service status
-# → Service MonitoringAlert — ✓  En cours d'exécution  (PID 1234)
-```
-
-### Fichier de log
-
-Le service écrit ses logs dans le répertoire `log_dir` (par défaut, même répertoire
-que la base de données) :
-
-```
-%LOCALAPPDATA%\Programs\MonitoringAlert\monitoring-alert-YYYY-MM-DD.log
-```
-
-Le fichier est renouvelé chaque jour (rotation quotidienne). Pour écrire dans un
-dossier différent, définir `log_dir` dans `config.toml`.
-
-Le niveau de log est configurable dans `config.toml` (redémarrage du service requis) :
-
-```toml
-log_level = "info"   # production normale
-log_level = "debug"  # diagnostiquer collecte, capteurs, purge…
-log_level = "trace"  # très verbeux
-```
-
-Messages à surveiller :
-
-| Message | Signification |
-|---|---|
-| `No temperature sensors detected` | LibreHardwareMonitor n'est pas lancé ou Remote Web Server inactif |
-| `No temperature readings for N consecutive collections` | LHM absent depuis ~1h |
-| `LHM unreachable at host:port` | LHM non lancé ou mauvais `lhm_host`/`lhm_port` dans config |
-| `Collection error` | Erreur HTTP — vérifier LHM et que Remote Web Server est actif |
-| `Purged N snapshot(s)` | Purge automatique exécutée |
-
-### Observateur d'événements Windows
-
-Les erreurs fatales du service (démarrage/arrêt anormal) apparaissent dans :
-**Observateur d'événements → Applications et services → MonitoringAlert**
-
-```powershell
-Get-EventLog -LogName Application -Source MonitoringAlert -Newest 50
-```
+- **`monitoring-alert.exe check`** : état complet, sans rien modifier.
+- **En-tête du tableau de bord** : dernière mesure et erreur éventuelle.
+- **Logs** : `monitoring-alert.AAAA-MM-JJ.log` dans `log_dir`. Le collecteur est relancé automatiquement
+  s'il échoue, et un échec de collecte n'arrête pas le processus.
+- Si le processus ne tourne pas (port déjà pris, base inaccessible), l'erreur est dans le log : le
+  processus d'arrière-plan n'a pas de console.
 
 ---
 
-## Développement / Compilation
+## Développement
 
-Voir [CLAUDE.md](CLAUDE.md) pour les conventions de contribution.
-
-```powershell
-# Prérequis : Rust + MSVC toolchain
-rustup target add x86_64-pc-windows-msvc
-
-# Build release
-cargo build --release --target x86_64-pc-windows-msvc
+```
+backend/    Rust : la bibliothèque, la CLI, le démon et le serveur web
+frontend/   TypeScript (Vite + uPlot) : le tableau de bord
+scripts/    install.bat, update.bat, uninstall.bat, config.toml, release.sh
 ```
 
-Pour créer une nouvelle release :
+### Architecture du backend (hexagonale simplifiée)
+
+```
+domain/       code pur, sans E/S : modèle, catégories de charge, calcul de dérive (trends)
+application/  cas d'usage + ports (traits) : collecte, boucle, requêtes du tableau de bord, installation
+adapters/     le technique : sqlite, lhm (HTTP), http (serveur web), config, logging, windows, pe, deploy
+daemon.rs     racine de composition : branche les adapters sur les cas d'usage
+```
+
+Les dépendances ne vont que vers l'intérieur (adapters → application → domain) ; `tests/architecture.rs` le vérifie.
+
+### Commandes
 
 ```bash
-./scripts/release.sh 0.2.0
+# Backend (depuis backend/)
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings   # code Windows, depuis Linux
+
+# Frontend (depuis frontend/)
+npm ci
+npm run dev        # proxy /api vers 127.0.0.1:8787 (lancer `monitoring-alert serve` à côté)
+npm run build      # produit frontend/dist, embarqué dans l'exécutable
+
+# Exécutable complet
+npm run build --prefix frontend && cargo build --release --manifest-path backend/Cargo.toml
 ```
 
-Le script met à jour `Cargo.toml` et `CHANGELOG.md`, exécute les tests, crée
-le tag annoté et pousse vers `origin`. GitHub Actions se charge ensuite de
-compiler le binaire et de publier la release.
+Le frontend est embarqué dans l'exécutable par `backend/build.rs`. Sans build du frontend, `cargo test`
+fonctionne (page de remplacement) ; un `cargo build --release` est refusé
+(`MONITORING_ALERT_ALLOW_NO_FRONTEND=1` pour passer outre).
+
+Pour essayer le tout sans Windows : `monitoring-alert serve` avec un faux serveur LHM (un script qui sert
+un JSON `/data.json` sur `lhm_port`).
+
+Conventions du projet (commits, branche, tests, documentation) : voir [CLAUDE.md](CLAUDE.md).
