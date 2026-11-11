@@ -9,8 +9,6 @@ pub struct AppConfig {
     pub db_path: PathBuf,
     /// Directory where log files are written (default: same dir as db_path).
     pub log_dir: PathBuf,
-    /// Install directory of the executables (only used by the install scripts and commands).
-    pub install_dir: Option<PathBuf>,
     /// Sensor collection interval in seconds (min 60, default 300).
     pub collect_interval_secs: u64,
     /// How many days of raw readings to keep (default 90, minimum 7).
@@ -38,7 +36,6 @@ const VALID_LOG_LEVELS: &[&str] = &["error", "warn", "info", "debug", "trace"];
 pub(crate) struct RawConfig {
     pub db_path: Option<String>,
     pub log_dir: Option<String>,
-    pub install_dir: Option<String>,
     pub collect_interval_secs: Option<u64>,
     pub raw_retention_days: Option<u32>,
     pub log_level: Option<String>,
@@ -113,7 +110,6 @@ impl AppConfig {
         AppConfig {
             db_path,
             log_dir,
-            install_dir: raw.install_dir.map(PathBuf::from),
             collect_interval_secs: raw.collect_interval_secs.unwrap_or(300).max(60),
             raw_retention_days: raw.raw_retention_days.unwrap_or(90).max(7),
             log_level,
@@ -131,6 +127,8 @@ impl AppConfig {
 
 /// Keys of the v1.x configuration that no longer do anything.
 pub const OBSOLETE_KEYS: &[&str] = &[
+    // The installer decides where the executables go (they run from where they are installed).
+    "install_dir",
     "reports_dir",
     "daily_report_enabled",
     "daily_report_time",
@@ -188,12 +186,6 @@ pub(crate) fn render_config(raw: &RawConfig) -> String {
          #  Les lignes commençant par # montrent la valeur par défaut.\n\
          #  Après modification : monitoring-alert.exe restart\n\
          # =============================================================\n",
-    );
-    out += &string_line(
-        "install_dir",
-        &raw.install_dir,
-        "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert",
-        "# Dossier des exécutables (défaut : le dossier de ce fichier)",
     );
     out += &string_line(
         "db_path",

@@ -28,7 +28,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Installe ou met à jour (copie les fichiers, nettoie une installation v1.x, démarrage automatique)
-    Install,
+    Install {
+        /// L'exécutable est déjà à sa place (installateur .exe) : ne rien copier, créer seulement
+        /// la copie sans fenêtre à côté de lui
+        #[arg(long)]
+        in_place: bool,
+    },
     /// Arrête le processus d'arrière-plan et retire le démarrage automatique
     Uninstall,
     /// Démarre le processus d'arrière-plan
@@ -78,11 +83,19 @@ fn data_dir() -> PathBuf {
 }
 
 /// The files of this installation: where this executable runs from, and where it goes.
-fn deploy_plan(cfg: &config::AppConfig) -> Result<DeployPlan> {
+///
+/// Extracted from the portable archive, it installs itself into the data directory.
+/// With `in_place` (the .exe installer already put it where it belongs) it stays where it is.
+fn deploy_plan(in_place: bool) -> Result<DeployPlan> {
     let data_dir = data_dir();
+    let source_exe = std::env::current_exe().context("Chemin de l'exécutable introuvable")?;
+    let install_dir = match source_exe.parent() {
+        Some(dir) if in_place => dir.to_path_buf(),
+        _ => data_dir.clone(),
+    };
     Ok(DeployPlan {
-        source_exe: std::env::current_exe().context("Chemin de l'exécutable introuvable")?,
-        install_dir: cfg.install_dir.clone().unwrap_or_else(|| data_dir.clone()),
+        source_exe,
+        install_dir,
         data_dir,
     })
 }
@@ -107,7 +120,8 @@ fn start_daemon(cfg: &config::AppConfig) -> Result<()> {
         println!("Déjà démarré : {}", dashboard_url(cfg));
         return Ok(());
     }
-    let plan = deploy_plan(cfg)?;
+    // `start` runs from the installed executable: the daemon copy sits next to it.
+    let plan = deploy_plan(true)?;
     let daemon_exe = plan.daemon_exe();
     if !daemon_exe.is_file() {
         bail!(
@@ -132,8 +146,8 @@ fn run_cli() -> Result<()> {
     let _ = logging::init(&log_path, &cfg.log_level);
 
     match cli.command {
-        Commands::Install => {
-            let plan = deploy_plan(&cfg)?;
+        Commands::Install { in_place } => {
+            let plan = deploy_plan(in_place)?;
             println!("Installation de monitoring-alert…");
             let report = install::install(host()?.as_ref(), &plan)?;
             print_report(&report);

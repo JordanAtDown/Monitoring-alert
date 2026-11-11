@@ -267,7 +267,6 @@ fn a_refused_copy_tells_how_to_fix_it_and_starts_nothing() {
 
     assert!(error.contains("Program Files"), "{error}");
     assert!(error.contains("administrateur"), "{error}");
-    assert!(error.contains("install_dir"), "{error}");
     assert!(error.contains("os error 5"), "{error}");
     assert!(!host.called("autostart_enable") && !host.called("start_daemon"));
 }

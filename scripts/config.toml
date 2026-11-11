@@ -7,11 +7,6 @@
 #  Après modification d'une configuration installée : monitoring-alert.exe restart
 # =============================================================
 
-# Dossier des exécutables monitoring-alert.exe et monitoring-daemon.exe
-# Défaut : le dossier de ce fichier (%LOCALAPPDATA%\Programs\MonitoringAlert : aucun droit administrateur requis)
-# Exemple : "D:\\Apps\\MonitoringAlert"
-# install_dir = "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert"
-
 # Chemin complet de la base de données de températures
 # Défaut : temperatures.db à côté de ce fichier
 # Exemple : "D:\\Backup\\MonitoringAlert\\temperatures.db"

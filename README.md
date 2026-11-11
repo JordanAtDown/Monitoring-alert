@@ -126,7 +126,6 @@ Après modification : `monitoring-alert.exe restart`.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
-| `install_dir` | dossier du fichier | Dossier des exécutables |
 | `db_path` | `temperatures.db` à côté du fichier | Base SQLite |
 | `log_dir` | dossier de la base | Logs (`monitoring-alert.AAAA-MM-JJ.log`, rotation quotidienne) |
 | `collect_interval_secs` | `300` | Intervalle de collecte (minimum 60) |

@@ -89,8 +89,8 @@ pub fn install(host: &dyn HostSystem, plan: &DeployPlan) -> Result<Report> {
     // 4. Files, start-up entry, start.
     report.lines.extend(host.deploy(plan).with_context(|| {
         format!(
-            "Copie des fichiers dans {} (si l'accès est refusé : relancez install.bat en \
-                 administrateur, ou changez `install_dir` dans config.toml)",
+            "Copie des fichiers dans {} (si l'accès est refusé : relancez l'installation en \
+             administrateur, ou installez dans un dossier dont vous êtes propriétaire)",
             plan.install_dir.display()
         )
     })?);

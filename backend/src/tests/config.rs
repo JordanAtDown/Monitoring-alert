@@ -21,7 +21,6 @@ fn a_missing_file_gives_the_defaults() {
         (cfg.web_host.as_str(), cfg.web_port),
         ("127.0.0.1", DEFAULT_WEB_PORT)
     );
-    assert!(cfg.install_dir.is_none());
 }
 
 #[test]
@@ -33,7 +32,6 @@ fn an_invalid_file_gives_the_defaults() {
 fn values_are_read_from_the_file() {
     let cfg = load(
         r#"
-        install_dir = "D:\\Apps\\MonitoringAlert"
         db_path = "/data/t.db"
         log_dir = "/data/logs"
         collect_interval_secs = 120
@@ -47,10 +45,6 @@ fn values_are_read_from_the_file() {
     );
     assert_eq!(cfg.db_path, Path::new("/data/t.db"));
     assert_eq!(cfg.log_dir, Path::new("/data/logs"));
-    assert_eq!(
-        cfg.install_dir.as_deref(),
-        Some(Path::new("D:\\Apps\\MonitoringAlert"))
-    );
     assert_eq!(cfg.collect_interval_secs, 120);
     assert_eq!(cfg.raw_retention_days, 30);
     assert_eq!(cfg.log_level, "debug");
@@ -156,7 +150,7 @@ monthly_report_time    = "08:00"
     #[test]
     fn obsolete_keys_are_detected() {
         let keys = obsolete_keys_in(V1_CONFIG);
-        assert_eq!(keys.len(), 10);
+        assert_eq!(keys.len(), 11);
         assert!(keys.contains(&"retention_days".to_string()));
         assert!(obsolete_keys_in("lhm_port = 8085").is_empty());
         assert!(obsolete_keys_in("not [valid toml").is_empty());
@@ -176,7 +170,7 @@ monthly_report_time    = "08:00"
         else {
             panic!("expected a rewrite");
         };
-        assert_eq!(removed_keys.len(), 10);
+        assert_eq!(removed_keys.len(), 11);
         assert_eq!(fs::read_to_string(&backup).unwrap(), V1_CONFIG);
         assert!(backup.to_string_lossy().ends_with("config.toml.v1.bak"));
 
@@ -200,10 +194,6 @@ monthly_report_time    = "08:00"
             std::path::Path::new(
                 r"C:\Users\Jordan\AppData\Local\Programs\MonitoringAlert\temperatures.db"
             )
-        );
-        assert_eq!(
-            cfg.install_dir.as_deref(),
-            Some(std::path::Path::new(r"C:\Program Files\MonitoringAlert"))
         );
         assert_eq!(cfg.collect_interval_secs, 120);
         assert_eq!((cfg.lhm_host.as_str(), cfg.lhm_port), ("192.168.1.5", 9000));
@@ -335,7 +325,7 @@ monthly_report_time    = "19:00"
         else {
             panic!("expected a rewrite");
         };
-        assert_eq!(removed_keys.len(), 10);
+        assert_eq!(removed_keys.len(), 11);
 
         let cfg = AppConfig::load_from(&path);
         // The existing history is found again, wherever it lives.
@@ -347,13 +337,14 @@ monthly_report_time    = "19:00"
             cfg.log_dir,
             std::path::Path::new(r"C:\Users\Test\AppData\Local\Programs\MonitoringAlert\log")
         );
-        assert_eq!(
-            cfg.install_dir.as_deref(),
-            Some(std::path::Path::new(r"C:\Program Files\MonitoringAlert"))
-        );
         assert_eq!((cfg.collect_interval_secs, cfg.lhm_port), (300, 8085));
-        // The migrated file no longer mentions the reports at all.
+        // The migrated file no longer mentions the reports at all, nor install_dir: the
+        // installer decides where the executables go, so Program Files is not carried over.
         let migrated = fs::read_to_string(&path).unwrap();
         assert!(!migrated.contains("report"), "{migrated}");
+        assert!(
+            !migrated.lines().any(|l| l.starts_with("install_dir")),
+            "{migrated}"
+        );
     }
 }
