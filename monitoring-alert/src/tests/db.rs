@@ -452,3 +452,95 @@ fn an_existing_backup_is_never_overwritten() {
     drop(db::init_db(&path).unwrap());
     assert_eq!(std::fs::read(&backup).unwrap(), b"precious");
 }
+
+// ── Dashboard queries ─────────────────────────────────────────
+
+fn seed_day(conn: &rusqlite::Connection, day: &str, cat: &str, sensor: &str, value: f64) {
+    for i in 0..3 {
+        seed(conn, &format!("{day}T10:0{i}:00"), cat, sensor, value);
+    }
+}
+
+#[test]
+fn series_lists_every_sensor_and_load_category_present() {
+    let conn = make_conn();
+    seed_day(&conn, "2024-03-10", "idle", "Package", 40.0);
+    seed_day(&conn, "2024-03-11", "idle", "Package", 41.0);
+    seed_day(&conn, "2024-03-11", "heavy", "Package", 80.0);
+    db::rollup_since(&conn, "2024-03-01").unwrap();
+
+    let series = db::get_series(&conn).unwrap();
+    assert_eq!(series.len(), 2);
+    let idle = series.iter().find(|s| s.load_cat == "idle").unwrap();
+    assert_eq!(
+        (idle.days, idle.first_day.as_str(), idle.last_day.as_str()),
+        (2, "2024-03-10", "2024-03-11")
+    );
+}
+
+#[test]
+fn daily_stats_are_filtered_by_series_and_leave_out_the_current_day() {
+    let conn = make_conn();
+    seed_day(&conn, "2024-03-10", "idle", "Package", 40.0);
+    seed_day(&conn, "2024-03-11", "idle", "Package", 41.0);
+    seed_day(&conn, "2024-03-12", "idle", "Package", 42.0);
+    seed_day(&conn, "2024-03-11", "heavy", "Package", 80.0);
+    db::rollup_since(&conn, "2024-03-01").unwrap();
+
+    let stats = db::get_daily_stats(&conn, "CPU", "Package", "idle", "2024-03-12").unwrap();
+    let medians: Vec<f64> = stats.iter().map(|s| s.median).collect();
+    assert_eq!(medians, [40.0, 41.0]);
+    assert_eq!(stats[0].n, 3);
+}
+
+#[test]
+fn daily_stats_for_a_load_are_grouped_per_sensor() {
+    let conn = make_conn();
+    seed_day(&conn, "2024-03-10", "idle", "Package", 40.0);
+    seed_day(&conn, "2024-03-11", "idle", "Package", 41.0);
+    seed_day(&conn, "2024-03-10", "idle", "Core 1", 38.0);
+    seed_day(&conn, "2024-03-10", "heavy", "Package", 80.0);
+    db::rollup_since(&conn, "2024-03-01").unwrap();
+
+    let groups = db::get_daily_stats_for_load(&conn, "idle", "2024-04-01").unwrap();
+    let shape: Vec<(&str, usize)> = groups
+        .iter()
+        .map(|(_, s, v)| (s.as_str(), v.len()))
+        .collect();
+    assert_eq!(shape, [("Core 1", 1), ("Package", 2)]);
+}
+
+#[test]
+fn latest_snapshot_is_the_most_recent_one_with_its_readings() {
+    let conn = make_conn();
+    assert!(db::get_latest_snapshot(&conn).unwrap().is_none());
+
+    seed(&conn, "2024-03-10T10:00:00", "idle", "Package", 40.0);
+    let id = db::insert_snapshot(
+        &conn,
+        "2024-03-10T10:05:00",
+        Some(55.0),
+        Some(7.0),
+        "moderate",
+    )
+    .unwrap();
+    db::insert_reading(&conn, id, "CPU", "Package", 61.0).unwrap();
+    db::insert_reading(&conn, id, "GPU", "Core", 50.0).unwrap();
+
+    let latest = db::get_latest_snapshot(&conn).unwrap().unwrap();
+    assert_eq!(latest.ts, "2024-03-10T10:05:00");
+    assert_eq!(latest.load_cat, "moderate");
+    assert_eq!((latest.cpu_load, latest.gpu_load), (Some(55.0), Some(7.0)));
+    assert_eq!(latest.readings.len(), 2);
+}
+
+#[test]
+fn read_only_connection_can_read_but_not_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ro.db");
+    drop(db::init_db(&path).unwrap());
+
+    let ro = db::open_read_only(&path).unwrap();
+    assert_eq!(db::get_overall_stats(&ro).unwrap().total_snapshots, 0);
+    assert!(db::insert_snapshot(&ro, "2024-01-01T00:00:00", None, None, "idle").is_err());
+}

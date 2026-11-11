@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
-use chrono::{Duration, Local};
+use chrono::{Duration, Local, NaiveDate};
 use rusqlite::{params, Connection};
+use serde::Serialize;
 use std::path::Path;
+
+use crate::trends::DayStat;
 
 /// Current schema version, stored in `PRAGMA user_version`.
 ///
@@ -304,4 +307,186 @@ pub fn purge_old_snapshots(conn: &Connection, days: u32) -> Result<usize> {
         .context("Failed to purge old snapshots")?;
     tx.commit()?;
     Ok(removed)
+}
+
+// ──────────────────────────────────────────────────────────────
+// Dashboard queries
+// ──────────────────────────────────────────────────────────────
+
+/// One (sensor, load category) series present in `daily_stats`.
+#[derive(Debug, Serialize)]
+pub struct SeriesInfo {
+    pub hardware: String,
+    pub sensor: String,
+    pub load_cat: String,
+    pub days: i64,
+    pub first_day: String,
+    pub last_day: String,
+}
+
+pub fn get_series(conn: &Connection) -> Result<Vec<SeriesInfo>> {
+    let mut stmt = conn.prepare(
+        "SELECT hardware, sensor, load_cat, COUNT(*), MIN(day), MAX(day)
+         FROM daily_stats GROUP BY hardware, sensor, load_cat
+         ORDER BY hardware, sensor, load_cat",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(SeriesInfo {
+                hardware: r.get(0)?,
+                sensor: r.get(1)?,
+                load_cat: r.get(2)?,
+                days: r.get(3)?,
+                first_day: r.get(4)?,
+                last_day: r.get(5)?,
+            })
+        })
+        .context("Failed to query the series list")?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .context("Failed to read a series row")
+}
+
+fn day_stat_from_row(r: &rusqlite::Row<'_>, first_col: usize) -> rusqlite::Result<Option<DayStat>> {
+    let day: String = r.get(first_col)?;
+    let Ok(day) = NaiveDate::parse_from_str(&day, "%Y-%m-%d") else {
+        return Ok(None);
+    };
+    Ok(Some(DayStat {
+        day,
+        n: r.get(first_col + 1)?,
+        min: r.get(first_col + 2)?,
+        median: r.get(first_col + 3)?,
+        p95: r.get(first_col + 4)?,
+        max: r.get(first_col + 5)?,
+    }))
+}
+
+/// Daily aggregates of one series, oldest first, for the days strictly before
+/// `before_day` (`YYYY-MM-DD` — pass today to leave out the incomplete current day).
+pub fn get_daily_stats(
+    conn: &Connection,
+    hardware: &str,
+    sensor: &str,
+    load_cat: &str,
+    before_day: &str,
+) -> Result<Vec<DayStat>> {
+    let mut stmt = conn.prepare(
+        "SELECT day, n, min, median, p95, max FROM daily_stats
+         WHERE hardware = ?1 AND sensor = ?2 AND load_cat = ?3 AND day < ?4
+         ORDER BY day",
+    )?;
+    let rows = stmt
+        .query_map(params![hardware, sensor, load_cat, before_day], |r| {
+            day_stat_from_row(r, 0)
+        })
+        .context("Failed to query daily stats")?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.extend(row.context("Failed to read a daily stats row")?);
+    }
+    Ok(out)
+}
+
+/// Daily aggregates of every sensor at one load category, grouped per
+/// (hardware, sensor), same day rule as [`get_daily_stats`].
+pub fn get_daily_stats_for_load(
+    conn: &Connection,
+    load_cat: &str,
+    before_day: &str,
+) -> Result<Vec<(String, String, Vec<DayStat>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT hardware, sensor, day, n, min, median, p95, max FROM daily_stats
+         WHERE load_cat = ?1 AND day < ?2
+         ORDER BY hardware, sensor, day",
+    )?;
+    let rows = stmt
+        .query_map(params![load_cat, before_day], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                day_stat_from_row(r, 2)?,
+            ))
+        })
+        .context("Failed to query daily stats")?;
+    let mut out: Vec<(String, String, Vec<DayStat>)> = Vec::new();
+    for row in rows {
+        let (hardware, sensor, stat) = row.context("Failed to read a daily stats row")?;
+        let Some(stat) = stat else { continue };
+        match out.last_mut() {
+            Some((h, s, stats)) if *h == hardware && *s == sensor => stats.push(stat),
+            _ => out.push((hardware, sensor, vec![stat])),
+        }
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Serialize)]
+pub struct LatestReading {
+    pub hardware: String,
+    pub sensor: String,
+    pub value: f64,
+}
+
+/// The most recent snapshot with all its readings.
+#[derive(Debug, Serialize)]
+pub struct LatestSnapshot {
+    pub ts: String,
+    pub cpu_load: Option<f64>,
+    pub gpu_load: Option<f64>,
+    pub load_cat: String,
+    pub readings: Vec<LatestReading>,
+}
+
+pub fn get_latest_snapshot(conn: &Connection) -> Result<Option<LatestSnapshot>> {
+    let head = conn.query_row(
+        "SELECT id, ts, cpu_load, gpu_load, load_cat FROM snapshots ORDER BY ts DESC, id DESC LIMIT 1",
+        [],
+        |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<f64>>(2)?,
+                r.get::<_, Option<f64>>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        },
+    );
+    let (id, ts, cpu_load, gpu_load, load_cat) = match head {
+        Ok(head) => head,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+        Err(e) => return Err(e).context("Failed to query the latest snapshot"),
+    };
+    let mut stmt = conn.prepare(
+        "SELECT hardware, sensor, value FROM readings WHERE snapshot_id = ?1
+         ORDER BY hardware, sensor",
+    )?;
+    let readings = stmt
+        .query_map(params![id], |r| {
+            Ok(LatestReading {
+                hardware: r.get(0)?,
+                sensor: r.get(1)?,
+                value: r.get(2)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("Failed to read the latest readings")?;
+    Ok(Some(LatestSnapshot {
+        ts,
+        cpu_load,
+        gpu_load,
+        load_cat,
+        readings,
+    }))
+}
+
+/// Opens an existing database for reading only (the dashboard), without
+/// creating it or touching its schema.
+pub fn open_read_only(path: &Path) -> Result<Connection> {
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .with_context(|| format!("Failed to open database read-only: {}", path.display()))?;
+    conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
+    Ok(conn)
 }

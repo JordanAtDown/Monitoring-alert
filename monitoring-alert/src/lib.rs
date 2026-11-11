@@ -10,6 +10,7 @@ pub mod logger;
 pub mod sensors;
 pub mod service;
 pub mod store;
+pub mod trends;
 
 #[cfg(test)]
 mod tests;
