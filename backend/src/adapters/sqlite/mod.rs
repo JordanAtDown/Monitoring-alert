@@ -6,7 +6,10 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 
 use crate::application::clock::day_string;
-use crate::application::ports::{LatestReading, LatestSnapshot, OverallStats, SeriesInfo};
+use crate::application::ports::{
+    ExtraSeries, LatestReading, LatestSnapshot, OverallStats, SeriesInfo,
+};
+use crate::domain::model::{ExtraKind, ExtraReading};
 use crate::domain::trends::DayStat;
 
 mod store;
@@ -16,7 +19,9 @@ pub use store::{open_read_model, SqliteStore};
 ///
 /// * 0 / 1 — v1.x databases: `snapshots` + `readings` only.
 /// * 2     — adds `daily_stats`, the never-purged daily aggregates.
-pub const SCHEMA_VERSION: i64 = 2;
+/// * 3     — adds `extra_readings` and `extra_daily`: fan speeds and package power draws, raw and
+///   aggregated per day like the temperatures. Purely additive: nothing existing is touched.
+pub const SCHEMA_VERSION: i64 = 3;
 
 pub fn init_db(path: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
@@ -60,6 +65,29 @@ pub fn init_db(path: &Path) -> Result<Connection> {
              max      REAL    NOT NULL,
              avg      REAL    NOT NULL,
              PRIMARY KEY (day, hardware, sensor, load_cat)
+         ) WITHOUT ROWID;
+         CREATE TABLE IF NOT EXISTS extra_readings (
+             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+             snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+             hardware    TEXT NOT NULL,
+             sensor      TEXT NOT NULL,
+             kind        TEXT NOT NULL,
+             value       REAL NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_extra_readings_snapshot ON extra_readings(snapshot_id);
+         CREATE TABLE IF NOT EXISTS extra_daily (
+             day      TEXT    NOT NULL,
+             hardware TEXT    NOT NULL,
+             sensor   TEXT    NOT NULL,
+             kind     TEXT    NOT NULL,
+             load_cat TEXT    NOT NULL,
+             n        INTEGER NOT NULL,
+             min      REAL    NOT NULL,
+             median   REAL    NOT NULL,
+             p95      REAL    NOT NULL,
+             max      REAL    NOT NULL,
+             avg      REAL    NOT NULL,
+             PRIMARY KEY (day, hardware, sensor, kind, load_cat)
          ) WITHOUT ROWID;",
     )
     .context("Failed to initialize database schema")?;
@@ -79,28 +107,36 @@ fn migrate(conn: &Connection, path: &Path) -> Result<()> {
         return Ok(());
     }
 
-    backup_before_migration(conn, path)?;
+    backup_before_migration(conn, path, version)?;
 
-    // Aggregate the whole existing history before anything can be purged.
     let tx = conn
         .unchecked_transaction()
         .context("Failed to start migration transaction")?;
-    let days = rollup_inner(&tx, None, None).context("Failed to backfill daily_stats")?;
+    // v1 → v2: aggregate the whole existing history before anything can be purged.
+    let days = if version < 2 {
+        rollup_inner(&tx, None, None).context("Failed to backfill daily_stats")?
+    } else {
+        0
+    };
+    // v2 → v3 has nothing to do here: its tables are created empty by `init_db`, and there is
+    // nothing to backfill since fan speeds and power draws were not recorded before. Existing
+    // aggregates are deliberately not recomputed.
     tx.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
         .context("Failed to set schema version")?;
     tx.commit().context("Failed to commit migration")?;
+    tracing::info!("Database migrated from schema v{version} to v{SCHEMA_VERSION}.");
     if days > 0 {
-        tracing::info!(
-            "Database migrated to schema v{SCHEMA_VERSION}: {days} daily aggregate(s) computed."
-        );
+        tracing::info!("{days} daily aggregate(s) computed from the existing history.");
     }
     Ok(())
 }
 
-/// Keeps a consistent copy of a pre-v2 database next to it (`<db>.v1.bak`).
+/// Keeps a consistent copy of the database as it was next to it, before it is migrated away from
+/// `version`: `<db>.v1.bak` for a v1.x database (version 0 or 1), `<db>.v2.bak` for a v2 one.
+/// The name says which version the copy is, so a backup of one never stands in for another.
 ///
 /// Skipped for in-memory databases, empty databases and when a backup already exists.
-fn backup_before_migration(conn: &Connection, path: &Path) -> Result<()> {
+fn backup_before_migration(conn: &Connection, path: &Path, version: i64) -> Result<()> {
     if path.as_os_str() == ":memory:" {
         return Ok(());
     }
@@ -109,7 +145,7 @@ fn backup_before_migration(conn: &Connection, path: &Path) -> Result<()> {
         return Ok(());
     }
     let mut backup = path.as_os_str().to_owned();
-    backup.push(".v1.bak");
+    backup.push(format!(".v{}.bak", version.max(1)));
     let backup = std::path::PathBuf::from(backup);
     if backup.exists() {
         return Ok(());
@@ -133,83 +169,139 @@ fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo as f64)
 }
 
-/// Recomputes `daily_stats` for the days in `[from_day, to_day)` (`YYYY-MM-DD`,
-/// either bound optional). Must run inside the caller's transaction.
+/// The figures of one group of readings.
+struct Summary {
+    n: i64,
+    min: f64,
+    median: f64,
+    p95: f64,
+    max: f64,
+    avg: f64,
+}
+
+/// Summarises values given in ascending order (which is how the SQL hands them over).
+fn summarize_sorted(sorted: &[f64]) -> Summary {
+    let n = sorted.len();
+    Summary {
+        n: n as i64,
+        min: sorted[0],
+        median: quantile_sorted(sorted, 0.5),
+        p95: quantile_sorted(sorted, 0.95),
+        max: sorted[n - 1],
+        avg: sorted.iter().sum::<f64>() / n as f64,
+    }
+}
+
+/// Reads rows ordered by group, then by value, and hands each group's summary to `flush` once.
+/// `key_of` reads the group of a row and `value_col` is where its value is. Returns the number of
+/// groups.
+fn for_each_group<K: PartialEq>(
+    mut rows: rusqlite::Rows<'_>,
+    key_of: impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<K>,
+    value_col: usize,
+    mut flush: impl FnMut(&K, &Summary) -> Result<()>,
+) -> Result<usize> {
+    let mut key: Option<K> = None;
+    let mut values: Vec<f64> = Vec::new();
+    let mut groups = 0usize;
+    while let Some(row) = rows.next()? {
+        let current = key_of(row)?;
+        if key.as_ref() != Some(&current) {
+            if let Some(previous) = &key {
+                flush(previous, &summarize_sorted(&values))?;
+                groups += 1;
+                values.clear();
+            }
+            key = Some(current);
+        }
+        values.push(row.get::<_, f64>(value_col)?);
+    }
+    if let Some(previous) = &key {
+        flush(previous, &summarize_sorted(&values))?;
+        groups += 1;
+    }
+    Ok(groups)
+}
+
+/// Recomputes `daily_stats` and `extra_daily` for the days in `[from_day, to_day)`
+/// (`YYYY-MM-DD`, either bound optional). Must run inside the caller's transaction. Returns the
+/// number of aggregates written.
 ///
 /// A day's aggregates are only ever recomputed while its raw readings are
 /// complete: raw data is purged by whole days, and only after being aggregated.
 fn rollup_inner(conn: &Connection, from_day: Option<&str>, to_day: Option<&str>) -> Result<usize> {
-    let mut sql = String::from(
-        "SELECT substr(s.ts, 1, 10), r.hardware, r.sensor, s.load_cat, r.value
-         FROM readings r JOIN snapshots s ON s.id = r.snapshot_id WHERE 1 = 1",
-    );
     let mut args: Vec<&str> = Vec::new();
+    let mut range = String::new();
     if let Some(from) = from_day {
         args.push(from);
-        sql.push_str(&format!(" AND s.ts >= ?{}", args.len()));
+        range.push_str(&format!(" AND s.ts >= ?{}", args.len()));
     }
     if let Some(to) = to_day {
         args.push(to);
-        sql.push_str(&format!(" AND s.ts < ?{}", args.len()));
+        range.push_str(&format!(" AND s.ts < ?{}", args.len()));
     }
-    // Sorted values per group make median / p95 a simple index lookup.
-    sql.push_str(" ORDER BY 1, r.hardware, r.sensor, s.load_cat, r.value");
 
-    let mut select = conn.prepare(&sql)?;
+    // Temperatures. Sorted values per group make median / p95 a simple index lookup.
+    let mut select = conn.prepare(&format!(
+        "SELECT substr(s.ts, 1, 10), r.hardware, r.sensor, s.load_cat, r.value
+         FROM readings r JOIN snapshots s ON s.id = r.snapshot_id WHERE 1 = 1{range}
+         ORDER BY 1, r.hardware, r.sensor, s.load_cat, r.value"
+    ))?;
     let mut insert = conn.prepare(
         "INSERT OR REPLACE INTO daily_stats
              (day, hardware, sensor, load_cat, n, min, median, p95, max, avg)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     )?;
+    let temperatures = for_each_group(
+        select.query(rusqlite::params_from_iter(args.iter()))?,
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        },
+        4,
+        |k, s| {
+            insert.execute(params![
+                k.0, k.1, k.2, k.3, s.n, s.min, s.median, s.p95, s.max, s.avg
+            ])?;
+            Ok(())
+        },
+    )?;
 
-    let mut rows = select.query(rusqlite::params_from_iter(args.iter()))?;
-    let mut key: Option<(String, String, String, String)> = None;
-    let mut values: Vec<f64> = Vec::new();
-    let mut written = 0usize;
-
-    let mut flush = |key: &(String, String, String, String), values: &mut Vec<f64>| -> Result<()> {
-        if values.is_empty() {
-            return Ok(());
-        }
-        let n = values.len();
-        let sum: f64 = values.iter().sum();
-        insert.execute(params![
-            key.0,
-            key.1,
-            key.2,
-            key.3,
-            n as i64,
-            values[0],
-            quantile_sorted(values, 0.5),
-            quantile_sorted(values, 0.95),
-            values[n - 1],
-            sum / n as f64,
-        ])?;
-        values.clear();
-        Ok(())
-    };
-
-    while let Some(row) = rows.next()? {
-        let current = (
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-        );
-        if key.as_ref() != Some(&current) {
-            if let Some(previous) = &key {
-                flush(previous, &mut values)?;
-                written += 1;
-            }
-            key = Some(current);
-        }
-        values.push(row.get::<_, f64>(4)?);
-    }
-    if let Some(previous) = &key {
-        flush(previous, &mut values)?;
-        written += 1;
-    }
-    Ok(written)
+    // Fan speeds and power draws, the same way.
+    let mut select = conn.prepare(&format!(
+        "SELECT substr(s.ts, 1, 10), r.hardware, r.sensor, r.kind, s.load_cat, r.value
+         FROM extra_readings r JOIN snapshots s ON s.id = r.snapshot_id WHERE 1 = 1{range}
+         ORDER BY 1, r.hardware, r.sensor, r.kind, s.load_cat, r.value"
+    ))?;
+    let mut insert = conn.prepare(
+        "INSERT OR REPLACE INTO extra_daily
+             (day, hardware, sensor, kind, load_cat, n, min, median, p95, max, avg)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+    )?;
+    let extras = for_each_group(
+        select.query(rusqlite::params_from_iter(args.iter()))?,
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        },
+        5,
+        |k, s| {
+            insert.execute(params![
+                k.0, k.1, k.2, k.3, k.4, s.n, s.min, s.median, s.p95, s.max, s.avg
+            ])?;
+            Ok(())
+        },
+    )?;
+    Ok(temperatures + extras)
 }
 
 /// Recomputes the daily aggregates of every day from `from_day` (`YYYY-MM-DD`,
@@ -248,6 +340,22 @@ pub fn insert_reading(
         params![snapshot_id, hardware, sensor, value],
     )
     .context("Failed to insert reading")?;
+    Ok(())
+}
+
+pub fn insert_extra(conn: &Connection, snapshot_id: i64, extra: &ExtraReading) -> Result<()> {
+    conn.execute(
+        "INSERT INTO extra_readings (snapshot_id, hardware, sensor, kind, value)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            snapshot_id,
+            extra.hardware,
+            extra.sensor,
+            extra.kind.as_str(),
+            extra.value
+        ],
+    )
+    .context("Failed to insert an extra reading")?;
     Ok(())
 }
 
@@ -302,6 +410,12 @@ pub fn purge_old_snapshots(conn: &Connection, days: u32) -> Result<usize> {
         params![cutoff],
     )
     .context("Failed to purge old readings")?;
+    // Aggregated just above together with the temperatures, so nothing is lost either.
+    tx.execute(
+        "DELETE FROM extra_readings WHERE snapshot_id IN (SELECT id FROM snapshots WHERE ts < ?1)",
+        params![cutoff],
+    )
+    .context("Failed to purge old extra readings")?;
     let removed = tx
         .execute("DELETE FROM snapshots WHERE ts < ?1", params![cutoff])
         .context("Failed to purge old snapshots")?;
@@ -404,6 +518,60 @@ pub fn get_daily_stats_for_load(
         match out.last_mut() {
             Some((h, s, stats)) if *h == hardware && *s == sensor => stats.push(stat),
             _ => out.push((hardware, sensor, vec![stat])),
+        }
+    }
+    Ok(out)
+}
+
+/// Daily aggregates of every fan and package power draw at one load category, grouped per
+/// (hardware, sensor, kind), same day rule as [`get_daily_stats`]. A database not migrated to v3
+/// yet has none: that is an empty answer, not an error.
+pub fn get_extra_daily_stats_for_load(
+    conn: &Connection,
+    load_cat: &str,
+    before_day: &str,
+) -> Result<Vec<ExtraSeries>> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'extra_daily'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if !exists {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT hardware, sensor, kind, day, n, min, median, p95, max FROM extra_daily
+         WHERE load_cat = ?1 AND day < ?2
+         ORDER BY hardware, sensor, kind, day",
+    )?;
+    let rows = stmt
+        .query_map(params![load_cat, before_day], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                day_stat_from_row(r, 3)?,
+            ))
+        })
+        .context("Failed to query extra daily stats")?;
+    let mut out: Vec<ExtraSeries> = Vec::new();
+    for row in rows {
+        let (hardware, sensor, kind, stat) = row.context("Failed to read an extra stats row")?;
+        let (Some(kind), Some(stat)) = (ExtraKind::parse(&kind), stat) else {
+            continue;
+        };
+        match out.last_mut() {
+            Some(s) if s.hardware == hardware && s.sensor == sensor && s.kind == kind => {
+                s.stats.push(stat)
+            }
+            _ => out.push(ExtraSeries {
+                hardware,
+                sensor,
+                kind,
+                stats: vec![stat],
+            }),
         }
     }
     Ok(out)

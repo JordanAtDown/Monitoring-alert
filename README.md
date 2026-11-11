@@ -189,7 +189,9 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
 
 ## Comment la dérive est calculée
 
-1. Toutes les 5 minutes, un *snapshot* : températures de tous les capteurs + charge CPU/GPU.
+1. Toutes les 5 minutes, un *snapshot* : températures de tous les capteurs + charge CPU/GPU, avec la vitesse
+   des ventilateurs (tr/min) et la puissance des processeurs et cartes graphiques (« Package », en W). Les
+   puissances par cœur, sans intérêt ici, ne sont pas gardées.
 2. **Catégorie de charge** : charge effective = **max(CPU, GPU)** (un jeu à GPU 90 % / CPU 15 % est
    *intense*). `idle` < 15 % ≤ `light` < 40 % ≤ `moderate` < 75 % ≤ `heavy`.
    **Repos réel** : une mesure à faible charge prise dans les **15 minutes** qui suivent une charge moyenne ou
@@ -248,8 +250,12 @@ SQLite, mode WAL (le tableau de bord lit pendant que le collecteur écrit).
 | `snapshots` | `ts` (heure locale), `cpu_load`, `gpu_load`, `load_cat` | `raw_retention_days` |
 | `readings` | une température par capteur et par snapshot | `raw_retention_days` |
 | `daily_stats` | `day, hardware, sensor, load_cat, n, min, median, p95, max, avg` | **illimitée** |
+| `extra_readings` | une vitesse de ventilateur ou une puissance (`kind` = `fan` ou `power`) par capteur et par snapshot | `raw_retention_days` |
+| `extra_daily` | les mêmes agrégats que `daily_stats`, par `kind` | **illimitée** |
 
-Version du schéma : `PRAGMA user_version` (2). La purge supprime des jours entiers et agrège ce qu'elle
+Version du schéma : `PRAGMA user_version` (3). Le passage de la v2 à la v3 ne fait qu'**ajouter** deux tables vides :
+rien d'existant n'est modifié ni recalculé, et une copie de la base telle qu'elle était est écrite à côté
+(`<base>.v2.bak`, jamais écrasée). La purge supprime des jours entiers et agrège ce qu'elle
 supprime dans la même transaction ; après une grosse purge le fichier est compacté (`VACUUM`).
 
 ---

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 use crate::application::ports::{
-    LatestSnapshot, OverallStats, ReadModel, SeriesInfo, TemperatureStore,
+    ExtraSeries, LatestSnapshot, OverallStats, ReadModel, SeriesInfo, TemperatureStore,
 };
 use crate::domain::model::NewSnapshot;
 use crate::domain::trends::DayStat;
@@ -46,6 +46,9 @@ impl TemperatureStore for SqliteStore {
         )?;
         for reading in snapshot.readings {
             super::insert_reading(&tx, id, &reading.hardware, &reading.sensor, reading.value)?;
+        }
+        for extra in snapshot.extras {
+            super::insert_extra(&tx, id, extra)?;
         }
         tx.commit().context("Failed to commit the snapshot")?;
         Ok(id)
@@ -97,6 +100,14 @@ impl ReadModel for SqliteStore {
         before_day: &str,
     ) -> Result<Vec<(String, String, Vec<DayStat>)>> {
         super::get_daily_stats_for_load(&self.0, load_cat, before_day)
+    }
+
+    fn extra_daily_stats_for_load(
+        &self,
+        load_cat: &str,
+        before_day: &str,
+    ) -> Result<Vec<ExtraSeries>> {
+        super::get_extra_daily_stats_for_load(&self.0, load_cat, before_day)
     }
 
     fn storage_bytes(&self) -> u64 {

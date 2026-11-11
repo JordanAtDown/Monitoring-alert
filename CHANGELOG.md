@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Les ventilateurs et la puissance sont enregistrés** (schéma v3). LibreHardwareMonitor les publiait déjà dans la
+  même réponse que les températures, et ils étaient jetés. Ce sont eux qui permettront de séparer, à terme, un
+  refroidissement qui se dégrade (poussière, pâte thermique) de la température de la pièce et de l'effort demandé au
+  PC : une température seule mélange les trois. Sont gardés : la vitesse de chaque ventilateur (zéro compris : un
+  ventilateur arrêté est une mesure) et la puissance des « Package » (processeur, carte graphique) ; les puissances
+  par cœur ne le sont pas. Deux tables nouvelles, `extra_readings` et `extra_daily`, agrégées par jour comme les
+  températures et conservées sans limite. **Aucune analyse ne les utilise encore** : l'historique repart de zéro,
+  et il faudra du recul avant qu'il dise quoi que ce soit.
+  *Migration* : la v2 devient v3 automatiquement, en ajoutant deux tables vides. Rien d'existant n'est modifié ni
+  recalculé (vérifié sur une copie d'une vraie base : mêmes 4 005 agrégats, même somme de contrôle), et une copie de la
+  base est écrite à côté (`temperatures.db.v2.bak`, jamais écrasée, distincte de l'éventuelle `.v1.bak`).
+  *Attention* : une version 2.0 qui rouvrirait une base v3 la lirait normalement, mais sa purge des mesures brutes
+  échouerait tant que des ventilateurs bruts référencent les snapshots à supprimer. Ne pas revenir en arrière.
 - **Le repos est un vrai repos.** Une mesure à faible charge prise dans les 15 minutes qui suivent un effort (charge
   moyenne ou élevée) n'est plus comptée « au repos » : la charge retombe en quelques secondes mais le radiateur met
   des minutes à évacuer la chaleur. Ces mesures vont dans une catégorie interne `cooldown`, hors de toute comparaison.

@@ -27,6 +27,7 @@ pub fn collect_and_store(
             gpu_load: data.gpu_load,
             load_cat: cat,
             readings: &data.temperatures,
+            extras: &data.extras,
         })
         .context("Failed to store snapshot")?;
 

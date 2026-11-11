@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::Deserialize;
 
 use crate::application::ports::SensorSource;
-use crate::domain::model::{SnapshotData, TemperatureReading};
+use crate::domain::model::{ExtraKind, ExtraReading, SnapshotData, TemperatureReading};
 
 // ── Parsing helpers ──────────────────────────────────────────────────────────
 
@@ -77,6 +77,41 @@ pub(crate) fn collect(
     }
 }
 
+/// A fan can read zero (a stopped fan is information: a graphics card's fans stop at rest),
+/// but nothing real turns faster than this.
+const MAX_FAN_RPM: f64 = 20_000.0;
+/// No package draws more than this: above, the reading is garbage.
+const MAX_PACKAGE_WATTS: f64 = 1_500.0;
+
+/// Whether a power sensor is the draw of a whole package. LibreHardwareMonitor also publishes one
+/// per core, which is noise here: it is the package that heats the heat sink.
+fn is_package_power(name: &str) -> bool {
+    name.contains("Package")
+}
+
+/// Fan speeds and package power draws of one piece of hardware, added to `extras`.
+pub(crate) fn collect_extras(node: &Node, hardware: &str, extras: &mut Vec<ExtraReading>) {
+    let kind = match node.sensor_type.as_str() {
+        "Fan" => Some((ExtraKind::Fan, MAX_FAN_RPM)),
+        "Power" if is_package_power(&node.text) => Some((ExtraKind::Power, MAX_PACKAGE_WATTS)),
+        _ => None,
+    };
+    if let Some((kind, ceiling)) = kind {
+        // Unlike a temperature, zero is a real value here; "-" (no value) does not parse.
+        if let Some(value) = parse_number(&node.value).filter(|v| (0.0..ceiling).contains(v)) {
+            extras.push(ExtraReading {
+                hardware: hardware.to_string(),
+                sensor: node.text.clone(),
+                kind,
+                value,
+            });
+        }
+    }
+    for child in &node.children {
+        collect_extras(child, hardware, extras);
+    }
+}
+
 /// Builds a `SnapshotData` from the LHM JSON tree (parsed `Node`).
 pub(crate) fn extract_snapshot(root: &Node) -> Result<SnapshotData> {
     use anyhow::Context;
@@ -87,10 +122,12 @@ pub(crate) fn extract_snapshot(root: &Node) -> Result<SnapshotData> {
         .context("No computer node found in LHM response")?;
 
     let mut temperatures = Vec::new();
+    let mut extras = Vec::new();
     let mut cpu_load: Option<f64> = None;
     let mut gpu_load: Option<f64> = None;
 
     for hw_node in &computer.children {
+        collect_extras(hw_node, &hw_node.text, &mut extras);
         let is_gpu = is_gpu_node(&hw_node.image_url);
         collect(
             hw_node,
@@ -104,6 +141,7 @@ pub(crate) fn extract_snapshot(root: &Node) -> Result<SnapshotData> {
 
     Ok(SnapshotData {
         temperatures,
+        extras,
         cpu_load,
         gpu_load,
     })

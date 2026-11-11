@@ -26,6 +26,7 @@ fn reading(sensor: &str, value: f64) -> TemperatureReading {
 fn data(cpu: Option<f64>, gpu: Option<f64>, temps: &[(&str, f64)]) -> SnapshotData {
     SnapshotData {
         temperatures: temps.iter().map(|(s, v)| reading(s, *v)).collect(),
+        extras: Vec::new(),
         cpu_load: cpu,
         gpu_load: gpu,
     }
@@ -65,14 +66,17 @@ impl SensorSource for FakeSource {
 }
 
 fn clone_data(d: &SnapshotData) -> SnapshotData {
-    data(
-        d.cpu_load,
-        d.gpu_load,
-        &d.temperatures
-            .iter()
-            .map(|r| (r.sensor.as_str(), r.value))
-            .collect::<Vec<_>>(),
-    )
+    SnapshotData {
+        extras: d.extras.clone(),
+        ..data(
+            d.cpu_load,
+            d.gpu_load,
+            &d.temperatures
+                .iter()
+                .map(|r| (r.sensor.as_str(), r.value))
+                .collect::<Vec<_>>(),
+        )
+    }
 }
 
 fn memory_store() -> SqliteStore {
@@ -164,6 +168,7 @@ fn a_snapshot_is_stored_atomically() {
         gpu_load: None,
         load_cat: "idle",
         readings: &[bad],
+        extras: &[],
     };
     assert!(store.record_snapshot(&snapshot).is_err());
     assert_eq!(store.overall_stats().unwrap().total_snapshots, 0);
@@ -359,4 +364,80 @@ fn the_monitor_keeps_its_memory_from_one_collection_to_the_next() {
         .unwrap();
     // The loop carries what it saw from one collection to the next: the second reading is not "idle".
     assert_eq!(categories, ["heavy", "cooldown"]);
+}
+
+fn fan(sensor: &str, value: f64) -> crate::domain::model::ExtraReading {
+    crate::domain::model::ExtraReading {
+        hardware: "Board".into(),
+        sensor: sensor.into(),
+        kind: crate::domain::model::ExtraKind::Fan,
+        value,
+    }
+}
+
+#[test]
+fn fan_speeds_and_power_draws_are_stored_with_their_snapshot() {
+    let store = memory_store();
+    let mut with_extras = data(Some(40.0), None, &[("Package", 60.0)]);
+    with_extras.extras = vec![
+        fan("CPU Fan", 1293.0),
+        crate::domain::model::ExtraReading {
+            hardware: "CPU".into(),
+            sensor: "Package".into(),
+            kind: crate::domain::model::ExtraKind::Power,
+            value: 36.2,
+        },
+    ];
+    let source = FakeSource::new(vec![Ok(with_extras)]);
+    // The count returned is the one of temperatures: extras do not change what "no sensors" means.
+    assert_eq!(
+        collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap(),
+        1
+    );
+
+    let rows: Vec<(String, String, f64)> = store
+        .connection()
+        .prepare("SELECT sensor, kind, value FROM extra_readings ORDER BY kind")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        rows,
+        [
+            ("CPU Fan".to_string(), "fan".to_string(), 1293.0),
+            ("Package".to_string(), "power".to_string(), 36.2)
+        ]
+    );
+}
+
+#[test]
+fn a_stopped_fan_is_a_reading_not_a_missing_one() {
+    let store = memory_store();
+    let mut stopped = data(Some(2.0), None, &[("Package", 40.0)]);
+    stopped.extras = vec![fan("GPU Fan", 0.0)];
+    let source = FakeSource::new(vec![Ok(stopped)]);
+    collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap();
+    let value: f64 = store
+        .connection()
+        .query_row("SELECT value FROM extra_readings", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(value, 0.0);
+}
+
+#[test]
+fn a_snapshot_is_still_atomic_with_its_extras() {
+    let store = memory_store();
+    let mut broken = data(Some(2.0), None, &[("Package", 40.0)]);
+    broken.extras = vec![fan("CPU Fan", f64::NAN)]; // NULL, which extra_readings.value refuses
+    let source = FakeSource::new(vec![Ok(broken)]);
+    assert!(collect_and_store(&store, &source, &mut LoadTracker::new()).is_err());
+    // Neither the snapshot nor its temperatures survive a failed extra.
+    assert_eq!(store.overall_stats().unwrap().total_snapshots, 0);
+    let readings: i64 = store
+        .connection()
+        .query_row("SELECT COUNT(*) FROM readings", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(readings, 0);
 }

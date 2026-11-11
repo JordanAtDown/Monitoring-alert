@@ -584,3 +584,281 @@ fn a_database_not_migrated_yet_can_be_read_without_a_daily_stats_table() {
     assert_eq!(stats.history_since, None);
     assert_eq!(stats.history_start_day(), Some("2024-01-01"));
 }
+
+// ── Migration v2 → v3 ─────────────────────────────────────────
+
+/// Creates a database as written by monitoring-alert 2.0 (`daily_stats`, no extra tables), with one
+/// raw reading and one aggregate whose value deliberately does NOT match the raw data: a migration
+/// that recomputed the aggregates would be caught changing it.
+fn create_v2_db(path: &Path) {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE snapshots (
+             id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+             cpu_load REAL, gpu_load REAL, load_cat TEXT NOT NULL);
+         CREATE TABLE readings (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+             hardware TEXT NOT NULL, sensor TEXT NOT NULL, value REAL NOT NULL);
+         CREATE INDEX idx_snapshots_ts ON snapshots(ts);
+         CREATE INDEX idx_readings_snapshot ON readings(snapshot_id);
+         CREATE INDEX idx_readings_hw_sensor ON readings(hardware, sensor);
+         CREATE TABLE daily_stats (
+             day TEXT NOT NULL, hardware TEXT NOT NULL, sensor TEXT NOT NULL,
+             load_cat TEXT NOT NULL, n INTEGER NOT NULL, min REAL NOT NULL,
+             median REAL NOT NULL, p95 REAL NOT NULL, max REAL NOT NULL, avg REAL NOT NULL,
+             PRIMARY KEY (day, hardware, sensor, load_cat)
+         ) WITHOUT ROWID;
+         INSERT INTO daily_stats VALUES ('2024-01-01', 'CPU', 'Package', 'idle', 288, 30.0, 99.0, 99.5, 100.0, 99.0);
+         PRAGMA user_version = 2;",
+    )
+    .unwrap();
+    seed(&conn, "2024-01-01T10:00:00", "idle", "Package", 40.0);
+}
+
+fn has_table(conn: &rusqlite::Connection, name: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [name],
+        |r| r.get::<_, i64>(0),
+    )
+    .unwrap()
+        == 1
+}
+
+#[test]
+fn a_v2_database_gains_the_extra_tables_and_keeps_everything_it_had() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("temperatures.db");
+    create_v2_db(&path);
+
+    let conn = db::init_db(&path).unwrap();
+
+    assert_eq!(user_version(&conn), 3);
+    assert!(has_table(&conn, "extra_readings") && has_table(&conn, "extra_daily"));
+    // Nothing that existed was touched: the raw data, and the aggregate NOT recomputed from it.
+    assert_eq!(db::get_overall_stats(&conn).unwrap().total_snapshots, 1);
+    assert_eq!(
+        stat(&conn, "2024-01-01", "Package", "idle").unwrap().median,
+        99.0,
+        "the v2 → v3 migration must not rewrite existing aggregates"
+    );
+    assert_eq!(stats_rows(&conn), 1);
+    // A consistent copy of the v2 database exists, with its data.
+    let backup = rusqlite::Connection::open(dir.path().join("temperatures.db.v2.bak")).unwrap();
+    let n: i64 = backup
+        .query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 1);
+}
+
+#[test]
+fn the_backup_of_a_v2_database_is_not_stopped_by_the_backup_of_a_v1_one() {
+    // The situation of a machine that went 1.x → 2.0 → 3: the first migration left a `.v1.bak`.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("temperatures.db");
+    let v1_backup = dir.path().join("temperatures.db.v1.bak");
+    std::fs::write(&v1_backup, b"the 1.x database").unwrap();
+    create_v2_db(&path);
+
+    drop(db::init_db(&path).unwrap());
+
+    assert!(
+        dir.path().join("temperatures.db.v2.bak").exists(),
+        "a v2 backup must exist even though a v1 one does"
+    );
+    assert_eq!(std::fs::read(&v1_backup).unwrap(), b"the 1.x database");
+}
+
+#[test]
+fn the_v3_migration_runs_only_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("temperatures.db");
+    create_v2_db(&path);
+    drop(db::init_db(&path).unwrap());
+    let backup = dir.path().join("temperatures.db.v2.bak");
+    std::fs::remove_file(&backup).unwrap();
+
+    // Opened again, a v3 database needs neither migration nor backup.
+    drop(db::init_db(&path).unwrap());
+    assert!(!backup.exists());
+}
+
+#[test]
+fn a_fresh_database_is_born_with_the_extra_tables() {
+    let conn = make_conn();
+    assert_eq!(user_version(&conn), 3);
+    assert!(has_table(&conn, "extra_readings") && has_table(&conn, "extra_daily"));
+}
+
+#[test]
+fn a_database_not_migrated_to_v3_yet_reads_as_having_no_extras() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("temperatures.db");
+    create_v2_db(&path);
+    // The dashboard opens read-only and never migrates: no extra tables is an empty answer.
+    let ro = db::open_read_only(&path).unwrap();
+    assert!(
+        db::get_extra_daily_stats_for_load(&ro, "idle", "2030-01-01")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+// ── Extras: stored, aggregated, purged ────────────────────────
+
+use crate::domain::model::{ExtraKind, ExtraReading};
+
+fn extra(sensor: &str, kind: ExtraKind, value: f64) -> ExtraReading {
+    ExtraReading {
+        hardware: "Board".into(),
+        sensor: sensor.into(),
+        kind,
+        value,
+    }
+}
+
+/// One snapshot with one extra reading.
+fn seed_extra(conn: &rusqlite::Connection, ts: &str, cat: &str, e: &ExtraReading) {
+    let id = db::insert_snapshot(conn, ts, Some(10.0), None, cat).unwrap();
+    db::insert_extra(conn, id, e).unwrap();
+}
+
+#[test]
+fn extras_are_aggregated_per_day_sensor_kind_and_load() {
+    let conn = make_conn();
+    for (i, rpm) in [1000.0, 1200.0, 1400.0].iter().enumerate() {
+        seed_extra(
+            &conn,
+            &format!("2024-01-01T10:0{i}:00"),
+            "idle",
+            &extra("CPU Fan", ExtraKind::Fan, *rpm),
+        );
+    }
+    // Same sensor name, another kind and another load: kept apart.
+    seed_extra(
+        &conn,
+        "2024-01-01T11:00:00",
+        "heavy",
+        &extra("CPU Fan", ExtraKind::Fan, 2500.0),
+    );
+    seed_extra(
+        &conn,
+        "2024-01-01T11:05:00",
+        "idle",
+        &extra("CPU Fan", ExtraKind::Power, 30.0),
+    );
+
+    db::rollup_since(&conn, "2024-01-01").unwrap();
+
+    let get = |kind: &str, cat: &str| -> (i64, f64, f64, f64) {
+        conn.query_row(
+            "SELECT n, min, median, max FROM extra_daily
+             WHERE day = '2024-01-01' AND sensor = 'CPU Fan' AND kind = ?1 AND load_cat = ?2",
+            [kind, cat],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap()
+    };
+    assert_eq!(get("fan", "idle"), (3, 1000.0, 1200.0, 1400.0));
+    assert_eq!(get("fan", "heavy"), (1, 2500.0, 2500.0, 2500.0));
+    assert_eq!(get("power", "idle"), (1, 30.0, 30.0, 30.0));
+}
+
+#[test]
+fn a_stopped_fan_is_aggregated_like_any_other_value() {
+    let conn = make_conn();
+    seed_extra(
+        &conn,
+        "2024-01-01T10:00:00",
+        "idle",
+        &extra("GPU Fan", ExtraKind::Fan, 0.0),
+    );
+    db::rollup_since(&conn, "2024-01-01").unwrap();
+    let median: f64 = conn
+        .query_row("SELECT median FROM extra_daily", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(median, 0.0);
+}
+
+#[test]
+fn the_purge_aggregates_the_extras_before_deleting_them() {
+    let conn = make_conn();
+    let old = clock::day_string(200);
+    seed_extra(
+        &conn,
+        &format!("{old}T10:00:00"),
+        "idle",
+        &extra("CPU Fan", ExtraKind::Fan, 1100.0),
+    );
+    seed_extra(
+        &conn,
+        &format!("{old}T10:05:00"),
+        "idle",
+        &extra("CPU Fan", ExtraKind::Fan, 1300.0),
+    );
+    let recent = clock::day_string(1);
+    seed_extra(
+        &conn,
+        &format!("{recent}T10:00:00"),
+        "idle",
+        &extra("CPU Fan", ExtraKind::Fan, 900.0),
+    );
+
+    let removed = db::purge_old_snapshots(&conn, 90).unwrap();
+    assert_eq!(removed, 2);
+
+    // The old raw extras are gone, the recent one stays…
+    let raw: i64 = conn
+        .query_row("SELECT COUNT(*) FROM extra_readings", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(raw, 1);
+    // …and the old days live on as an aggregate: nothing was lost.
+    let (n, median): (i64, f64) = conn
+        .query_row(
+            "SELECT n, median FROM extra_daily WHERE day = ?1",
+            [&old],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((n, median), (2, 1200.0));
+}
+
+#[test]
+fn the_extras_of_a_load_are_grouped_per_sensor_and_leave_out_the_current_day() {
+    let conn = make_conn();
+    for (day, rpm) in [
+        ("2024-01-01", 1000.0),
+        ("2024-01-02", 1100.0),
+        ("2024-01-03", 9999.0),
+    ] {
+        seed_extra(
+            &conn,
+            &format!("{day}T10:00:00"),
+            "idle",
+            &extra("CPU Fan", ExtraKind::Fan, rpm),
+        );
+    }
+    seed_extra(
+        &conn,
+        "2024-01-01T10:00:00",
+        "idle",
+        &extra("CPU Fan", ExtraKind::Power, 30.0),
+    );
+    db::rollup_since(&conn, "2024-01-01").unwrap();
+
+    let series = db::get_extra_daily_stats_for_load(&conn, "idle", "2024-01-03").unwrap();
+    assert_eq!(series.len(), 2, "the fan and the power are two series");
+    let fan = series.iter().find(|s| s.kind == ExtraKind::Fan).unwrap();
+    assert_eq!(
+        fan.stats.len(),
+        2,
+        "the day before `before_day` is the last one"
+    );
+    assert_eq!(fan.stats[1].median, 1100.0);
+    assert!(
+        db::get_extra_daily_stats_for_load(&conn, "heavy", "2030-01-01")
+            .unwrap()
+            .is_empty()
+    );
+}

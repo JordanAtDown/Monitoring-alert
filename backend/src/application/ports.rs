@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serde::Serialize;
 
-use crate::domain::model::{NewSnapshot, SnapshotData};
+use crate::domain::model::{ExtraKind, NewSnapshot, SnapshotData};
 use crate::domain::trends::DayStat;
 
 /// Where the temperatures come from (LibreHardwareMonitor today).
@@ -65,6 +65,16 @@ pub struct SeriesInfo {
     pub last_day: String,
 }
 
+/// The daily aggregates of one fan or one package power draw at one load category.
+#[derive(Debug)]
+pub struct ExtraSeries {
+    pub hardware: String,
+    pub sensor: String,
+    pub kind: ExtraKind,
+    /// Oldest first.
+    pub stats: Vec<DayStat>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LatestReading {
     pub hardware: String,
@@ -124,6 +134,14 @@ pub trait ReadModel {
         load_cat: &str,
         before_day: &str,
     ) -> Result<Vec<(String, String, Vec<DayStat>)>>;
+
+    /// Daily aggregates of every fan and package power draw at one load category, same day rule
+    /// as [`ReadModel::daily_stats`]. Empty until the first one has been recorded.
+    fn extra_daily_stats_for_load(
+        &self,
+        load_cat: &str,
+        before_day: &str,
+    ) -> Result<Vec<ExtraSeries>>;
 
     /// Size of the storage, in bytes.
     fn storage_bytes(&self) -> u64;

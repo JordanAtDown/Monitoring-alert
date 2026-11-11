@@ -7,7 +7,10 @@
 /// - GPU detected via "images_icon/nvidia.png" in ImageURL
 /// - CPU Total load = 1.1 %
 /// - GPU Core load  = 0.0 %
-use crate::adapters::lhm::{collect, extract_snapshot, is_gpu_node, parse_number, Node};
+use crate::adapters::lhm::{
+    collect, collect_extras, extract_snapshot, is_gpu_node, parse_number, Node,
+};
+use crate::domain::model::{ExtraKind, ExtraReading};
 
 // ── parse_number ──────────────────────────────────────────────────────────────
 
@@ -574,4 +577,169 @@ mod fake_lhm {
     fn store_conn(store: &SqliteStore) -> &rusqlite::Connection {
         store.connection()
     }
+}
+
+// ── Fan speeds and power draws ───────────────────────────────────────────────
+//
+// Sensor names and values are the ones the same machine publishes (read from its LibreHardwareMonitor
+// on 2026-11-11): the board's fans, the processor's package and per-core powers, the graphics card.
+
+fn sensor(kind: &str, name: &str, value: &str) -> Node {
+    Node {
+        text: name.to_string(),
+        value: value.to_string(),
+        image_url: String::new(),
+        sensor_type: kind.to_string(),
+        children: vec![],
+    }
+}
+
+fn extras_of(nodes: Vec<Node>) -> Vec<ExtraReading> {
+    let hardware = Node {
+        text: "Hardware".to_string(),
+        value: String::new(),
+        image_url: String::new(),
+        sensor_type: String::new(),
+        children: nodes,
+    };
+    let mut extras = vec![];
+    collect_extras(&hardware, "Hardware", &mut extras);
+    extras
+}
+
+fn named<'a>(extras: &'a [ExtraReading], sensor: &str) -> Option<&'a ExtraReading> {
+    extras.iter().find(|e| e.sensor == sensor)
+}
+
+#[test]
+fn fans_are_read_in_rpm() {
+    let extras = extras_of(vec![sensor("Fan", "CPU Fan", "1293 RPM")]);
+    assert_eq!(extras.len(), 1);
+    assert_eq!(extras[0].kind, ExtraKind::Fan);
+    assert_eq!(extras[0].value, 1293.0);
+    assert_eq!(extras[0].hardware, "Hardware");
+}
+
+#[test]
+fn a_stopped_fan_is_kept() {
+    // A graphics card's fans stop at rest: that is a measurement, not a missing one.
+    let extras = extras_of(vec![sensor("Fan", "GPU Fan", "0 RPM")]);
+    assert_eq!(named(&extras, "GPU Fan").map(|e| e.value), Some(0.0));
+}
+
+#[test]
+fn only_the_power_of_a_whole_package_is_kept() {
+    let extras = extras_of(vec![
+        sensor("Power", "Package", "36,2 W"),
+        sensor("Power", "Core #1 (SMU)", "0,1 W"),
+        sensor("Power", "Core #4 (SMU)", "1,2 W"),
+        sensor("Power", "GPU Package", "8,2 W"),
+    ]);
+    let names: Vec<&str> = extras.iter().map(|e| e.sensor.as_str()).collect();
+    assert_eq!(names, ["Package", "GPU Package"]);
+    assert_eq!(named(&extras, "Package").unwrap().value, 36.2);
+    assert!(extras.iter().all(|e| e.kind == ExtraKind::Power));
+}
+
+#[test]
+fn a_sensor_without_a_value_is_skipped() {
+    // The board's fan controls read "-": there is nothing to record.
+    let extras = extras_of(vec![
+        sensor("Control", "CPU Fan", "-"),
+        sensor("Fan", "System Fan #3", "- RPM"),
+    ]);
+    assert!(extras.is_empty());
+}
+
+#[test]
+fn types_that_are_not_fans_or_power_are_ignored() {
+    let extras = extras_of(vec![
+        sensor("Temperature", "Package", "49,0 °C"),
+        sensor("Load", "CPU Total", "5,0 %"),
+        sensor("Clock", "Core #1", "3 600 MHz"),
+        sensor("Control", "GPU Fan", "0,0 %"),
+    ]);
+    assert!(extras.is_empty());
+}
+
+#[test]
+fn absurd_values_are_rejected() {
+    let extras = extras_of(vec![
+        sensor("Fan", "CPU Fan", "65535 RPM"),
+        sensor("Power", "Package", "99999,0 W"),
+        sensor("Fan", "System Fan #1", "-5 RPM"),
+    ]);
+    assert!(extras.is_empty(), "{extras:?}");
+}
+
+#[test]
+fn nested_sensors_are_found_under_their_hardware() {
+    let group = Node {
+        text: "Fans".to_string(),
+        value: String::new(),
+        image_url: String::new(),
+        sensor_type: String::new(),
+        children: vec![sensor("Fan", "CPU Fan", "1100 RPM")],
+    };
+    let extras = extras_of(vec![group]);
+    assert_eq!(extras.len(), 1);
+    assert_eq!(
+        extras[0].hardware, "Hardware",
+        "named after the hardware, not its sensor group"
+    );
+}
+
+#[test]
+fn a_snapshot_carries_the_extras_beside_the_temperatures() {
+    let board = Node {
+        text: "Gigabyte B550I AORUS PRO AX".to_string(),
+        value: String::new(),
+        image_url: "images_icon/chip.png".to_string(),
+        sensor_type: String::new(),
+        children: vec![
+            sensor("Temperature", "System", "35,0 °C"),
+            sensor("Fan", "CPU Fan", "1293 RPM"),
+        ],
+    };
+    let cpu = Node {
+        text: "AMD Ryzen 7 5700X".to_string(),
+        value: String::new(),
+        image_url: "images_icon/cpu.png".to_string(),
+        sensor_type: String::new(),
+        children: vec![
+            sensor("Temperature", "Core (Tctl/Tdie)", "41,0 °C"),
+            sensor("Power", "Package", "36,2 W"),
+            sensor("Power", "Core #1 (SMU)", "0,1 W"),
+        ],
+    };
+    let computer = Node {
+        text: "PC".to_string(),
+        value: String::new(),
+        image_url: String::new(),
+        sensor_type: String::new(),
+        children: vec![board, cpu],
+    };
+    let root = Node {
+        text: "Sensor".to_string(),
+        value: String::new(),
+        image_url: String::new(),
+        sensor_type: String::new(),
+        children: vec![computer],
+    };
+
+    let snapshot = extract_snapshot(&root).unwrap();
+    assert_eq!(snapshot.temperatures.len(), 2);
+    let mut got: Vec<(&str, &str, f64)> = snapshot
+        .extras
+        .iter()
+        .map(|e| (e.hardware.as_str(), e.sensor.as_str(), e.value))
+        .collect();
+    got.sort_by(|a, b| a.0.cmp(b.0));
+    assert_eq!(
+        got,
+        [
+            ("AMD Ryzen 7 5700X", "Package", 36.2),
+            ("Gigabyte B550I AORUS PRO AX", "CPU Fan", 1293.0),
+        ]
+    );
 }
