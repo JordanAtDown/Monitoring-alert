@@ -9,13 +9,40 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::adapters::config::AppConfig;
+use crate::adapters::github::GithubReleases;
 use crate::adapters::http::{self, AppState};
 use crate::adapters::lhm::LhmSource;
 use crate::adapters::sqlite::{self, SqliteStore};
 use crate::application::monitor::{run_monitor, sleep_interruptible, MonitorSettings};
+use crate::application::ports::UpdateSource;
 use crate::application::ports::{ReadModel, TemperatureStore};
 use crate::application::queries::AppInfo;
 use crate::application::status::CollectorStatus;
+use crate::application::updates::{check_now, UpdateStatus};
+
+/// Where releases are published.
+const RELEASES_REPO: &str = "JordanAtDown/Monitoring-alert";
+/// Wait before the first check (the dashboard and the collector come first), then between checks.
+const FIRST_UPDATE_CHECK_DELAY_SECS: u64 = 30;
+const UPDATE_CHECK_EVERY_SECS: u64 = 24 * 3600;
+const UPDATE_RETRY_AFTER_FAILURE_SECS: u64 = 3600;
+
+/// Looks for a newer release once a day, until `stop` is set.
+pub fn run_update_checks(source: &dyn UpdateSource, status: &UpdateStatus, stop: &AtomicBool) {
+    if !status.enabled() || sleep_interruptible(FIRST_UPDATE_CHECK_DELAY_SECS, stop) {
+        return;
+    }
+    loop {
+        let wait = if check_now(source, status) {
+            UPDATE_CHECK_EVERY_SECS
+        } else {
+            UPDATE_RETRY_AFTER_FAILURE_SECS
+        };
+        if sleep_interruptible(wait, stop) {
+            return;
+        }
+    }
+}
 
 /// Delay before the collector is restarted after an unexpected failure.
 const COLLECTOR_RESTART_DELAY_SECS: u64 = 30;
@@ -102,13 +129,18 @@ pub fn run(cfg: &AppConfig, db_path: &Path, stop: Arc<AtomicBool>) -> Result<()>
     open_database_with_retries(db_path, DB_OPEN_ATTEMPTS, DB_OPEN_RETRY_SECS, &stop)?;
 
     let status = Arc::new(CollectorStatus::new(cfg.collect_interval_secs));
+    let version = env!("CARGO_PKG_VERSION");
+    let updates = Arc::new(UpdateStatus::new(version, cfg.check_updates));
+    let releases = GithubReleases::new(RELEASES_REPO, version);
     let path = db_path.to_path_buf();
     let state = Arc::new(AppState {
         open_read_model: Box::new(move || {
             Ok(Box::new(sqlite::open_read_model(&path)?) as Box<dyn ReadModel>)
         }),
         status: status.clone(),
+        updates: updates.clone(),
         info: AppInfo {
+            db_path: db_path.display().to_string(),
             lhm_host: cfg.lhm_host.clone(),
             lhm_port: cfg.lhm_port,
             raw_retention_days: cfg.raw_retention_days,
@@ -123,6 +155,7 @@ pub fn run(cfg: &AppConfig, db_path: &Path, stop: Arc<AtomicBool>) -> Result<()>
 
     std::thread::scope(|scope| {
         scope.spawn(|| supervise_collector(cfg, db_path, &status, &stop));
+        scope.spawn(|| run_update_checks(&releases, &updates, &stop));
         http::run(listener, state, stop.clone());
     });
     Ok(())

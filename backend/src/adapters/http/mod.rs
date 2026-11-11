@@ -2,6 +2,7 @@
 //!
 //! * `GET /api/status`  — collector health, database figures, latest readings
 //! * `GET /api/series`  — every (sensor, load category) with data
+//! * `GET /api/update`  — is a newer version available, and where to get it
 //! * `GET /api/trend?hardware=&sensor=&load=` — drift chart data of one sensor
 //! * `GET /api/summary?load=` — drift overview of all the sensors
 //!
@@ -18,6 +19,7 @@ use std::time::Duration;
 use crate::application::ports::ReadModel;
 use crate::application::queries::{self, AppInfo};
 use crate::application::status::CollectorStatus;
+use crate::application::updates::UpdateStatus;
 
 mod assets;
 
@@ -30,6 +32,7 @@ pub type ReadModelFactory = Box<dyn Fn() -> Result<Box<dyn ReadModel>> + Send + 
 pub struct AppState {
     pub open_read_model: ReadModelFactory,
     pub status: Arc<CollectorStatus>,
+    pub updates: Arc<UpdateStatus>,
     pub info: AppInfo,
     /// Accepted `Host` header names; `None` accepts any (when listening beyond loopback).
     pub allowed_hosts: Option<Vec<String>>,
@@ -158,6 +161,7 @@ pub fn route(state: &AppState, method: &str, url: &str, host: Option<&str>) -> R
     let result = match path {
         "/api/status" => api_status(state),
         "/api/series" => api_series(state),
+        "/api/update" => Ok(Reply::json(&queries::update(&state.updates))),
         "/api/trend" => api_trend(state, &params),
         "/api/summary" => api_summary(state, &params),
         p if p.starts_with("/api/") => Ok(Reply::error(404, "unknown endpoint")),

@@ -45,6 +45,12 @@ web_host = "127.0.0.1"
 # Défaut : 8787
 web_port = 8787
 
+# Chercher une nouvelle version une fois par jour sur GitHub. Le tableau de bord affiche alors un
+# bouton « Mise à jour disponible » avec la marche à suivre ; rien n'est téléchargé ni installé tout seul.
+# Seule une requête anonyme vers api.github.com est faite, sans aucune information sur votre machine.
+# Défaut : true
+# check_updates = false
+
 # Niveau de log : "error" | "warn" | "info" (défaut) | "debug" | "trace"
 # Passer à "debug" pour diagnostiquer un problème (collecte, capteurs, etc.)
 log_level = "info"

@@ -1,6 +1,7 @@
 // Domain
 mod load;
 mod trends;
+mod updates;
 
 // Application
 mod collect;

@@ -6,10 +6,13 @@ use serde::Serialize;
 use crate::application::clock::{day_string, now_string};
 use crate::application::ports::{LatestSnapshot, ReadModel, SeriesInfo};
 use crate::application::status::{CollectorStatus, StatusSnapshot};
+use crate::application::updates::{UpdateSnapshot, UpdateStatus};
 use crate::domain::trends::{self, SensorSummary, Trend};
 
 /// Static facts about the running instance.
 pub struct AppInfo {
+    /// Where the database is, as shown to the user.
+    pub db_path: String,
     pub lhm_host: String,
     pub lhm_port: u16,
     pub raw_retention_days: u32,
@@ -23,6 +26,9 @@ pub struct LhmInfo {
 
 #[derive(Serialize)]
 pub struct DbInfo {
+    pub path: String,
+    /// First day with daily aggregates: the history the trends are computed on.
+    pub history_since: Option<String>,
     pub size_bytes: u64,
     pub total_snapshots: i64,
     pub first_ts: Option<String>,
@@ -50,6 +56,7 @@ pub fn status(
     info: &AppInfo,
 ) -> Result<StatusResponse> {
     let stats = read.overall_stats()?;
+    let history_since = read.series()?.into_iter().map(|s| s.first_day).min();
     Ok(StatusResponse {
         version: env!("CARGO_PKG_VERSION"),
         now: now_string(),
@@ -59,6 +66,8 @@ pub fn status(
             port: info.lhm_port,
         },
         db: DbInfo {
+            path: info.db_path.clone(),
+            history_since,
             size_bytes: read.storage_bytes(),
             total_snapshots: stats.total_snapshots,
             first_ts: stats.first_ts,
@@ -67,6 +76,11 @@ pub fn status(
         },
         latest: read.latest_snapshot()?,
     })
+}
+
+/// What the dashboard shows about updates.
+pub fn update(status: &UpdateStatus) -> UpdateSnapshot {
+    status.snapshot()
 }
 
 pub fn series(read: &dyn ReadModel) -> Result<Vec<SeriesInfo>> {

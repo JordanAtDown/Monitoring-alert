@@ -4,6 +4,7 @@ use crate::application::clock;
 use crate::application::ports::ReadModel;
 use crate::application::queries::AppInfo;
 use crate::application::status::CollectorStatus;
+use crate::application::updates::UpdateStatus;
 use crate::tests::common::insert_daily_series;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -45,7 +46,9 @@ fn fixture() -> Fixture {
     let state = AppState {
         open_read_model: reader_for(path.clone()),
         status: Arc::new(CollectorStatus::new(300)),
+        updates: Arc::new(UpdateStatus::new("2.0.0", true)),
         info: AppInfo {
+            db_path: r"E:\monitoring.db\temperatures.db".into(),
             lhm_host: "127.0.0.1".into(),
             lhm_port: 8085,
             raw_retention_days: 90,
@@ -233,6 +236,45 @@ fn the_current_day_is_left_out_of_the_trends() {
         .unwrap()
         .iter()
         .all(|p| p["median"] == 35.0));
+}
+
+// ── /api/update, and the figures about the history ────────────
+
+#[test]
+fn update_reports_the_running_version_and_a_known_newer_one() {
+    let f = fixture();
+    let (code, v) = get(&f, "/api/update");
+    assert_eq!(code, 200);
+    assert_eq!(v["current"], "2.0.0");
+    assert_eq!(v["available"], false);
+
+    f.state
+        .updates
+        .record_release(crate::application::ports::ReleaseInfo {
+            version: "2.1.0".into(),
+            page_url: "https://github.com/x/y/releases/tag/v2.1.0".into(),
+            download_url: Some(
+                "https://github.com/x/y/releases/download/v2.1.0/monitoring_2.1.0.exe".into(),
+            ),
+            notes: None,
+            published_at: None,
+        });
+    let (_, v) = get(&f, "/api/update");
+    assert_eq!(v["available"], true);
+    assert_eq!(v["latest"]["version"], "2.1.0");
+    assert!(v["latest"]["download_url"]
+        .as_str()
+        .unwrap()
+        .ends_with("monitoring_2.1.0.exe"));
+}
+
+#[test]
+fn status_tells_where_the_database_is_and_since_when_the_history_goes() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/status");
+    assert_eq!(v["db"]["path"], r"E:\monitoring.db\temperatures.db");
+    // The oldest daily aggregate of the fixture: 365 days + 1 back.
+    assert_eq!(v["db"]["history_since"], clock::day_string(366));
 }
 
 // ── Safety nets ───────────────────────────────────────────────

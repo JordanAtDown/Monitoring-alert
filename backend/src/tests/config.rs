@@ -506,3 +506,26 @@ mod data_folder {
         assert_eq!(config_path_in(programs.path()), legacy.join("config.toml"));
     }
 }
+
+mod check_updates {
+    use crate::adapters::config::{migrate_config_file, AppConfig};
+    use std::fs;
+
+    #[test]
+    fn it_is_on_by_default_and_can_be_turned_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        assert!(AppConfig::load_from(&path).check_updates);
+        fs::write(&path, "check_updates = false\n").unwrap();
+        assert!(!AppConfig::load_from(&path).check_updates);
+    }
+
+    #[test]
+    fn the_choice_survives_the_migration_of_a_v1_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "reports_dir = \"x\"\ncheck_updates = false\n").unwrap();
+        migrate_config_file(&path).unwrap();
+        assert!(!AppConfig::load_from(&path).check_updates);
+    }
+}

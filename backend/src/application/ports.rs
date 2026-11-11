@@ -14,6 +14,25 @@ pub trait SensorSource: Send + Sync {
     fn describe(&self) -> String;
 }
 
+/// A published release of the application.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReleaseInfo {
+    /// `2.1.0` (without the `v` of the tag).
+    pub version: String,
+    /// The release page, where the notes are.
+    pub page_url: String,
+    /// The installer to download, when the release has one.
+    pub download_url: Option<String>,
+    /// Release notes, shortened.
+    pub notes: Option<String>,
+    pub published_at: Option<String>,
+}
+
+/// Where the latest published release can be found (GitHub Releases today).
+pub trait UpdateSource: Send + Sync {
+    fn latest_release(&self) -> Result<ReleaseInfo>;
+}
+
 /// Figures about the raw snapshots.
 #[derive(Debug, Clone)]
 pub struct OverallStats {

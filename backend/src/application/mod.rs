@@ -11,3 +11,4 @@ pub mod monitor;
 pub mod ports;
 pub mod queries;
 pub mod status;
+pub mod updates;

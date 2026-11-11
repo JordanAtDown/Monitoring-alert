@@ -24,6 +24,8 @@ pub struct AppConfig {
     pub web_host: String,
     /// Port the dashboard listens on (default 8787).
     pub web_port: u16,
+    /// Look once a day for a newer release on GitHub and tell the dashboard (default true).
+    pub check_updates: bool,
 }
 
 pub const DEFAULT_WEB_PORT: u16 = 8787;
@@ -66,6 +68,7 @@ pub(crate) struct RawConfig {
     pub lhm_port: Option<u16>,
     pub web_host: Option<String>,
     pub web_port: Option<u16>,
+    pub check_updates: Option<bool>,
 }
 
 impl AppConfig {
@@ -132,6 +135,7 @@ impl AppConfig {
             lhm_port: raw.lhm_port.unwrap_or(8085),
             web_host: raw.web_host.unwrap_or_else(|| "127.0.0.1".to_string()),
             web_port: raw.web_port.unwrap_or(DEFAULT_WEB_PORT),
+            check_updates: raw.check_updates.unwrap_or(true),
         }
     }
 }
@@ -178,6 +182,13 @@ fn string_line(key: &str, value: &Option<String>, example: &str, comment: &str) 
         )),
     }
     out
+}
+
+fn bool_line(key: &str, value: Option<bool>, default: bool, comment: &str) -> String {
+    match value {
+        Some(v) => format!("\n{comment}\n{key} = {v}\n"),
+        None => format!("\n{comment}\n# {key} = {default}\n"),
+    }
 }
 
 fn number_line<T: Copy + Into<i64>>(
@@ -250,6 +261,12 @@ pub(crate) fn render_config(raw: &RawConfig) -> String {
         raw.web_port.map(i64::from),
         i64::from(DEFAULT_WEB_PORT),
         "# Port du tableau de bord : http://127.0.0.1:8787/",
+    );
+    out += &bool_line(
+        "check_updates",
+        raw.check_updates,
+        true,
+        "# Chercher une nouvelle version une fois par jour sur GitHub (le tableau de bord l'indique ; rien n'est installé tout seul)",
     );
     out += &string_line(
         "log_level",
