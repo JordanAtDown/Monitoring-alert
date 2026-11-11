@@ -113,3 +113,61 @@ fn adapters_do_not_know_each_other_except_through_ports() {
         assert_none(layer, &[other], other);
     }
 }
+
+// ── One endpoint, one use case ────────────────────────────────────────────────
+
+fn endpoint_files() -> Vec<PathBuf> {
+    rust_files(&src("adapters/http/endpoints"))
+        .into_iter()
+        .filter(|f| f.file_name().is_some_and(|n| n != "mod.rs"))
+        .collect()
+}
+
+#[test]
+fn each_endpoint_lives_in_its_own_file_and_calls_exactly_one_use_case() {
+    let files = endpoint_files();
+    assert!(
+        files.len() >= 9,
+        "the endpoints are split into one file each"
+    );
+    for file in files {
+        let text = fs::read_to_string(&file).unwrap();
+        let calls = text.matches("::execute(").count();
+        assert_eq!(
+            calls,
+            1,
+            "{} must call exactly one use case (`usecases::…::execute`)",
+            file.display()
+        );
+        assert!(
+            !text.contains("crate::domain::trends") && !text.contains("crate::adapters::sqlite"),
+            "{} does the work of its use case",
+            file.display()
+        );
+    }
+}
+
+#[test]
+fn every_api_route_is_served_by_an_endpoint_file() {
+    let router = fs::read_to_string(src("adapters/http/mod.rs")).unwrap();
+    let routes = router.matches("=> endpoints::").count();
+    assert_eq!(
+        routes,
+        endpoint_files().len(),
+        "one route per endpoint file"
+    );
+}
+
+#[test]
+fn use_cases_are_called_from_the_endpoints_only() {
+    for layer in ["adapters", "daemon"] {
+        for (file, n, line) in code_lines(layer) {
+            let in_endpoints = file.to_string_lossy().contains("http/endpoints");
+            assert!(
+                in_endpoints || !line.contains("application::usecases"),
+                "{}:{n}: only the endpoints call the use cases",
+                file.display()
+            );
+        }
+    }
+}

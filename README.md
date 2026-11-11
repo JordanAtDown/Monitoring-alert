@@ -232,13 +232,18 @@ tools/      release.sh
 ### Architecture du backend (hexagonale simplifiée)
 
 ```
-domain/       code pur, sans E/S : modèle, catégories de charge, calcul de dérive (trends)
-application/  cas d'usage + ports (traits) : collecte, boucle, requêtes du tableau de bord, installation
-adapters/     le technique : sqlite, lhm (HTTP), http (serveur web), config, logging, windows, pe, deploy
+domain/       code pur, sans E/S : modèle, calcul de dérive, composants du PC, vocabulaire, pages du tableau de bord
+application/  cas d'usage (usecases/ : un fichier par action, `get_overview`, `get_sensor`…) + ports (traits) : collecte, boucle, installation
+adapters/     le technique : sqlite, lhm (HTTP), http (serveur web, un fichier par endpoint), config, logging, windows, pe, deploy
 daemon.rs     racine de composition : branche les adapters sur les cas d'usage
 ```
 
 Les dépendances ne vont que vers l'intérieur (adapters → application → domain) ; `tests/architecture.rs` le vérifie.
+
+Une requête suit toujours le même chemin : **un endpoint** (`adapters/http/endpoints/sensor.rs`) lit la requête et appelle
+**un cas d'usage** (`application/usecases/get_sensor.rs`), qui lit ce qu'il lui faut par les ports et appelle **le code
+métier** (`domain/dashboard/sensor.rs`). Le backend décide (regroupement, verdicts, phrases, nombres écrits en français),
+le frontend affiche.
 
 ### Commandes
 

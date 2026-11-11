@@ -1,13 +1,12 @@
 //! The page of one sensor, ready to display: what its numbers mean in a sentence, its curve, its
 //! figures month by month.
 
-use anyhow::Result;
 use serde::Serialize;
 
-use crate::application::curves::{CurvePoint, Reference};
-use crate::application::overview::{context, load_choice};
-use crate::application::ports::ReadModel;
 use crate::domain::components::{components, sensor_name};
+use crate::domain::dashboard::curves::{CurvePoint, Reference};
+use crate::domain::dashboard::overview::load_choice;
+use crate::domain::dashboard::Facts;
 use crate::domain::trends::{self, MIN_SPAN_DAYS};
 use crate::domain::wording::{self, verdict_of, Verdict};
 
@@ -119,23 +118,18 @@ fn story(t: &trends::Trend) -> Vec<Line> {
     lines
 }
 
-pub fn sensor_page(
-    read: &dyn ReadModel,
-    hardware: &str,
-    sensor: &str,
-    load: &str,
-) -> Result<SensorPage> {
-    let ctx = context(read, load)?;
-    let stats = ctx
+pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorPage {
+    let stats = facts
         .groups
         .iter()
         .find(|(h, s, _)| h == hardware && s == sensor)
         .map_or(&[][..], |(_, _, d)| d.as_slice());
     let trend = trends::compute_trend(stats);
 
-    let mut all = ctx.seen.clone();
+    let mut all = facts.seen.clone();
     all.extend(
-        ctx.summaries
+        facts
+            .summaries
             .iter()
             .map(|s| (s.hardware.clone(), s.sensor.clone())),
     );
@@ -194,7 +188,7 @@ pub fn sensor_page(
             legend.push("tirets = niveau du début");
         }
     }
-    Ok(SensorPage {
+    SensorPage {
         name,
         subtitle: subtitle.join(" · "),
         slot: found.map(|(i, _)| i),
@@ -223,5 +217,5 @@ pub fn sensor_page(
             })
             .collect(),
         technical,
-    })
+    }
 }

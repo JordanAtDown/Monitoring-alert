@@ -21,6 +21,10 @@ use serde::Serialize;
 /// Load categories, from the lightest to the heaviest.
 pub const LOAD_CATEGORIES: [&str; 4] = ["idle", "light", "moderate", "heavy"];
 
+pub fn is_load_category(load: &str) -> bool {
+    LOAD_CATEGORIES.contains(&load)
+}
+
 /// Minimum readings (≈ 30 min at 5 min intervals) for a day to be taken into account.
 pub const MIN_DAY_SAMPLES: i64 = 6;
 /// Number of days of data the baseline is computed on.

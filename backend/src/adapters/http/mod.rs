@@ -20,13 +20,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::application::curves::Mode;
+use crate::application::app_info::AppInfo;
 use crate::application::ports::ReadModel;
-use crate::application::queries::{self, AppInfo};
 use crate::application::status::CollectorStatus;
 use crate::application::updates::UpdateStatus;
+use crate::domain::trends;
 
 mod assets;
+mod endpoints;
 
 /// Number of threads answering requests.
 const WORKERS: usize = 2;
@@ -166,15 +167,15 @@ pub fn route(state: &AppState, method: &str, url: &str, host: Option<&str>) -> R
     let params = parse_query(query);
 
     let result = match path {
-        "/api/status" => api_status(state),
-        "/api/series" => api_series(state),
-        "/api/health" => api_health(state),
-        "/api/update" => Ok(Reply::json(&queries::update(&state.updates))),
-        "/api/trend" => api_trend(state, &params),
-        "/api/summary" => api_summary(state, &params),
-        "/api/overview" => api_overview(state, &params),
-        "/api/curves" => api_curves(state, &params),
-        "/api/sensor" => api_sensor(state, &params),
+        "/api/status" => endpoints::status::handle(state),
+        "/api/series" => endpoints::series::handle(state),
+        "/api/health" => endpoints::health::handle(state),
+        "/api/update" => endpoints::update::handle(state),
+        "/api/trend" => endpoints::trend::handle(state, &params),
+        "/api/summary" => endpoints::summary::handle(state, &params),
+        "/api/overview" => endpoints::overview::handle(state, &params),
+        "/api/curves" => endpoints::curves::handle(state, &params),
+        "/api/sensor" => endpoints::sensor::handle(state, &params),
         p if p.starts_with("/api/") => Ok(Reply::error(404, "unknown endpoint")),
         p => Ok(static_file(p)),
     };
@@ -201,7 +202,7 @@ fn static_file(path: &str) -> Reply {
 
 fn load_param(params: &[(String, String)]) -> std::result::Result<&str, Reply> {
     let load = param(params, "load").unwrap_or("idle");
-    if queries::is_load_category(load) {
+    if trends::is_load_category(load) {
         Ok(load)
     } else {
         Err(Reply::error(
@@ -209,100 +210,6 @@ fn load_param(params: &[(String, String)]) -> std::result::Result<&str, Reply> {
             "load must be idle, light, moderate or heavy",
         ))
     }
-}
-
-// ──────────────────────────────────────────────────────────────
-// Endpoints: parse the request, run a use case, serialize the answer
-// ──────────────────────────────────────────────────────────────
-
-fn api_status(state: &AppState) -> Result<Reply> {
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::status(
-        read.as_ref(),
-        &state.status,
-        &state.info,
-    )?))
-}
-
-fn api_health(state: &AppState) -> Result<Reply> {
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::health(
-        read.as_ref(),
-        &state.status,
-        &state.updates,
-        (state.autostart)(),
-    )?))
-}
-
-fn api_series(state: &AppState) -> Result<Reply> {
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::series(read.as_ref())?))
-}
-
-fn api_trend(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
-    let (Some(hardware), Some(sensor)) = (param(params, "hardware"), param(params, "sensor"))
-    else {
-        return Ok(Reply::error(400, "hardware and sensor are required"));
-    };
-    let load = match load_param(params) {
-        Ok(load) => load,
-        Err(reply) => return Ok(reply),
-    };
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::trend(
-        read.as_ref(),
-        hardware,
-        sensor,
-        load,
-    )?))
-}
-
-fn api_summary(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
-    let load = match load_param(params) {
-        Ok(load) => load,
-        Err(reply) => return Ok(reply),
-    };
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::summary(read.as_ref(), load)?))
-}
-
-fn api_overview(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
-    let load = match load_param(params) {
-        Ok(load) => load,
-        Err(reply) => return Ok(reply),
-    };
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::overview(read.as_ref(), load)?))
-}
-
-fn api_curves(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
-    let load = match load_param(params) {
-        Ok(load) => load,
-        Err(reply) => return Ok(reply),
-    };
-    let Some(mode) = Mode::parse(param(params, "mode").unwrap_or("temp")) else {
-        return Ok(Reply::error(400, "mode must be temp or delta"));
-    };
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::curves(read.as_ref(), load, mode)?))
-}
-
-fn api_sensor(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
-    let (Some(hardware), Some(sensor)) = (param(params, "hardware"), param(params, "sensor"))
-    else {
-        return Ok(Reply::error(400, "hardware and sensor are required"));
-    };
-    let load = match load_param(params) {
-        Ok(load) => load,
-        Err(reply) => return Ok(reply),
-    };
-    let read = (state.open_read_model)()?;
-    Ok(Reply::json(&queries::sensor(
-        read.as_ref(),
-        hardware,
-        sensor,
-        load,
-    )?))
 }
 
 // ──────────────────────────────────────────────────────────────

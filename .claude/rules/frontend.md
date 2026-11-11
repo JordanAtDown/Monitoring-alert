@@ -12,7 +12,7 @@ paths:
   `favicon.svg`) : `backend/build.rs` les embarque par nom. Ne pas ajouter d'autre fichier à embarquer
   sans modifier `build.rs` et `adapters/http/assets.rs`. Le serveur les envoie en `no-store`.
 - `npm run build` (typecheck + build) doit passer ; `npm run dev` proxifie `/api` vers `127.0.0.1:8787`.
-- Types de l'API dans `src/api.ts` : ils reflètent le JSON de `backend/src/application/queries.rs`. Les
+- Types de l'API dans `src/api.ts` : ils reflètent le JSON de `backend/src/application/usecases/` et `backend/src/domain/dashboard/`. Les
   changer ensemble.
 
 ## Organisation

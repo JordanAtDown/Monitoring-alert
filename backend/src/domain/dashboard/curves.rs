@@ -1,13 +1,12 @@
 //! The "Courbes" page, ready to display: one line per component, in temperatures or as the change
 //! since the beginning, plus the same figures month by month.
 
-use anyhow::Result;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-use crate::application::overview::{components_with_data, context, Context};
-use crate::application::ports::ReadModel;
 use crate::domain::components::sensor_name;
+use crate::domain::dashboard::overview::components_with_data;
+use crate::domain::dashboard::Facts;
 use crate::domain::trends::{self, Month};
 use crate::domain::wording;
 
@@ -101,9 +100,8 @@ fn month_table(per_series: &[Vec<Month>], delta: &[Option<f64>]) -> Vec<MonthRow
         .collect()
 }
 
-pub fn curves(read: &dyn ReadModel, load: &str, mode: Mode) -> Result<Curves> {
-    let ctx: Context = context(read, load)?;
-    let stats: BTreeMap<(&str, &str), _> = ctx
+pub fn build(facts: &Facts, mode: Mode) -> Curves {
+    let stats: BTreeMap<(&str, &str), _> = facts
         .groups
         .iter()
         .map(|(h, s, d)| ((h.as_str(), s.as_str()), d))
@@ -112,7 +110,7 @@ pub fn curves(read: &dyn ReadModel, load: &str, mode: Mode) -> Result<Curves> {
     let mut series = Vec::new();
     let mut months = Vec::new();
     let mut baselines = Vec::new();
-    for (slot, c, rows) in components_with_data(&ctx.seen, &ctx.summaries) {
+    for (slot, c, rows) in components_with_data(&facts.seen, &facts.summaries) {
         let summary = rows[0];
         let trend = trends::compute_trend(
             stats
@@ -175,7 +173,7 @@ pub fn curves(read: &dyn ReadModel, load: &str, mode: Mode) -> Result<Curves> {
         baselines.push(base);
     }
 
-    Ok(Curves {
+    Curves {
         mode: if mode == Mode::Delta { "delta" } else { "temp" },
         hint: match mode {
             Mode::Temp => "Température habituelle de chaque composant.".into(),
@@ -183,5 +181,5 @@ pub fn curves(read: &dyn ReadModel, load: &str, mode: Mode) -> Result<Curves> {
         },
         months: month_table(&months, &baselines),
         series,
-    })
+    }
 }

@@ -19,7 +19,7 @@ Fichier : `backend/src/adapters/sqlite/mod.rs` (`SCHEMA_VERSION`, `init_db`, `mi
    données ; ne jamais écraser une sauvegarde existante. Adapter le suffixe (`.vN.bak`) pour une nouvelle version.
 5. Ne jamais supprimer de données brutes sans les avoir agrégées dans la même transaction (comme la purge).
 6. Si la forme des données lues par le tableau de bord change : `application/ports.rs` (`ReadModel`),
-   `application/queries.rs`, `frontend/src/api.ts` ensemble.
+   `application/usecases/`, `domain/dashboard/`, `frontend/src/api.ts` ensemble.
 7. **Tests** dans `backend/src/tests/sqlite.rs` : créer une base de la version précédente **à la main** (comme
    `create_v1_db`), l'ouvrir avec `init_db`, vérifier le contenu migré, la sauvegarde, que la migration ne
    se rejoue pas, et qu'une base neuve n'a pas besoin de sauvegarde.

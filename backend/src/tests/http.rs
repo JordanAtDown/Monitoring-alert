@@ -1,8 +1,8 @@
 use crate::adapters::http::{self as server, route, AppState};
 use crate::adapters::sqlite::{self as db, open_read_model};
+use crate::application::app_info::AppInfo;
 use crate::application::clock;
 use crate::application::ports::ReadModel;
-use crate::application::queries::AppInfo;
 use crate::application::status::CollectorStatus;
 use crate::application::updates::UpdateStatus;
 use crate::tests::common::insert_daily_series;

@@ -8,9 +8,12 @@ paths:
 ## Architecture hexagonale simplifiée
 
 ```
-domain/       pur : modèle, catégories de charge, calcul de dérive (trends), composants du PC (components), vocabulaire (wording). Aucune E/S.
-application/  cas d'usage + ports (traits dans ports.rs) : collect, monitor, queries, overview, install, status, clock
-adapters/     technique : sqlite, lhm (HTTP), http (serveur + assets), config, logging, windows, pe, deploy
+domain/       pur : modèle, catégories de charge, calcul de dérive (trends), composants du PC (components),
+              vocabulaire (wording), pages du tableau de bord (dashboard/). Aucune E/S.
+application/  cas d'usage + ports (traits dans ports.rs) : usecases/ (un fichier par action), collect, monitor,
+              install, status, clock
+adapters/     technique : sqlite, lhm (HTTP), http (serveur, assets, endpoints/ : un fichier par endpoint), config,
+              logging, windows, pe, deploy
 daemon.rs     racine de composition : branche les adapters sur les cas d'usage
 ```
 
@@ -21,7 +24,10 @@ daemon.rs     racine de composition : branche les adapters sur les cas d'usage
 - Un nouveau besoin vers l'extérieur = un **port** (trait) dans `application/ports.rs`, implémenté dans
   `adapters/`, avec un faux dans les tests. Pas de trait « au cas où » : il en faut une vraie raison
   (second implémenteur, ou test sans E/S).
-- Le serveur HTTP ne fait que parser la requête, appeler un cas d'usage et sérialiser la réponse.
+- **Un endpoint = un fichier = un cas d'usage.** `adapters/http/endpoints/<nom>.rs` lit la requête, appelle un seul
+  `usecases::<action>::execute` (nommé par ce qu'il fait : `get_sensor`, `list_series`…) et sérialise. Le cas d'usage
+  lit par les ports puis appelle le code métier du domaine. Seuls les endpoints appellent les cas d'usage ;
+  `tests/architecture.rs` le vérifie. Ajouter une route = un endpoint + un cas d'usage + (si besoin) du code de domaine.
 - **Le backend décide, le frontend affiche** : regroupement par composant, verdicts, phrases, nombres mis en forme
   (`42,3 °C`), tout vient de l'API (`/api/overview`…). Le frontend n'a ni seuil ni vocabulaire métier.
 - L'heure et la date passent par `application/clock.rs`.

@@ -13,10 +13,10 @@ use crate::adapters::github::GithubReleases;
 use crate::adapters::http::{self, AppState};
 use crate::adapters::lhm::LhmSource;
 use crate::adapters::sqlite::{self, SqliteStore};
+use crate::application::app_info::AppInfo;
 use crate::application::monitor::{run_monitor, sleep_interruptible, MonitorSettings};
 use crate::application::ports::UpdateSource;
 use crate::application::ports::{ReadModel, TemperatureStore};
-use crate::application::queries::AppInfo;
 use crate::application::status::CollectorStatus;
 use crate::application::updates::{check_now, UpdateStatus};
 
