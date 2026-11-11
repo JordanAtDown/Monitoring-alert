@@ -12,7 +12,9 @@ description: Faire un commit de ce projet — format Conventional Commits, atomi
 3. **Documentation** (voir `.claude/rules/docs.md`) : un `feat` ou `fix` visible met à jour README /
    `scripts/config.toml` / CHANGELOG dans le même commit, ou dans un commit `docs` immédiatement après.
 4. **Ajouter les fichiers explicitement** (`git add <chemins>`) — jamais un `git add -A` à l'aveugle quand le
-   dossier contient des fichiers non liés (`frontend/node_modules`, `dist`, sorties de test…).
+   dossier contient des fichiers non liés (`frontend/node_modules`, `dist`, sorties de test…). Le hook
+   `pre-commit` ne re-stage que les fichiers **déjà indexés** qu'il a reformatés : un fichier modifié mais
+   non indexé reste hors du commit. Vérifier `git show --stat HEAD` après le commit.
 5. **Message** :
 
 ```

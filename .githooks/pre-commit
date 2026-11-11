@@ -19,9 +19,13 @@ CARGO_ARGS="--manifest-path ${CARGO_MANIFEST}"
 
 # ─── 1. Format (auto-fix + re-stage) ────────────────────────────────────────
 info "Formatting code (cargo fmt)..."
+# Only the files that are already staged may be re-staged after formatting: a bare
+# `git diff --name-only | git add` would sweep unrelated work into the commit.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
 cargo fmt ${CARGO_ARGS}
-# Re-stage any files that cargo fmt just modified
-git diff --name-only | xargs -r git add
+if [ -n "$staged" ]; then
+    echo "$staged" | xargs -r git add --
+fi
 success "Formatting OK"
 
 # ─── 2. Clippy (deny warnings) ───────────────────────────────────────────────
