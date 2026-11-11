@@ -1,6 +1,6 @@
 // Small pieces shared by several pages. They only lay out what the backend wrote.
 
-import type { Overview, Verdict } from "./api";
+import type { Cause, Overview, Verdict } from "./api";
 import { h, svg } from "./dom";
 import type { Actions } from "./state";
 
@@ -9,6 +9,17 @@ export function verdictChip(v: Verdict): HTMLElement {
   const chip = h("span", { class: `chip chip-${v.id}` }, v.label);
   if (v.detail) chip.append(h("span", { class: "chip-delta" }, v.detail));
   return chip;
+}
+
+/**
+ * What a change is put down to. Left out when nothing moved: the verdict already says "Stable".
+ * The wording is the backend's; the page only decides it deserves a line of its own.
+ */
+export function causeNote(cause: Cause | null): HTMLElement | null {
+  if (!cause || cause.id === "nothing") return null;
+  const note = h("span", { class: `comp-cause cause-${cause.id}` }, cause.label);
+  if (cause.detail) note.append(h("span", { class: "cause-detail" }, cause.detail));
+  return note;
 }
 
 /** The little curve takes the color of the trend: warm when it rose, cool when it fell, gray otherwise. */

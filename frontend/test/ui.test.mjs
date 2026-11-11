@@ -111,12 +111,37 @@ test("the page prints what the backend says, word for word", async () => {
 test("the home page gives the answer in a few words and counts the components", async () => {
   const page = await openPage();
   const verdict = page.text("#verdict")[0];
-  assert.match(verdict, /Depuis le 8 avril 2026 \(environ 7 mois de suivi\), quand le PC est au repos :/);
-  assert.match(verdict, /3composants plus chauds qu'au début/);
-  assert.match(verdict, /3composants stables/);
-  assert.match(verdict, /1composant plus froid qu'au début/);
-  assert.match(verdict, /Le changement le plus marqué : Carte graphique \(−2,6 °C\)/);
+  assert.match(verdict, /Depuis le \d+ \w+ \d{4} \(environ .+ de suivi\), quand le PC est au repos :/);
+  // Every component is counted once, under one word or another: the figures of the recording
+  // day do not matter, that they add up does.
+  const tiles = [...verdict.matchAll(/(\d+)composants? (?:plus chauds? qu'au début|stables?|plus froids? qu'au début|sans assez de recul)/g)];
+  assert.ok(tiles.length >= 3, verdict);
+  assert.equal(
+    tiles.reduce((n, m) => n + Number(m[1]), 0),
+    page.text(".comp-title").length,
+  );
   assert.deepEqual(page.errors, []);
+  page.close();
+});
+
+test("the home page says whether the room or one component is to blame", async () => {
+  const page = await openPage();
+  // The recorded backend weighs each component against the drift of the whole machine.
+  assert.match(page.text("#verdict")[0], /que le reste de la machine \(qui a bougé de [+−]\d+,\d °C\)/);
+  page.close();
+});
+
+test("a component that moved more than the rest of the machine says so on its card", async () => {
+  const overview = fixture("overview-idle.json");
+  overview.components[0].cause = { id: "alone", label: "Un mot du backend", detail: "9,9 °C de plus que le reste" };
+  overview.components[1].cause = { id: "nothing", label: "Rien n'a bougé", detail: null };
+  overview.components[2].cause = { id: "machine", label: "Comme toute la machine", detail: "+2,0 °C" };
+  const page = await openPage({ overview });
+  const cards = [...page.d.querySelectorAll(".comp-card")];
+  assert.match(cards[0].textContent, /Un mot du backend9,9 °C de plus que le reste/);
+  assert.ok(cards[0].querySelector(".cause-alone"), "the one that stands out is set apart");
+  assert.equal(cards[1].querySelector(".comp-cause"), null, "nothing moved: no line of its own");
+  assert.match(cards[2].textContent, /Comme toute la machine\+2,0 °C/);
   page.close();
 });
 
@@ -131,12 +156,19 @@ test("each part of the PC has its own card: the case and the motherboard apart, 
 });
 
 test("the little curves take the color of the trend, and the word stays next to them", async () => {
-  const page = await openPage();
-  const stroke = (title) => [...page.d.querySelectorAll(".comp-card")].find((c) => c.querySelector(".comp-title").textContent === title).querySelector("polyline").getAttribute("stroke");
-  assert.equal(stroke("Boîtier"), "var(--diverge-warm)");
-  assert.equal(stroke("Carte graphique"), "var(--diverge-cool)");
-  assert.equal(stroke("Processeur"), "var(--ink-muted)");
-  assert.match(page.text(".comp-card")[3], /Boîtier.*Plus chaud/);
+  const colors = { warmer: "var(--diverge-warm)", cooler: "var(--diverge-cool)", stable: "var(--ink-muted)", unknown: "var(--ink-muted)" };
+  const ids = Object.keys(colors);
+  const overview = fixture("overview-idle.json");
+  // The verdicts are driven here: the color must follow the word, whichever component carries it.
+  ids.forEach((id, i) => {
+    overview.components[i].main = { ...overview.components[i].main, verdict: { id, label: `Mot ${i}`, detail: null } };
+  });
+  const page = await openPage({ overview });
+  const cards = [...page.d.querySelectorAll(".comp-card")];
+  ids.forEach((id, i) => {
+    assert.equal(cards[i].querySelector("polyline").getAttribute("stroke"), colors[id], id);
+    assert.match(cards[i].textContent, new RegExp(`Mot ${i}`), "the word stays next to the curve");
+  });
   page.close();
 });
 
@@ -281,7 +313,8 @@ test("a sensor opens in place with its story, its curve and its figures", async 
   assert.ok(page.requests.some((r) => r.startsWith("/api/sensor?") && r.includes("CT500P310SSD8")));
   assert.match(page.text(".detail .story")[0], /^Au début \(du .* au .*\), sa température habituelle était de \d+,\d °C\. Ces 30 derniers jours : \d+,\d °C, soit .*de plus qu'au début\.$/);
   assert.equal(page.d.querySelectorAll(".detail .story strong").length, 2, "the figures are in bold");
-  assert.match(page.text(".detail .advice")[0], /poussière.*pâte thermique.*ventilateur/);
+  // The advice weighs the sensor against the rest of the machine before naming a cause.
+  assert.match(page.text(".detail .advice")[0], /reste de la machine/);
   assert.match(page.text(".detail .muted")[0], /^Disque 1 · CT500P310SSD8 · au repos/);
   assert.equal(labels(page).split("|").length, 2, "one line plus the beginning");
   assert.match(page.text(".detail details")[1], /Pente générale/);

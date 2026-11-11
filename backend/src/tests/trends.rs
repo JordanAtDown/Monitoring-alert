@@ -169,6 +169,29 @@ fn summary_exposes_current_value_delta_and_a_bounded_sparkline() {
 }
 
 #[test]
+fn the_common_drift_is_the_median_of_the_drifts_given() {
+    assert_eq!(trends::common_drift(&[1.0, 5.0, 3.0]), Some(3.0));
+    // A single component drifting far does not drag the machine with it.
+    assert_eq!(trends::common_drift(&[0.5, 0.5, 0.5, 0.5, 9.0]), Some(0.5));
+}
+
+#[test]
+fn the_common_drift_needs_at_least_three_components() {
+    assert_eq!(trends::common_drift(&[]), None);
+    assert_eq!(trends::common_drift(&[2.0]), None);
+    assert_eq!(trends::common_drift(&[2.0, 4.0]), None);
+    assert!(trends::common_drift(&[2.0, 4.0, 6.0]).is_some());
+}
+
+#[test]
+fn a_drift_is_only_given_with_enough_history_behind_it() {
+    let young = trends::summarize("hw", "s", "idle", &series(20, |_| 40.0));
+    assert!(young.delta.is_none() && young.drift().is_none());
+    let old = trends::summarize("hw", "s", "idle", &series(200, |i| 40.0 + 0.05 * i as f64));
+    assert_eq!(old.drift(), old.delta);
+}
+
+#[test]
 fn summaries_are_sorted_by_drift_then_unknowns_by_name() {
     let mk = |sensor: &str, f: fn(i64) -> f64, days: i64| {
         trends::summarize("CPU", sensor, "idle", &series(days, f))

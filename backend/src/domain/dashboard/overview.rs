@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use crate::domain::components::{self, sensor_name, Component, Kind};
 use crate::domain::dashboard::Facts;
 use crate::domain::trends::{SensorSummary, MIN_SPAN_DAYS};
-use crate::domain::wording::{self, plural, verdict_of, Verdict, STABLE_BAND};
+use crate::domain::wording::{self, cause_of, plural, verdict_of, Cause, Verdict, STABLE_BAND};
 
 /// "Plus chaud +4,7 °C", "Pas assez de recul (12 j de mesures)".
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +45,32 @@ pub struct SensorView {
     pub sparkline: Vec<f64>,
 }
 
+/// Whether a component moved on its own or with the whole machine.
+#[derive(Debug, Clone, Serialize)]
+pub struct CauseView {
+    pub id: Cause,
+    pub label: &'static str,
+    /// "4,1 °C de plus que le reste de la machine".
+    pub detail: Option<String>,
+}
+
+fn cause_view(delta: f64, excess: f64) -> CauseView {
+    let id = cause_of(delta, excess);
+    CauseView {
+        id,
+        label: id.label(excess),
+        detail: match id {
+            Cause::Alone => Some(format!(
+                "{} de {} que le reste de la machine",
+                wording::temp(excess.abs()),
+                if excess >= 0.0 { "plus" } else { "moins" }
+            )),
+            Cause::Machine => Some(wording::signed(delta)),
+            Cause::Nothing => None,
+        },
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct ComponentView {
     pub key: String,
@@ -57,6 +83,11 @@ pub struct ComponentView {
     pub main: SensorView,
     /// All its sensors, `main` first.
     pub sensors: Vec<SensorView>,
+    /// How much more it drifted than the machine as a whole; `None` without a machine-wide
+    /// drift to compare it with.
+    pub excess: Option<f64>,
+    /// What that excess means, in words.
+    pub cause: Option<CauseView>,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,6 +217,7 @@ fn headline(
     components: &[ComponentView],
     mains: &[&SensorSummary],
     since: Option<&str>,
+    machine: Option<f64>,
 ) -> Headline {
     let when = wording::load_words(load).map_or("", |l| l.when);
     if mains.is_empty() {
@@ -264,47 +296,80 @@ fn headline(
     })
     .collect();
 
-    // The component whose main sensor changed the most.
-    let top = components
-        .iter()
-        .filter(|c| c.main.verdict.id != Verdict::Unknown)
-        .filter_map(|c| {
-            let d = mains
-                .iter()
-                .find(|m| m.hardware == c.main.hardware && m.sensor == c.main.sensor)?
-                .delta?;
-            Some((c, d))
-        })
-        .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()));
-    let detail = top.map(|(c, d)| {
-        let first = if d.abs() < STABLE_BAND {
-            "Aucun composant n'a vraiment changé de température.".to_string()
-        } else {
-            format!(
-                "Le changement le plus marqué : {} ({}).",
-                c.title,
-                wording::signed(d)
-            )
-        };
-        let second = if d.abs() < 3.0 {
-            "Les écarts restent faibles (moins de 3 °C)."
-        } else {
-            "Une saison chaude peut expliquer une partie de l'écart."
-        };
-        format!("{first} {second}")
-    });
     Headline {
         state: "ok",
         lead,
-        detail,
+        detail: diagnosis(machine, components, mains),
         tiles,
     }
+}
+
+/// What the figures say, in one or two sentences. Comparing each component with the drift of the
+/// whole machine is what separates "the room is warmer" from "this part is in trouble" — the one
+/// question the figures can actually answer, and the one worth acting on.
+fn diagnosis(
+    machine: Option<f64>,
+    components: &[ComponentView],
+    mains: &[&SensorSummary],
+) -> Option<String> {
+    let drift_of = |c: &ComponentView| {
+        mains
+            .iter()
+            .find(|m| m.hardware == c.main.hardware && m.sensor == c.main.sensor)?
+            .drift()
+    };
+    let Some(machine) = machine else {
+        // Too few components with enough history to tell the room from a component.
+        let (c, d) = components
+            .iter()
+            .filter_map(|c| Some((c, drift_of(c)?)))
+            .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))?;
+        return Some(if d.abs() < STABLE_BAND {
+            "Aucun composant n'a vraiment changé de température.".to_string()
+        } else {
+            format!(
+                "Le changement le plus marqué : {} ({}). Trop peu de composants ont assez de recul pour dire si cela vient de la pièce ou du composant.",
+                c.title,
+                wording::signed(d)
+            )
+        });
+    };
+    // The one that warmed up the most on its own comes first: it is the only thing here that
+    // can be acted upon. A component that cools down relative to the others is only reported
+    // when nothing warmed up, so that good news never hides the finding that matters.
+    let excesses = || {
+        components
+            .iter()
+            .filter_map(|c| Some((c, drift_of(c)? - machine)))
+    };
+    let warmest = excesses().max_by(|a, b| a.1.total_cmp(&b.1));
+    let coolest = excesses().min_by(|a, b| a.1.total_cmp(&b.1));
+    Some(match (warmest, coolest) {
+        (Some((c, excess)), _) if excess >= STABLE_BAND => format!(
+            "Un composant se détache : {}, {} de plus que le reste de la machine (qui a bougé de {}). Un composant qui chauffe seul, c'est de la poussière, de la pâte thermique ou un ventilateur : c'est là qu'il faut regarder.",
+            c.title,
+            wording::temp(excess),
+            wording::signed(machine)
+        ),
+        (_, Some((c, excess))) if excess <= -STABLE_BAND => format!(
+            "Aucun composant ne chauffe plus que les autres. Un seul se détache, {}, et c'est dans le bon sens : {} de moins que le reste de la machine (qui a bougé de {}).",
+            c.title,
+            wording::temp(excess.abs()),
+            wording::signed(machine)
+        ),
+        _ if machine.abs() >= STABLE_BAND => format!(
+            "Tous les composants ont bougé ensemble ({}) et aucun ne se détache : c'est très probablement la température de la pièce, pas votre PC.",
+            wording::signed(machine)
+        ),
+        _ => "Aucun composant n'a vraiment changé de température, ni seul ni avec les autres.".to_string(),
+    })
 }
 
 /// The home page at one load level.
 pub fn build(facts: &Facts, load: &str) -> Overview {
     let summaries = &facts.summaries;
     let since = facts.since.clone();
+    let machine = facts.machine_drift();
 
     let components: Vec<ComponentView> = components_with_data(&facts.seen, summaries)
         .into_iter()
@@ -312,6 +377,14 @@ pub fn build(facts: &Facts, load: &str) -> Overview {
             let sensors: Vec<SensorView> = rows.iter().map(|s| sensor_view(s, c.kind)).collect();
             // `components_with_data` puts the sensor that stands for the component first.
             let main = sensors[0].clone();
+            let excess = match (rows[0].drift(), machine) {
+                (Some(d), Some(m)) => Some(d - m),
+                _ => None,
+            };
+            let cause = match (rows[0].drift(), excess) {
+                (Some(d), Some(e)) => Some(cause_view(d, e)),
+                _ => None,
+            };
             ComponentView {
                 key: c.key.clone(),
                 kind: c.kind,
@@ -320,6 +393,8 @@ pub fn build(facts: &Facts, load: &str) -> Overview {
                 slot,
                 main,
                 sensors,
+                excess,
+                cause,
             }
         })
         .collect();
@@ -333,7 +408,7 @@ pub fn build(facts: &Facts, load: &str) -> Overview {
         .collect();
     Overview {
         load: load_choice(load),
-        headline: headline(load, &components, &mains, since.as_deref()),
+        headline: headline(load, &components, &mains, since.as_deref(), machine),
         components,
     }
 }

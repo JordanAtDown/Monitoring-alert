@@ -1,1 +1,369 @@
-{"name":"Température du disque","subtitle":"Disque 1 · CT500P310SSD8 · au repos · capteur « Composite Temperature »","slot":4,"story":[{"kind":"story","spans":[{"text":"Au début (du 9 avril 2026 au 21 mai 2026), sa température habituelle était de ","strong":false},{"text":"40,0 °C","strong":true},{"text":". Ces 30 derniers jours : ","strong":false},{"text":"42,0 °C","strong":true},{"text":", soit 2,0 °C de plus qu'au début.","strong":false}]},{"kind":"advice","spans":[{"text":"Si d'autres composants ont aussi chauffé, la chaleur de la saison peut l'expliquer. Si seul celui-ci chauffe, pensez à la poussière, à la pâte thermique ou à un ventilateur.","strong":false}]}],"rolling":[{"day":"2026-04-19","value":39.0},{"day":"2026-04-24","value":39.0},{"day":"2026-04-25","value":39.5},{"day":"2026-04-26","value":40.0},{"day":"2026-04-27","value":40.0},{"day":"2026-04-28","value":40.0},{"day":"2026-05-01","value":40.0},{"day":"2026-05-02","value":40.0},{"day":"2026-05-03","value":40.0},{"day":"2026-05-04","value":40.0},{"day":"2026-05-05","value":40.0},{"day":"2026-05-06","value":40.0},{"day":"2026-05-08","value":40.0},{"day":"2026-05-09","value":40.0},{"day":"2026-05-10","value":40.0},{"day":"2026-05-11","value":40.0},{"day":"2026-05-14","value":40.0},{"day":"2026-05-18","value":41.0},{"day":"2026-05-19","value":41.0},{"day":"2026-05-20","value":41.0},{"day":"2026-05-21","value":41.0},{"day":"2026-05-22","value":41.0},{"day":"2026-05-24","value":41.0},{"day":"2026-05-25","value":41.0},{"day":"2026-05-27","value":41.0},{"day":"2026-05-31","value":41.0},{"day":"2026-06-08","value":41.0},{"day":"2026-06-09","value":42.0},{"day":"2026-06-10","value":42.0},{"day":"2026-06-15","value":42.0},{"day":"2026-10-02","value":45.5},{"day":"2026-10-03","value":45.0},{"day":"2026-10-04","value":45.0},{"day":"2026-10-05","value":45.0},{"day":"2026-10-06","value":45.0},{"day":"2026-10-07","value":45.0},{"day":"2026-10-08","value":45.0},{"day":"2026-10-09","value":45.0},{"day":"2026-10-10","value":44.75},{"day":"2026-10-11","value":44.5},{"day":"2026-10-13","value":44.25},{"day":"2026-10-17","value":44.0},{"day":"2026-10-18","value":44.0},{"day":"2026-10-19","value":44.0},{"day":"2026-10-20","value":44.0},{"day":"2026-10-21","value":44.0},{"day":"2026-10-22","value":44.0},{"day":"2026-10-23","value":44.0},{"day":"2026-10-24","value":44.0},{"day":"2026-10-25","value":44.0},{"day":"2026-10-26","value":44.0},{"day":"2026-10-27","value":43.5},{"day":"2026-10-28","value":43.0},{"day":"2026-10-29","value":43.0},{"day":"2026-10-30","value":43.0},{"day":"2026-10-31","value":43.0},{"day":"2026-11-01","value":43.0},{"day":"2026-11-02","value":43.0},{"day":"2026-11-03","value":43.0},{"day":"2026-11-05","value":43.0},{"day":"2026-11-07","value":42.0},{"day":"2026-11-08","value":42.0},{"day":"2026-11-09","value":42.0},{"day":"2026-11-10","value":42.0}],"reference":{"value":40.0,"label":"Au début : 40,0 °C"},"legend":["ligne pleine = température habituelle sur 30 jours","tirets = niveau du début"],"months":[{"label":"avril 2026","days":15,"usual":"40,0 °C","lowest":"27,0 °C","highest":"47,0 °C"},{"label":"mai 2026","days":20,"usual":"41,0 °C","lowest":"28,0 °C","highest":"49,0 °C"},{"label":"juin 2026","days":7,"usual":"47,0 °C","lowest":"29,0 °C","highest":"55,0 °C"},{"label":"septembre 2026","days":8,"usual":"45,5 °C","lowest":"32,0 °C","highest":"52,0 °C"},{"label":"octobre 2026","days":27,"usual":"43,0 °C","lowest":"27,0 °C","highest":"51,0 °C"},{"label":"novembre 2026","days":8,"usual":"40,0 °C","lowest":"27,0 °C","highest":"44,0 °C"}],"technical":[{"label":"Pente générale","text":"+0,4 °C par mois (droite des moindres carrés sur toutes les journées)"},{"label":"Jours avec mesures","text":"85 sur 216 jours de suivi"},{"label":"Niveau du début","text":"médiane des 30 premiers jours avec mesures"},{"label":"Température récente","text":"médiane des 30 derniers jours calendaires"}]}
+{
+  "name": "Température du disque",
+  "subtitle": "Disque 1 · CT500P310SSD8 · au repos · capteur « Composite Temperature »",
+  "slot": 4,
+  "story": [
+    {
+      "kind": "story",
+      "spans": [
+        {
+          "text": "Au début (du 9 avril 2026 au 21 mai 2026), sa température habituelle était de ",
+          "strong": false
+        },
+        {
+          "text": "40,0 °C",
+          "strong": true
+        },
+        {
+          "text": ". Ces 30 derniers jours : ",
+          "strong": false
+        },
+        {
+          "text": "42,0 °C",
+          "strong": true
+        },
+        {
+          "text": ", soit 2,0 °C de plus qu'au début.",
+          "strong": false
+        }
+      ]
+    },
+    {
+      "kind": "advice",
+      "spans": [
+        {
+          "text": "Le reste de la machine a bougé de +1,0 °C. L'écart de ce capteur est trop proche du bruit de mesure pour en conclure quelque chose.",
+          "strong": false
+        }
+      ]
+    }
+  ],
+  "rolling": [
+    {
+      "day": "2026-04-19",
+      "value": 39.0
+    },
+    {
+      "day": "2026-04-24",
+      "value": 39.0
+    },
+    {
+      "day": "2026-04-25",
+      "value": 39.5
+    },
+    {
+      "day": "2026-04-26",
+      "value": 40.0
+    },
+    {
+      "day": "2026-04-27",
+      "value": 40.0
+    },
+    {
+      "day": "2026-04-28",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-01",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-02",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-03",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-04",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-05",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-06",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-08",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-09",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-10",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-11",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-14",
+      "value": 40.0
+    },
+    {
+      "day": "2026-05-18",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-19",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-20",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-21",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-22",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-24",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-25",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-27",
+      "value": 41.0
+    },
+    {
+      "day": "2026-05-31",
+      "value": 41.0
+    },
+    {
+      "day": "2026-06-08",
+      "value": 41.0
+    },
+    {
+      "day": "2026-06-09",
+      "value": 42.0
+    },
+    {
+      "day": "2026-06-10",
+      "value": 42.0
+    },
+    {
+      "day": "2026-06-15",
+      "value": 42.0
+    },
+    {
+      "day": "2026-10-02",
+      "value": 45.5
+    },
+    {
+      "day": "2026-10-03",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-04",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-05",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-06",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-07",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-08",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-09",
+      "value": 45.0
+    },
+    {
+      "day": "2026-10-10",
+      "value": 44.75
+    },
+    {
+      "day": "2026-10-11",
+      "value": 44.5
+    },
+    {
+      "day": "2026-10-13",
+      "value": 44.25
+    },
+    {
+      "day": "2026-10-17",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-18",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-19",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-20",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-21",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-22",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-23",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-24",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-25",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-26",
+      "value": 44.0
+    },
+    {
+      "day": "2026-10-27",
+      "value": 43.5
+    },
+    {
+      "day": "2026-10-28",
+      "value": 43.0
+    },
+    {
+      "day": "2026-10-29",
+      "value": 43.0
+    },
+    {
+      "day": "2026-10-30",
+      "value": 43.0
+    },
+    {
+      "day": "2026-10-31",
+      "value": 43.0
+    },
+    {
+      "day": "2026-11-01",
+      "value": 43.0
+    },
+    {
+      "day": "2026-11-02",
+      "value": 43.0
+    },
+    {
+      "day": "2026-11-03",
+      "value": 43.0
+    },
+    {
+      "day": "2026-11-05",
+      "value": 43.0
+    },
+    {
+      "day": "2026-11-07",
+      "value": 42.0
+    },
+    {
+      "day": "2026-11-08",
+      "value": 42.0
+    },
+    {
+      "day": "2026-11-09",
+      "value": 42.0
+    },
+    {
+      "day": "2026-11-10",
+      "value": 42.0
+    }
+  ],
+  "reference": {
+    "value": 40.0,
+    "label": "Au début : 40,0 °C"
+  },
+  "legend": [
+    "ligne pleine = température habituelle sur 30 jours",
+    "tirets = niveau du début"
+  ],
+  "months": [
+    {
+      "label": "avril 2026",
+      "days": 15,
+      "usual": "40,0 °C",
+      "lowest": "27,0 °C",
+      "highest": "47,0 °C"
+    },
+    {
+      "label": "mai 2026",
+      "days": 20,
+      "usual": "41,0 °C",
+      "lowest": "28,0 °C",
+      "highest": "49,0 °C"
+    },
+    {
+      "label": "juin 2026",
+      "days": 7,
+      "usual": "47,0 °C",
+      "lowest": "29,0 °C",
+      "highest": "55,0 °C"
+    },
+    {
+      "label": "septembre 2026",
+      "days": 8,
+      "usual": "45,5 °C",
+      "lowest": "32,0 °C",
+      "highest": "52,0 °C"
+    },
+    {
+      "label": "octobre 2026",
+      "days": 27,
+      "usual": "43,0 °C",
+      "lowest": "27,0 °C",
+      "highest": "51,0 °C"
+    },
+    {
+      "label": "novembre 2026",
+      "days": 8,
+      "usual": "40,0 °C",
+      "lowest": "27,0 °C",
+      "highest": "44,0 °C"
+    }
+  ],
+  "technical": [
+    {
+      "label": "Pente générale",
+      "text": "+0,4 °C par mois (droite des moindres carrés sur toutes les journées)"
+    },
+    {
+      "label": "Jours avec mesures",
+      "text": "85 sur 216 jours de suivi"
+    },
+    {
+      "label": "Niveau du début",
+      "text": "médiane des 30 premiers jours avec mesures"
+    },
+    {
+      "label": "Température récente",
+      "text": "médiane des 30 derniers jours calendaires"
+    }
+  ]
+}

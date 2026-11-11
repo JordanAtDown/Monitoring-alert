@@ -1,5 +1,6 @@
 // Domain
 mod components;
+mod dashboard;
 mod health;
 mod load;
 mod trends;

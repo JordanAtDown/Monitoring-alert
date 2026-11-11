@@ -7,7 +7,7 @@ pub mod data;
 pub mod overview;
 pub mod sensor;
 
-use crate::domain::trends::{DayStat, SensorSummary};
+use crate::domain::trends::{self, DayStat, SensorSummary};
 
 /// What every page starts from: the daily figures of every sensor at one load level.
 pub struct Facts {
@@ -19,4 +19,17 @@ pub struct Facts {
     pub seen: Vec<(String, String)>,
     /// First day with daily aggregates.
     pub since: Option<String>,
+}
+
+impl Facts {
+    /// The drift shared by the whole machine: the median of the drifts of the sensors that
+    /// stand for each component. One voice per component, so a processor with twelve core
+    /// sensors does not outweigh a disk that has one.
+    pub fn machine_drift(&self) -> Option<f64> {
+        let deltas: Vec<f64> = overview::components_with_data(&self.seen, &self.summaries)
+            .into_iter()
+            .filter_map(|(_, _, rows)| rows.first().and_then(|s| s.drift()))
+            .collect();
+        trends::common_drift(&deltas)
+    }
 }

@@ -113,6 +113,9 @@ Quatre pages, dans le menu en haut :
   premiers jours de suivi), *ces 30 derniers jours*, l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) et une
   mini-courbe colorée selon la tendance. « Stable » veut dire moins de 1,5 °C d'écart : la plupart des capteurs ne mesurent
   qu'au degré près. Toucher une carte ouvre sa courbe.
+  Chaque composant est aussi comparé **au reste de la machine** : la carte dit *Comme toute la machine* (il a suivi le
+  mouvement général, donc la pièce) ou *Plus que le reste* avec l'écart en degrés (il chauffe seul, donc lui). La phrase
+  du haut nomme le composant qui se détache, ou conclut que tout a bougé ensemble.
 - **Courbes** : tous les composants sur un même graphique, chacun avec sa couleur ; une case par composant pour le
   masquer et mieux voir les autres. Au choix : les températures, ou l'écart depuis le début. Mois alternés en fond pour
   repérer la saisonnalité, vue « chiffres, mois par mois ».
@@ -132,8 +135,12 @@ En haut à droite, un bouton **Mise à jour disponible** quand une nouvelle vers
 Tant qu'il y a moins de **60 jours** de suivi (et 40 jours avec mesures), aucun changement n'est annoncé : la page dit
 combien il en faut. Une installation qui vient de la 1.x reprend tout son historique et n'attend pas.
 
-> **Limite connue** : il n'y a pas de capteur de température ambiante. Une saison chaude peut faire monter légèrement
-> presque tous les composants. Un composant qui chauffe **seul** est plus parlant que tous à la fois.
+> **Limite connue** : il n'y a pas de capteur de température ambiante. Une saison chaude fait monter légèrement presque
+> tous les composants. C'est pourquoi le tableau de bord ne regarde pas seulement l'écart d'un composant, mais son
+> **excès** sur la dérive commune à toute la machine (voir « Comment la dérive est calculée ») : tout monter ensemble,
+> c'est la pièce ; un seul composant qui se détache, c'est lui. Cette comparaison remplace le capteur ambiant qui
+> manque, elle ne l'égale pas : si la machine entière chauffe parce qu'elle est pleine de poussière, la dérive commune
+> monte aussi et aucun composant ne se détachera.
 
 Le serveur n'écoute que sur **cette machine** et ne fait que lire. `web_host = "0.0.0.0"` l'ouvre
 au réseau local, **sans authentification** : à ne faire que sur un réseau de confiance.
@@ -189,6 +196,15 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
    des 30 derniers jours calendaires (≥ 10 jours dans la fenêtre).
 5. **Écart** = médiane glissante actuelle − référence. **Pente** = droite des moindres carrés sur toutes les
    médianes quotidiennes, en °C/mois.
+6. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui
+   représente le composant, pour qu'un processeur à douze cœurs ne pèse pas plus qu'un disque). L'**excès**
+   d'un composant = son écart − cette dérive commune.
+
+C'est l'excès qui répond à la question utile, faute de capteur de température ambiante : quand tout monte
+ensemble, chaque excès est proche de zéro et c'est la pièce qui a chauffé ; quand un seul composant a un excès
+marqué, il chauffe pour une raison qui lui est propre — poussière, pâte thermique ou ventilateur. Il faut au
+moins **3 composants** avec assez de recul pour que cette comparaison ait un sens ; en dessous, le tableau de
+bord le dit au lieu de conclure.
 
 Rien ne déclenche d'alerte : ce sont des chiffres à regarder.
 

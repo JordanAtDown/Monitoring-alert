@@ -8,7 +8,7 @@ use crate::domain::dashboard::curves::{CurvePoint, Reference};
 use crate::domain::dashboard::overview::load_choice;
 use crate::domain::dashboard::Facts;
 use crate::domain::trends::{self, MIN_SPAN_DAYS};
-use crate::domain::wording::{self, verdict_of, Verdict};
+use crate::domain::wording::{self, verdict_of, Verdict, STABLE_BAND};
 
 /// A piece of a sentence; the figures are in bold.
 #[derive(Debug, Serialize)]
@@ -62,7 +62,33 @@ fn span(text: impl Into<String>, strong: bool) -> Span {
     }
 }
 
-fn story(t: &trends::Trend) -> Vec<Line> {
+/// Why it got warmer. The drift of the whole machine is what tells the room from the component
+/// itself: everything moved together, or this one moved on its own.
+fn warmer_advice(delta: f64, machine: Option<f64>) -> String {
+    let Some(machine) = machine else {
+        return "Si d'autres composants ont aussi chauffé, la chaleur de la saison peut l'expliquer. Si seul celui-ci chauffe, pensez à la poussière, à la pâte thermique ou à un ventilateur.".to_string();
+    };
+    let excess = delta - machine;
+    if excess >= STABLE_BAND {
+        format!(
+            "C'est {} de plus que le reste de la machine, qui a bougé de {}. Ce capteur chauffe donc pour une raison qui lui est propre : poussière, pâte thermique ou ventilateur.",
+            wording::temp(excess),
+            wording::signed(machine)
+        )
+    } else if machine >= STABLE_BAND {
+        format!(
+            "Le reste de la machine a chauffé autant ({}) : c'est très probablement la température de la pièce, pas ce composant.",
+            wording::signed(machine)
+        )
+    } else {
+        format!(
+            "Le reste de la machine a bougé de {}. L'écart de ce capteur est trop proche du bruit de mesure pour en conclure quelque chose.",
+            wording::signed(machine)
+        )
+    }
+}
+
+fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
     let plain = |text: String| Line {
         kind: "story",
         spans: vec![span(text, false)],
@@ -109,10 +135,7 @@ fn story(t: &trends::Trend) -> Vec<Line> {
     if verdict == Verdict::Warmer {
         lines.push(Line {
             kind: "advice",
-            spans: vec![span(
-                "Si d'autres composants ont aussi chauffé, la chaleur de la saison peut l'expliquer. Si seul celui-ci chauffe, pensez à la poussière, à la pâte thermique ou à un ventilateur.",
-                false,
-            )],
+            spans: vec![span(warmer_advice(delta, machine), false)],
         });
     }
     lines
@@ -192,7 +215,7 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
         name,
         subtitle: subtitle.join(" · "),
         slot: found.map(|(i, _)| i),
-        story: story(&trend),
+        story: story(&trend, facts.machine_drift()),
         rolling: trend
             .rolling
             .iter()

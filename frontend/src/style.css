@@ -196,6 +196,11 @@ th[scope="row"] { font-weight: 500; }
 .table-wrap tbody tr[tabindex]:hover { background: var(--ghost); }
 .table-wrap tbody tr[aria-expanded="true"] { background: var(--selected); }
 .caption-sub { font-weight: 400; color: var(--ink-secondary); }
+/* What a change is put down to: the room, or this component on its own. Ink tokens only —
+   the color of a series never carries meaning in text. */
+.comp-cause { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 400; color: var(--ink-secondary); }
+.cause-alone { font-weight: 600; color: var(--ink); }
+.cause-detail { font-variant-numeric: tabular-nums; color: var(--ink-muted); }
 .table-wrap tbody tr.detail-row { cursor: default; }
 .table-wrap tbody tr.detail-row:hover { background: transparent; }
 .detail-row > td { padding: 6px 4px 18px; }

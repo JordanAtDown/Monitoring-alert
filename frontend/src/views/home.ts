@@ -2,7 +2,7 @@
 
 import { clear, h } from "../dom";
 import { hashFor, state, type Actions } from "../state";
-import { loadFilter, sparkline, verdictChip } from "../widgets";
+import { causeNote, loadFilter, sparkline, verdictChip } from "../widgets";
 
 function summaryCard(actions: Actions): HTMLElement {
   const o = state.overview;
@@ -44,6 +44,7 @@ function componentsGrid(): HTMLElement {
           h("span", { class: "figure" }, h("span", { class: "figure-label" }, "Ces 30 derniers jours"), h("span", { class: "figure-value" }, m.current ?? "—")),
           h("span", { class: "spark" }, sparkline(m.sparkline, m.verdict.id)),
         ),
+        causeNote(c.cause),
       ),
     );
   }
@@ -63,7 +64,7 @@ function helpBlock(): HTMLElement {
       h("li", {}, h("strong", {}, "Au début"), " est la température habituelle du composant pendant ses 30 premiers jours de suivi. ", h("strong", {}, "Ces 30 derniers jours"), " est sa température habituelle récemment."),
       h("li", {}, "« Stable » veut dire que la différence est faible : la plupart des capteurs ne mesurent qu'au degré près."),
       h("li", {}, "On compare toujours des situations identiques (« Le PC est… ») : la température au repos avec celle au repos, pas avec celle d'un jeu."),
-      h("li", {}, "Une saison chaude fait monter légèrement presque tous les composants. Un composant qui chauffe seul, lui, mérite qu'on y regarde de plus près."),
+      h("li", {}, "Une saison chaude fait monter légèrement presque tous les composants : la page compare donc chaque composant au reste de la machine, et dit lequel a bougé ", h("strong", {}, "plus que les autres"), " — c'est celui-là qui mérite qu'on y regarde de plus près."),
     ),
   );
 }

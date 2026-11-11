@@ -35,6 +35,43 @@ impl Verdict {
     }
 }
 
+/// What a change is put down to, once the drift shared by the whole machine is taken out.
+/// This is the difference between "it is warmer in here" and "this part is in trouble".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Cause {
+    /// It moved, but no more than everything else: the room, not the machine.
+    Machine,
+    /// It moved clearly more than the rest of the machine.
+    Alone,
+    /// Nothing moved, here or elsewhere.
+    Nothing,
+}
+
+impl Cause {
+    /// `excess` only gives the direction: a component can stand out by cooling down too.
+    pub fn label(self, excess: f64) -> &'static str {
+        match self {
+            Cause::Alone if excess < 0.0 => "Plus froid que le reste",
+            Cause::Alone => "Plus chaud que le reste",
+            Cause::Machine => "Comme toute la machine",
+            Cause::Nothing => "Rien n'a bougé",
+        }
+    }
+}
+
+/// Puts a change down to the machine or to the component itself. `delta` is its own change,
+/// `excess` how much more it changed than the machine as a whole.
+pub fn cause_of(delta: f64, excess: f64) -> Cause {
+    if excess.abs() >= STABLE_BAND {
+        Cause::Alone
+    } else if delta.abs() >= STABLE_BAND {
+        Cause::Machine
+    } else {
+        Cause::Nothing
+    }
+}
+
 /// A load level, in words.
 pub struct LoadWords {
     pub id: &'static str,

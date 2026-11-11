@@ -35,6 +35,9 @@ pub const ROLLING_WINDOW_DAYS: i64 = 30;
 pub const ROLLING_MIN_POINTS: usize = 10;
 /// Minimum time span (first to last day) before a drift is reported.
 pub const MIN_SPAN_DAYS: i64 = 60;
+/// Minimum series with a known drift before a machine-wide drift is computed: the median of
+/// one or two of them would say nothing about the machine as a whole.
+pub const MIN_COMMON_SERIES: usize = 3;
 /// Days per month used to express the slope.
 const DAYS_PER_MONTH: f64 = 30.4375;
 /// Maximum number of points of the sparkline given for each sensor.
@@ -110,6 +113,13 @@ pub struct SensorSummary {
     pub slope_per_month: Option<f64>,
     /// Rolling median, down-sampled for a small inline chart.
     pub sparkline: Vec<f64>,
+}
+
+impl SensorSummary {
+    /// Its drift, only when there is enough history to stand behind it.
+    pub fn drift(&self) -> Option<f64> {
+        self.delta.filter(|_| self.sufficient)
+    }
 }
 
 fn median_of(values: &mut [f64]) -> f64 {
@@ -261,6 +271,19 @@ pub fn summarize(hardware: &str, sensor: &str, load_cat: &str, stats: &[DayStat]
         slope_per_month: trend.slope_per_month,
         sparkline: downsample(&rolling),
     }
+}
+
+/// The drift the whole machine shares, as the median of the drifts it is given (one per
+/// component). The room warming up moves every sensor at once, so this common movement is
+/// what has to be taken out before a single component can be blamed.
+///
+/// `None` while fewer than [`MIN_COMMON_SERIES`] drifts are known.
+pub fn common_drift(deltas: &[f64]) -> Option<f64> {
+    if deltas.len() < MIN_COMMON_SERIES {
+        return None;
+    }
+    let mut values = deltas.to_vec();
+    Some(median_of(&mut values))
 }
 
 /// Orders an overview: series with a known drift first (largest first), then the others by name.

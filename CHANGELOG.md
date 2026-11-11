@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **La saison ou le composant : le tableau de bord tranche.** Chaque composant est comparé à la **dérive commune à
+  toute la machine** (médiane des écarts, une voix par composant) ; son *excès* sur cette dérive est ce qui distingue
+  une pièce qui a chauffé (tout monte ensemble) d'un composant qui chauffe seul — poussière, pâte thermique ou
+  ventilateur. L'accueil nomme le composant qui se détache (« Un composant se détache : Processeur, 5,9 °C de plus que
+  le reste de la machine ») ou conclut à la température de la pièce ; chaque carte porte le mot correspondant
+  (*Comme toute la machine* / *Plus que le reste*), et la page d'un capteur explique son écart au regard du reste de la
+  machine au lieu de laisser le choix ouvert. En dessous de 3 composants avec assez de recul, la comparaison n'est pas
+  faite et la page le dit.
 - **Supervision dans le tableau de bord** (`/api/health`) : la page vérifie que tout fonctionne et le dit en clair — relevé
   des températures (LibreHardwareMonitor injoignable, silence de plus de 3 intervalles, aucune température), capteurs qui
   ne répondent plus (nommés), base de données (taille, dernière écriture), résumés quotidiens (dernière réussite ou erreur),

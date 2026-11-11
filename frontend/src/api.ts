@@ -96,6 +96,13 @@ export interface SensorView {
   sparkline: number[];
 }
 
+/** Whether a component moved on its own or with the whole machine: the room, or this part. */
+export interface Cause {
+  id: "machine" | "alone" | "nothing";
+  label: string;
+  detail: string | null;
+}
+
 export interface ComponentView {
   key: string;
   kind: string;
@@ -105,6 +112,9 @@ export interface ComponentView {
   slot: number;
   main: SensorView;
   sensors: SensorView[];
+  /** How much more it drifted than the machine as a whole. */
+  excess: number | null;
+  cause: Cause | null;
 }
 
 export interface Overview {
