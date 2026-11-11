@@ -85,6 +85,9 @@ pub struct Trend {
     pub delta: Option<f64>,
     /// Least-squares slope of the daily medians, °C per month.
     pub slope_per_month: Option<f64>,
+    /// Value of that least-squares line on the first day with data, so a chart can
+    /// draw it: `fit_start + slope_per_month / 30.4375 * days_since_first_day`.
+    pub fit_start: Option<f64>,
 }
 
 /// One row of the all-sensors overview.
@@ -115,8 +118,9 @@ fn median_of(values: &mut [f64]) -> f64 {
     }
 }
 
-/// Least-squares slope (y per x unit); `None` when it is undefined.
-fn least_squares_slope(xy: &[(f64, f64)]) -> Option<f64> {
+/// Least-squares line through the points: `(slope, value at x = 0)`;
+/// `None` when it is undefined.
+fn least_squares_fit(xy: &[(f64, f64)]) -> Option<(f64, f64)> {
     if xy.len() < 2 {
         return None;
     }
@@ -128,7 +132,8 @@ fn least_squares_slope(xy: &[(f64, f64)]) -> Option<f64> {
         return None;
     }
     let cov: f64 = xy.iter().map(|p| (p.0 - mean_x) * (p.1 - mean_y)).sum();
-    Some(cov / var_x)
+    let slope = cov / var_x;
+    Some((slope, mean_y - slope * mean_x))
 }
 
 fn rolling_median(points: &[DayStat]) -> Vec<(NaiveDate, f64)> {
@@ -172,6 +177,7 @@ pub fn compute_trend(stats: &[DayStat]) -> Trend {
     let mut baseline_to = None;
     let mut delta = None;
     let mut slope_per_month = None;
+    let mut fit_start = None;
     if sufficient {
         let reference = &points[..BASELINE_DAYS];
         let mut medians: Vec<f64> = reference.iter().map(|p| p.median).collect();
@@ -186,7 +192,10 @@ pub fn compute_trend(stats: &[DayStat]) -> Trend {
             .iter()
             .map(|p| ((p.day - first_day).num_days() as f64, p.median))
             .collect();
-        slope_per_month = least_squares_slope(&xy).map(|s| s * DAYS_PER_MONTH);
+        if let Some((slope, intercept)) = least_squares_fit(&xy) {
+            slope_per_month = Some(slope * DAYS_PER_MONTH);
+            fit_start = Some(intercept);
+        }
     }
 
     Trend {
@@ -198,6 +207,7 @@ pub fn compute_trend(stats: &[DayStat]) -> Trend {
         baseline_to,
         delta,
         slope_per_month,
+        fit_start,
         rolling: rolling
             .into_iter()
             .map(|(day, value)| RollingPoint {
