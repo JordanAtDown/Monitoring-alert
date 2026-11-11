@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-11-11
+
 Version majeure : le service Windows, les rapports et les notifications disparaissent au
 profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base de données est
 conservée et migrée automatiquement** (voir « Migration » dans le README).
@@ -484,7 +486,8 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ---
 
-[Unreleased]: https://github.com/jordanatdown/monitoring-alert/compare/v1.3.16...HEAD
+[Unreleased]: https://github.com/jordanatdown/monitoring-alert/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/jordanatdown/monitoring-alert/releases/tag/v2.0.0
 [1.3.16]: https://github.com/jordanatdown/monitoring-alert/releases/tag/v1.3.16
 [1.3.13]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.12...v1.3.13
 [1.3.12]: https://github.com/JordanAtDown/monitoring-alert/compare/v1.3.11...v1.3.12
