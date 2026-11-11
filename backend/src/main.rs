@@ -7,6 +7,7 @@ use monitoring_alert::application::collect::collect_and_store;
 use monitoring_alert::application::install;
 use monitoring_alert::application::ports::{DeployPlan, HostSystem, OverallStats, ReadModel};
 use monitoring_alert::daemon;
+use monitoring_alert::domain::load::LoadTracker;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -194,7 +195,7 @@ fn run_cli() -> Result<()> {
         Commands::Collect => {
             let store = SqliteStore::new(db::init_db(&db_path)?);
             let source = lhm::LhmSource::new(&cfg.lhm_host, cfg.lhm_port);
-            collect_and_store(&store, &source)?;
+            collect_and_store(&store, &source, &mut LoadTracker::new())?;
         }
         Commands::Check => run_check(&db_path, &cfg),
         Commands::Db { action } => match action {

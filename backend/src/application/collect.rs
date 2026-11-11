@@ -2,19 +2,23 @@
 
 use anyhow::{Context, Result};
 
-use crate::application::clock::now_string;
+use crate::application::clock::now;
 use crate::application::ports::{SensorSource, TemperatureStore};
-use crate::domain::load::{effective_load, load_category};
+use crate::domain::load::{effective_load, LoadTracker};
 use crate::domain::model::NewSnapshot;
 
-/// Collects one snapshot and persists it.
+/// Collects one snapshot and persists it. `tracker` carries what happened just before, so that a
+/// machine still cooling down after an effort is not recorded as resting.
 /// Returns the number of temperature readings stored (0 means no sensors detected).
-pub fn collect_and_store(store: &dyn TemperatureStore, source: &dyn SensorSource) -> Result<usize> {
+pub fn collect_and_store(
+    store: &dyn TemperatureStore,
+    source: &dyn SensorSource,
+    tracker: &mut LoadTracker,
+) -> Result<usize> {
     let data = source.read().context("Failed to read sensor data")?;
-    let ts = now_string();
-    let cat = effective_load(data.cpu_load, data.gpu_load)
-        .map(load_category)
-        .unwrap_or("idle");
+    let at = now();
+    let ts = at.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let cat = tracker.classify(at, effective_load(data.cpu_load, data.gpu_load));
 
     let snapshot_id = store
         .record_snapshot(&NewSnapshot {

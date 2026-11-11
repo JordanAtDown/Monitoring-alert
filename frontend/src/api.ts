@@ -36,7 +36,8 @@ export interface Status {
     ts: string;
     cpu_load: number | null;
     gpu_load: number | null;
-    load_cat: Load;
+    /** `cooldown`: idle, but still hot from an effort a few minutes ago (not a level one can choose). */
+    load_cat: Load | "cooldown";
     readings: Reading[];
   } | null;
 }

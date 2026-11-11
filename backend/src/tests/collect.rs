@@ -3,6 +3,7 @@ use crate::application::collect::collect_and_store;
 use crate::application::monitor::{run_monitor, MonitorSettings, StoreFactory};
 use crate::application::ports::{SensorSource, TemperatureStore};
 use crate::application::status::CollectorStatus;
+use crate::domain::load::LoadTracker;
 use crate::domain::model::{SnapshotData, TemperatureReading};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -98,7 +99,10 @@ fn a_collection_stores_the_snapshot_and_its_readings() {
         &[("Package", 49.0), ("Core 1", 47.5)],
     ))]);
 
-    assert_eq!(collect_and_store(&store, &source).unwrap(), 2);
+    assert_eq!(
+        collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap(),
+        2
+    );
 
     let readings: i64 = store
         .connection()
@@ -113,7 +117,7 @@ fn the_load_category_follows_the_busiest_of_cpu_and_gpu() {
     let store = memory_store();
     // Gaming: GPU 90 %, CPU 15 % → heavy, not light.
     let source = FakeSource::new(vec![Ok(data(Some(15.0), Some(90.0), &[("Package", 70.0)]))]);
-    collect_and_store(&store, &source).unwrap();
+    collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap();
     assert_eq!(category_and_load(&store).0, "heavy");
 }
 
@@ -121,7 +125,7 @@ fn the_load_category_follows_the_busiest_of_cpu_and_gpu() {
 fn a_snapshot_without_any_load_is_idle() {
     let store = memory_store();
     let source = FakeSource::new(vec![Ok(data(None, None, &[("Package", 35.0)]))]);
-    collect_and_store(&store, &source).unwrap();
+    collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap();
     assert_eq!(category_and_load(&store).0, "idle");
 }
 
@@ -129,7 +133,10 @@ fn a_snapshot_without_any_load_is_idle() {
 fn no_temperature_sensor_is_reported_as_zero_readings() {
     let store = memory_store();
     let source = FakeSource::new(vec![Ok(data(Some(5.0), None, &[]))]);
-    assert_eq!(collect_and_store(&store, &source).unwrap(), 0);
+    assert_eq!(
+        collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap(),
+        0
+    );
 }
 
 #[test]
@@ -137,7 +144,7 @@ fn a_failing_source_stores_nothing() {
     let store = memory_store();
     let source = FakeSource::new(vec![Err("LHM is down".into())]);
 
-    let error = collect_and_store(&store, &source).unwrap_err();
+    let error = collect_and_store(&store, &source, &mut LoadTracker::new()).unwrap_err();
     assert!(format!("{error:#}").contains("LHM is down"));
     assert_eq!(store.overall_stats().unwrap().total_snapshots, 0);
 }
@@ -292,4 +299,64 @@ mod database_at_startup {
         // Would otherwise wait 10 x 10 s.
         open_database_with_retries(&blocker.join("t.db"), 10, 10, &stop).unwrap();
     }
+}
+
+#[test]
+fn a_reading_right_after_an_effort_is_not_recorded_as_resting() {
+    let store = memory_store();
+    let mut tracker = LoadTracker::new();
+    let gaming = FakeSource::new(vec![Ok(data(Some(20.0), Some(95.0), &[("Package", 80.0)]))]);
+    let resting = FakeSource::new(vec![Ok(data(Some(2.0), Some(1.0), &[("Package", 60.0)]))]);
+
+    collect_and_store(&store, &gaming, &mut tracker).unwrap();
+    assert_eq!(category_and_load(&store).0, "heavy");
+
+    // Next collection: the load is 2 %, but the machine has just stopped working.
+    collect_and_store(&store, &resting, &mut tracker).unwrap();
+    let categories: Vec<String> = store
+        .connection()
+        .prepare("SELECT load_cat FROM snapshots ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(categories, ["heavy", "cooldown"]);
+}
+
+#[test]
+fn the_monitor_keeps_its_memory_from_one_collection_to_the_next() {
+    static STOP_AFTER_REST: AtomicBool = AtomicBool::new(false);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+
+    // read #1 = startup check, #2 = an effort, #3 = the machine back to rest, which stops the loop.
+    let mut source = FakeSource::new(vec![
+        Ok(data(Some(3.0), None, &[("Package", 40.0)])),
+        Ok(data(Some(90.0), None, &[("Package", 80.0)])),
+        Ok(data(Some(2.0), None, &[("Package", 55.0)])),
+    ]);
+    source.stop_after = Some((3, &STOP_AFTER_REST));
+    let open_store = || -> anyhow::Result<Box<dyn TemperatureStore>> {
+        Ok(Box::new(SqliteStore::new(db::init_db(&path)?)))
+    };
+    let status = CollectorStatus::new(1);
+    let settings = MonitorSettings {
+        interval_secs: 1,
+        raw_retention_days: 90,
+    };
+
+    run_monitor(&open_store, &source, &settings, &status, &STOP_AFTER_REST).unwrap();
+
+    let stored = SqliteStore::new(db::init_db(&path).unwrap());
+    let categories: Vec<String> = stored
+        .connection()
+        .prepare("SELECT load_cat FROM snapshots ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    // The loop carries what it saw from one collection to the next: the second reading is not "idle".
+    assert_eq!(categories, ["heavy", "cooldown"]);
 }

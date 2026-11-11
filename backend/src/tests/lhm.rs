@@ -494,6 +494,7 @@ mod fake_lhm {
     use crate::adapters::lhm::LhmSource;
     use crate::adapters::sqlite::{self as db, SqliteStore};
     use crate::application::collect::collect_and_store;
+    use crate::domain::load::LoadTracker;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -532,7 +533,12 @@ mod fake_lhm {
         let port = spawn(DATA_JSON, stop.clone());
         let store = SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap());
 
-        let n = collect_and_store(&store, &LhmSource::new("127.0.0.1", port)).unwrap();
+        let n = collect_and_store(
+            &store,
+            &LhmSource::new("127.0.0.1", port),
+            &mut LoadTracker::new(),
+        )
+        .unwrap();
         stop.store(true, Ordering::Relaxed);
 
         assert_eq!(n, 2);
@@ -557,7 +563,12 @@ mod fake_lhm {
     fn an_unreachable_endpoint_is_an_error() {
         let store = SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap());
         // Port 1 on loopback: nothing listens there.
-        assert!(collect_and_store(&store, &LhmSource::new("127.0.0.1", 1)).is_err());
+        assert!(collect_and_store(
+            &store,
+            &LhmSource::new("127.0.0.1", 1),
+            &mut LoadTracker::new()
+        )
+        .is_err());
     }
 
     fn store_conn(store: &SqliteStore) -> &rusqlite::Connection {

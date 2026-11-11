@@ -7,6 +7,7 @@ use crate::application::clock::day_string;
 use crate::application::collect::collect_and_store;
 use crate::application::ports::{SensorSource, TemperatureStore};
 use crate::application::status::CollectorStatus;
+use crate::domain::load::LoadTracker;
 use crate::domain::trends::MIN_SPAN_DAYS;
 
 /// Number of consecutive empty collections before escalating to an error.
@@ -170,6 +171,7 @@ pub fn run_monitor(
     let mut iterations: u64 = 0;
     let mut empty_streak: u32 = 0;
     let mut first_run = true;
+    let mut tracker = LoadTracker::new();
 
     loop {
         if stop.load(Ordering::Relaxed) {
@@ -218,7 +220,7 @@ pub fn run_monitor(
             first_run = false;
         }
 
-        let outcome = collect_and_store(store, source);
+        let outcome = collect_and_store(store, source, &mut tracker);
         match &outcome {
             Ok(n) => status.record_success(*n),
             Err(e) => status.record_failure(&format!("{e:#}")),

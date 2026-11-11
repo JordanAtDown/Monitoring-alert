@@ -192,6 +192,13 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
 1. Toutes les 5 minutes, un *snapshot* : températures de tous les capteurs + charge CPU/GPU.
 2. **Catégorie de charge** : charge effective = **max(CPU, GPU)** (un jeu à GPU 90 % / CPU 15 % est
    *intense*). `idle` < 15 % ≤ `light` < 40 % ≤ `moderate` < 75 % ≤ `heavy`.
+   **Repos réel** : une mesure à faible charge prise dans les **15 minutes** qui suivent une charge moyenne ou
+   élevée n'est pas « au repos » : le processeur est encore à plusieurs degrés au-dessus de sa température de
+   repos pendant que la charge, elle, est déjà retombée. Elle est rangée à part (`cooldown`, une catégorie interne
+   qu'on ne choisit pas dans la page) et n'entre dans aucune comparaison. Le délai de 15 minutes est une estimation
+   du temps que mettent un radiateur et l'air d'un boîtier à se stabiliser, pas une constante mesurée. La mémoire
+   de ce suivi est en RAM : après un redémarrage du programme, les premières mesures sont classées sur leur seule
+   charge.
 3. **Agrégats quotidiens** par (jour, capteur, catégorie) : nombre de mesures, min, médiane, p95, max, moyenne.
    Un jour compte à partir de 6 mesures. Le jour en cours est exclu (incomplet).
 4. **Référence** : médiane des médianes des 30 premiers jours. **Médiane glissante** : médiane des médianes

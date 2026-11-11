@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Le repos est un vrai repos.** Une mesure à faible charge prise dans les 15 minutes qui suivent un effort (charge
+  moyenne ou élevée) n'est plus comptée « au repos » : la charge retombe en quelques secondes mais le radiateur met
+  des minutes à évacuer la chaleur. Ces mesures vont dans une catégorie interne `cooldown`, hors de toute comparaison.
+  Sur une copie d'une vraie base : 2,2 % des mesures « au repos » étaient en réalité un refroidissement (57 °C contre
+  49 °C), ce qui ne déplaçait la médiane que de 0,3 °C mais gonflait nettement les pointes (jusqu'à 37 % des mesures
+  d'un jour). Les journées déjà enregistrées ne sont pas corrigées : l'effet de cette bascule sur la médiane « au
+  repos » est de l'ordre de ce 0,3 °C, très en dessous du seuil de 1,5 °C.
 - **Le même mois, un an avant.** La page d'un capteur compare chaque mois au même mois de l'année précédente : la
   saison s'annule, il ne reste que la machine. Elle n'apparaît qu'à partir de 13 mois de suivi (au moins 10 jours de
   mesures de chaque côté), donc pas avant que l'historique ne le permette.

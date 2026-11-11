@@ -1,10 +1,15 @@
 //! The wall clock, in local time (the timestamps stored in the database are local).
 
-use chrono::{Duration, Local, NaiveDate};
+use chrono::{Duration, Local, NaiveDate, NaiveDateTime};
+
+/// Now, as a local date and time.
+pub fn now() -> NaiveDateTime {
+    Local::now().naive_local()
+}
 
 /// Now, as `YYYY-MM-DDTHH:MM:SS`.
 pub fn now_string() -> String {
-    Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+    now().format("%Y-%m-%dT%H:%M:%S").to_string()
 }
 
 /// Today, as a local date.
