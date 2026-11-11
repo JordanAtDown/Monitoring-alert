@@ -97,10 +97,41 @@ jobs:
         working-directory: backend
         run: cargo test --target x86_64-pc-windows-msvc
 
+  installer:
+    name: Build the installer
+    runs-on: windows-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the executable
+        uses: actions/download-artifact@v4
+        with:
+          name: monitoring-alert-windows-x64
+          path: artifact/
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile the installer
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "/DExePath=..\artifact\monitoring-alert.exe" installer\monitoring-alert.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-alert-setup
+          path: dist/monitoring-alert-setup-v*.exe
+          retention-days: 1
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: [build, test, installer]
     permissions:
       contents: write
 
@@ -112,6 +143,12 @@ jobs:
         with:
           name: monitoring-alert-windows-x64
           path: artifact/
+
+      - name: Download the installer
+        uses: actions/download-artifact@v4
+        with:
+          name: monitoring-alert-setup
+          path: installer-out/
 
       - name: Extract release notes from CHANGELOG
         id: notes
@@ -145,4 +182,5 @@ jobs:
             --title "MonitoringAlert $GITHUB_REF_NAME" \
             --notes-file release_notes.md \
             "artifact/monitoring-alert.exe#monitoring-alert.exe" \
+            installer-out/monitoring-alert-setup-v*.exe \
             "$ARCHIVE"

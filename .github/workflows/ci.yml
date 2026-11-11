@@ -76,3 +76,17 @@ jobs:
       - name: Typecheck and build
         working-directory: frontend
         run: npm run build
+
+  installer:
+    name: Installer (compile the Inno Setup script)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      # Syntax and [Code] check only: any file stands in for the executable.
+      - name: Compile the installer script
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.0.0 "/DExePath=..\frontend\package.json" installer\monitoring-alert.iss'
