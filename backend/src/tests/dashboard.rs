@@ -28,11 +28,31 @@ fn ramp(drift: f64) -> Vec<DayStat> {
         .collect()
 }
 
+/// Same as [`ramp`], but swinging `swing` degrees either side from one day to the next: a series
+/// whose own noise is wider than the change being looked for.
+fn noisy_ramp(drift: f64, swing: f64) -> Vec<DayStat> {
+    ramp(drift)
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut d)| {
+            d.median += if i % 2 == 0 { -swing } else { swing };
+            d
+        })
+        .collect()
+}
+
 /// A machine whose sensors drift by the given amounts, at idle.
 fn machine(drifts: &[(&str, &str, f64)]) -> Facts {
+    let noisy: Vec<(&str, &str, f64, f64)> =
+        drifts.iter().map(|(h, s, d)| (*h, *s, *d, 0.0)).collect();
+    machine_with_noise(&noisy)
+}
+
+/// A machine whose sensors drift by the given amounts, each with its own day-to-day swing.
+fn machine_with_noise(drifts: &[(&str, &str, f64, f64)]) -> Facts {
     let groups: Vec<(String, String, Vec<DayStat>)> = drifts
         .iter()
-        .map(|(h, s, d)| (h.to_string(), s.to_string(), ramp(*d)))
+        .map(|(h, s, d, swing)| (h.to_string(), s.to_string(), noisy_ramp(*d, *swing)))
         .collect();
     let today = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap() + chrono::Duration::days(DAYS);
     let summaries = groups
@@ -229,4 +249,30 @@ fn without_a_machine_wide_drift_the_sensor_page_leaves_both_doors_open() {
 #[test]
 fn a_sensor_that_did_not_warm_up_gets_no_advice_line() {
     assert_eq!(advice(&five(0.0, 0.0, 0.0, 0.0, 0.0)), None);
+}
+
+#[test]
+fn a_noisy_component_has_to_move_further_before_it_is_named() {
+    // The processor drifts 2 °C more than the rest of the machine — but its own idle temperature
+    // swings 4 °C from one day to the next, so 2 °C says nothing about it.
+    let facts = machine_with_noise(&[
+        ("AMD Ryzen 7", "Core (Tctl/Tdie)", 2.0, 4.0),
+        ("NVIDIA GPU", "GPU Core", 0.0, 0.0),
+        ("Gigabyte B550", "Chipset", 0.0, 0.0),
+        ("Samsung SSD 970", "Temperature", 0.0, 0.0),
+        ("Crucial CT500", "Temperature", 0.0, 0.0),
+    ]);
+    let o = overview::build(&facts, "idle");
+    assert_eq!(o.components[0].cause.clone().unwrap().id, Cause::Nothing);
+    let text = o.headline.detail.unwrap();
+    assert!(text.contains("Aucun composant"), "{text}");
+
+    // The very same drift on a quiet processor is named.
+    let quiet = overview::build(&five(2.0, 0.0, 0.0, 0.0, 0.0), "idle");
+    assert_eq!(quiet.components[0].cause.clone().unwrap().id, Cause::Alone);
+    assert!(quiet
+        .headline
+        .detail
+        .unwrap()
+        .starts_with("Un composant se détache : Processeur,"),);
 }

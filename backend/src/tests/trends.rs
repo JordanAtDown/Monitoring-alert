@@ -276,3 +276,41 @@ fn an_empty_series_is_never_fresh() {
     assert_eq!(t.last_day, None);
     assert_eq!(t.quiet_days, 0);
 }
+
+#[test]
+fn a_noisy_series_gets_a_wider_margin_than_a_steady_one() {
+    let steady = trend_of(&series(200, |_| 40.0));
+    // The same average, but jumping by 3 °C from one day to the next.
+    let noisy = trend_of(&series(200, |i| 40.0 + if i % 2 == 0 { -3.0 } else { 3.0 }));
+    assert_eq!(
+        steady.margin,
+        Some(0.0),
+        "a series that never moves leaves no doubt"
+    );
+    let margin = noisy.margin.unwrap();
+    assert!(margin > 2.0, "margin = {margin}");
+    // Both drifted by nothing, and both say so.
+    assert!(steady.delta.unwrap().abs() < 1e-9);
+    assert!(noisy.delta.unwrap().abs() < 1e-9);
+}
+
+#[test]
+fn the_margin_makes_a_small_change_on_a_noisy_series_unsayable() {
+    // A 2 °C step, buried in a series that swings by 4 °C from day to day.
+    let stats = series(200, |i| {
+        let step = if i >= 100 { 2.0 } else { 0.0 };
+        40.0 + step + if i % 2 == 0 { -4.0 } else { 4.0 }
+    });
+    let t = trend_of(&stats);
+    assert!((t.delta.unwrap() - 2.0).abs() < 1e-9);
+    assert!(t.margin.unwrap() > 2.0, "margin = {:?}", t.margin);
+    // The same 2 °C on a steady series would be called warmer; here it is not.
+    assert_eq!(
+        crate::domain::wording::verdict_of(t.delta, t.margin),
+        crate::domain::wording::Verdict::Stable
+    );
+    assert_eq!(
+        crate::domain::wording::verdict_of(t.delta, Some(0.2)),
+        crate::domain::wording::Verdict::Warmer
+    );
+}

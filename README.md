@@ -111,8 +111,10 @@ Quatre pages, dans le menu en haut :
   3 stables, 1 plus froid », le changement le plus marqué, puis **une carte par composant** : Processeur, Carte graphique,
   Carte mère, Boîtier, Disque 1, Disque 2… (chacun avec son modèle). Une carte donne la température *au début* (les 30
   premiers jours de suivi), *ces 30 derniers jours*, l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) et une
-  mini-courbe colorée selon la tendance. « Stable » veut dire moins de 1,5 °C d'écart : la plupart des capteurs ne mesurent
-  qu'au degré près. Toucher une carte ouvre sa courbe.
+  mini-courbe colorée selon la tendance. « Stable » veut dire que l'écart ne dépasse pas ce qu'on sait mesurer :
+  au moins 1,5 °C (la plupart des capteurs ne mesurent qu'au degré près), davantage pour un capteur qui varie
+  beaucoup d'un jour à l'autre. La marge retenue est dans les « Détails techniques » du capteur. Toucher une carte
+  ouvre sa courbe.
   Chaque composant est aussi comparé **au reste de la machine** : la carte dit *Comme toute la machine* (il a suivi le
   mouvement général, donc la pièce) ou *Plus que le reste* avec l'écart en degrés (il chauffe seul, donc lui). La phrase
   du haut nomme le composant qui se détache, ou conclut que tout a bougé ensemble.
@@ -200,6 +202,13 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
    (arrêter de jouer fait taire « charge élevée »).
 5. **Écart** = médiane glissante actuelle − référence. **Pente** = droite des moindres carrés sur toutes les
    médianes quotidiennes, en °C/mois.
+   **Marge d'incertitude** de cet écart : erreur-type des deux médianes comparées, estimée de façon robuste
+   (1,4826 × écart absolu médian), combinée et portée à 95 % (× 1,96). Un écart n'est annoncé que s'il dépasse
+   **le plus grand** des deux seuils : 1,5 °C (la résolution des capteurs) et cette marge. Un capteur dont la
+   température varie de 3 °C d'un jour à l'autre doit donc bouger plus qu'un disque très stable — sinon la page
+   annoncerait chaque mois un changement qui n'est que du bruit. Les médianes quotidiennes sont traitées comme
+   indépendantes, ce qu'elles ne sont pas tout à fait (une vague de chaleur dure plusieurs jours) : la marge est
+   donc un plancher de l'incertitude réelle. Elle ne sert qu'à **refuser** un verdict, jamais à en accorder un.
 6. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui
    représente le composant, pour qu'un processeur à douze cœurs ne pèse pas plus qu'un disque). L'**excès**
    d'un composant = son écart − cette dérive commune.

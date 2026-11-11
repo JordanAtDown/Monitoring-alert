@@ -113,9 +113,13 @@ fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
             t.days, t.span_days
         ))];
     };
-    let verdict = verdict_of(Some(delta));
+    let verdict = verdict_of(Some(delta), t.margin);
     let gap = wording::temp(delta.abs());
     let outcome = match verdict {
+        // Large enough to be noticed, too small to be trusted: say which it is.
+        Verdict::Stable if delta.abs() >= STABLE_BAND => format!(
+            "une différence de {gap}, trop petite pour être sûre : d'un jour à l'autre, ce capteur varie déjà d'au moins autant."
+        ),
         Verdict::Stable => format!("une différence de {gap} : c'est stable."),
         Verdict::Warmer => format!("{gap} de plus qu'au début."),
         _ => format!("{gap} de moins qu'au début : c'est plus frais."),
@@ -196,6 +200,16 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
                     "{} par mois (droite des moindres carrés sur toutes les journées)",
                     wording::signed(slope)
                 ),
+            },
+            Fact {
+                label: "Marge d'incertitude",
+                text: match trend.margin {
+                    Some(m) => format!(
+                        "{} sur l'écart (95 %, d'après la dispersion des médianes quotidiennes des deux périodes). Un écart plus petit que cette marge n'est pas annoncé.",
+                        wording::margin(m)
+                    ),
+                    None => "indéterminée".into(),
+                },
             },
             Fact {
                 label: "Jours avec mesures",

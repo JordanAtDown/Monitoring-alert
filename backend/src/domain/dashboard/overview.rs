@@ -20,7 +20,7 @@ pub struct VerdictView {
 
 fn verdict_view(s: &SensorSummary) -> VerdictView {
     let drift = s.drift();
-    let id = verdict_of(drift);
+    let id = verdict_of(drift, s.margin);
     VerdictView {
         id,
         label: id.label(),
@@ -60,8 +60,8 @@ pub struct CauseView {
     pub detail: Option<String>,
 }
 
-fn cause_view(delta: f64, excess: f64) -> CauseView {
-    let id = cause_of(delta, excess);
+fn cause_view(delta: f64, excess: f64, margin: Option<f64>) -> CauseView {
+    let id = cause_of(delta, excess, margin);
     CauseView {
         id,
         label: id.label(excess),
@@ -314,24 +314,31 @@ fn headline(
 /// What the figures say, in one or two sentences. Comparing each component with the drift of the
 /// whole machine is what separates "the room is warmer" from "this part is in trouble" — the one
 /// question the figures can actually answer, and the one worth acting on.
+///
+/// A component only counts as standing out when its excess clears **its own** band: a processor
+/// whose idle temperature swings by three degrees from day to day has to move further than a
+/// disk that barely moves at all, or the sentence would name it every month for nothing.
 fn diagnosis(
     machine: Option<f64>,
     components: &[ComponentView],
     mains: &[&SensorSummary],
 ) -> Option<String> {
-    let drift_of = |c: &ComponentView| {
+    let summary_of = |c: &ComponentView| {
         mains
             .iter()
-            .find(|m| m.hardware == c.main.hardware && m.sensor == c.main.sensor)?
-            .drift()
+            .find(|m| m.hardware == c.main.hardware && m.sensor == c.main.sensor)
+            .copied()
     };
     let Some(machine) = machine else {
         // Too few components with enough history to tell the room from a component.
-        let (c, d) = components
+        let (c, d, band) = components
             .iter()
-            .filter_map(|c| Some((c, drift_of(c)?)))
+            .filter_map(|c| {
+                let m = summary_of(c)?;
+                Some((c, m.drift()?, wording::stable_band(m.margin)))
+            })
             .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))?;
-        return Some(if d.abs() < STABLE_BAND {
+        return Some(if d.abs() < band {
             "Aucun composant n'a vraiment changé de température.".to_string()
         } else {
             format!(
@@ -341,34 +348,46 @@ fn diagnosis(
             )
         });
     };
-    // The one that warmed up the most on its own comes first: it is the only thing here that
-    // can be acted upon. A component that cools down relative to the others is only reported
-    // when nothing warmed up, so that good news never hides the finding that matters.
-    let excesses = || {
-        components
-            .iter()
-            .filter_map(|c| Some((c, drift_of(c)? - machine)))
-    };
-    let warmest = excesses().max_by(|a, b| a.1.total_cmp(&b.1));
-    let coolest = excesses().min_by(|a, b| a.1.total_cmp(&b.1));
+    // Every component that moved more than the rest of the machine, by more than its own noise.
+    let outliers: Vec<(&ComponentView, f64)> = components
+        .iter()
+        .filter_map(|c| {
+            let m = summary_of(c)?;
+            let excess = m.drift()? - machine;
+            (excess.abs() >= wording::stable_band(m.margin)).then_some((c, excess))
+        })
+        .collect();
+    // The one that warmed up the most on its own comes first: it is the only thing here that can
+    // be acted upon. A component that cooled down relative to the others is reported only when
+    // nothing warmed up, so that good news never hides the finding that matters.
+    let warmest = outliers
+        .iter()
+        .filter(|(_, e)| *e > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1));
+    let coolest = outliers
+        .iter()
+        .filter(|(_, e)| *e < 0.0)
+        .min_by(|a, b| a.1.total_cmp(&b.1));
     Some(match (warmest, coolest) {
-        (Some((c, excess)), _) if excess >= STABLE_BAND => format!(
+        (Some((c, excess)), _) => format!(
             "Un composant se détache : {}, {} de plus que le reste de la machine (qui a bougé de {}). Un composant qui chauffe seul, c'est de la poussière, de la pâte thermique ou un ventilateur : c'est là qu'il faut regarder.",
             c.title,
-            wording::temp(excess),
+            wording::temp(*excess),
             wording::signed(machine)
         ),
-        (_, Some((c, excess))) if excess <= -STABLE_BAND => format!(
+        (None, Some((c, excess))) => format!(
             "Aucun composant ne chauffe plus que les autres. Un seul se détache, {}, et c'est dans le bon sens : {} de moins que le reste de la machine (qui a bougé de {}).",
             c.title,
             wording::temp(excess.abs()),
             wording::signed(machine)
         ),
-        _ if machine.abs() >= STABLE_BAND => format!(
+        (None, None) if machine.abs() >= STABLE_BAND => format!(
             "Tous les composants ont bougé ensemble ({}) et aucun ne se détache : c'est très probablement la température de la pièce, pas votre PC.",
             wording::signed(machine)
         ),
-        _ => "Aucun composant n'a vraiment changé de température, ni seul ni avec les autres.".to_string(),
+        (None, None) => {
+            "Aucun composant n'a vraiment changé de température, ni seul ni avec les autres.".to_string()
+        }
     })
 }
 
@@ -389,7 +408,7 @@ pub fn build(facts: &Facts, load: &str) -> Overview {
                 _ => None,
             };
             let cause = match (rows[0].drift(), excess) {
-                (Some(d), Some(e)) => Some(cause_view(d, e)),
+                (Some(d), Some(e)) => Some(cause_view(d, e, rows[0].margin)),
                 _ => None,
             };
             ComponentView {

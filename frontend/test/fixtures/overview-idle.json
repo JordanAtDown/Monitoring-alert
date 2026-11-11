@@ -243,9 +243,9 @@
       ],
       "excess": -1.9499999999999957,
       "cause": {
-        "id": "alone",
-        "label": "Plus froid que le reste",
-        "detail": "1,9 °C de moins que le reste de la machine"
+        "id": "nothing",
+        "label": "Rien n'a bougé",
+        "detail": null
       }
     },
     {

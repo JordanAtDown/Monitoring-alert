@@ -44,6 +44,12 @@ pub const MIN_COMMON_SERIES: usize = 3;
 pub const STALE_AFTER_DAYS: i64 = 15;
 /// Days per month used to express the slope.
 const DAYS_PER_MONTH: f64 = 30.4375;
+/// Scales a median absolute deviation into an estimate of the standard deviation.
+const MAD_TO_SIGMA: f64 = 1.4826;
+/// Standard error of a median, as a multiple of `σ / √n`, for a large sample.
+const MEDIAN_SE_FACTOR: f64 = 1.2533;
+/// Two-sided 95 % normal quantile.
+const Z95: f64 = 1.96;
 /// Maximum number of points of the sparkline given for each sensor.
 const SPARKLINE_POINTS: usize = 60;
 
@@ -99,6 +105,9 @@ pub struct Trend {
     /// Value of that least-squares line on the first day with data, so a chart can
     /// draw it: `fit_start + slope_per_month / 30.4375 * days_since_first_day`.
     pub fit_start: Option<f64>,
+    /// How much of `delta` could be noise: the 95 % margin on the comparison. A change smaller
+    /// than this says nothing.
+    pub margin: Option<f64>,
     /// Last day with a measurement.
     pub last_day: Option<String>,
     /// Days since that day; `0` when it is today's.
@@ -129,6 +138,8 @@ pub struct SensorSummary {
     pub quiet_days: i64,
     /// `false` once the series went quiet: see [`Trend::fresh`].
     pub fresh: bool,
+    /// See [`Trend::margin`].
+    pub margin: Option<f64>,
 }
 
 impl SensorSummary {
@@ -166,6 +177,52 @@ fn least_squares_fit(xy: &[(f64, f64)]) -> Option<(f64, f64)> {
     let cov: f64 = xy.iter().map(|p| (p.0 - mean_x) * (p.1 - mean_y)).sum();
     let slope = cov / var_x;
     Some((slope, mean_y - slope * mean_x))
+}
+
+/// Robust spread of a sample: its median absolute deviation, scaled to estimate a standard
+/// deviation. Robust because one freak day must not inflate the uncertainty of a whole month.
+fn robust_sigma(values: &[f64]) -> f64 {
+    let mut sample = values.to_vec();
+    let centre = median_of(&mut sample);
+    let mut deviations: Vec<f64> = values.iter().map(|v| (v - centre).abs()).collect();
+    MAD_TO_SIGMA * median_of(&mut deviations)
+}
+
+/// Standard error of the median of a sample.
+fn median_standard_error(values: &[f64]) -> f64 {
+    if values.len() < 2 {
+        return f64::INFINITY;
+    }
+    MEDIAN_SE_FACTOR * robust_sigma(values) / (values.len() as f64).sqrt()
+}
+
+/// The 95 % margin on `median(recent) − median(baseline)`: how large a difference the day-to-day
+/// scatter alone could produce.
+///
+/// The daily medians are treated as independent, which they are not quite — a warm spell lasts
+/// several days — so this is a floor on the real uncertainty rather than the whole of it. It is
+/// used to refuse a verdict, never to grant one, so under-estimating it stays on the safe side
+/// of the resolution floor ([`crate::domain::wording::STABLE_BAND`]).
+fn drift_margin(baseline: &[f64], recent: &[f64]) -> Option<f64> {
+    let (a, b) = (
+        median_standard_error(baseline),
+        median_standard_error(recent),
+    );
+    let margin = Z95 * (a * a + b * b).sqrt();
+    margin.is_finite().then_some(margin)
+}
+
+/// The daily medians of the last [`ROLLING_WINDOW_DAYS`] calendar days with data: the sample the
+/// latest rolling median is computed from.
+fn recent_window(points: &[DayStat]) -> Vec<f64> {
+    let Some(last) = points.last() else {
+        return Vec::new();
+    };
+    points
+        .iter()
+        .filter(|p| (last.day - p.day).num_days() < ROLLING_WINDOW_DAYS)
+        .map(|p| p.median)
+        .collect()
 }
 
 fn rolling_median(points: &[DayStat]) -> Vec<(NaiveDate, f64)> {
@@ -209,12 +266,14 @@ pub fn compute_trend(stats: &[DayStat], today: NaiveDate) -> Trend {
     let mut baseline_from = None;
     let mut baseline_to = None;
     let mut delta = None;
+    let mut margin = None;
     let mut slope_per_month = None;
     let mut fit_start = None;
     if sufficient {
         let reference = &points[..BASELINE_DAYS];
         let mut medians: Vec<f64> = reference.iter().map(|p| p.median).collect();
         let base = median_of(&mut medians);
+        margin = drift_margin(&medians, &recent_window(&points));
         baseline = Some(base);
         baseline_from = Some(fmt_day(reference[0].day));
         baseline_to = Some(fmt_day(reference[BASELINE_DAYS - 1].day));
@@ -236,6 +295,7 @@ pub fn compute_trend(stats: &[DayStat], today: NaiveDate) -> Trend {
     Trend {
         days: points.len(),
         span_days,
+        margin,
         last_day: last_day.map(fmt_day),
         quiet_days,
         fresh: last_day.is_some() && quiet_days <= STALE_AFTER_DAYS,
@@ -303,6 +363,7 @@ pub fn summarize(
         last_day: trend.last_day,
         quiet_days: trend.quiet_days,
         fresh: trend.fresh,
+        margin: trend.margin,
     }
 }
 

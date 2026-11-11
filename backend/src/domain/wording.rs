@@ -6,6 +6,13 @@ use serde::Serialize;
 /// Below this change (°C) a component is called "stable": most sensors only report whole degrees.
 pub const STABLE_BAND: f64 = 1.5;
 
+/// How large a change has to be before it is called anything: at least the resolution of the
+/// sensors, and more when the day-to-day scatter of this particular series makes the comparison
+/// less certain than that.
+pub fn stable_band(margin: Option<f64>) -> f64 {
+    STABLE_BAND.max(margin.unwrap_or(0.0))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Verdict {
@@ -15,11 +22,13 @@ pub enum Verdict {
     Unknown,
 }
 
-pub fn verdict_of(delta: Option<f64>) -> Verdict {
+/// `margin` is how much of the change could be noise; `None` leaves only the resolution floor.
+pub fn verdict_of(delta: Option<f64>, margin: Option<f64>) -> Verdict {
+    let band = stable_band(margin);
     match delta {
         None => Verdict::Unknown,
-        Some(d) if d >= STABLE_BAND => Verdict::Warmer,
-        Some(d) if d <= -STABLE_BAND => Verdict::Cooler,
+        Some(d) if d >= band => Verdict::Warmer,
+        Some(d) if d <= -band => Verdict::Cooler,
         Some(_) => Verdict::Stable,
     }
 }
@@ -61,11 +70,12 @@ impl Cause {
 }
 
 /// Puts a change down to the machine or to the component itself. `delta` is its own change,
-/// `excess` how much more it changed than the machine as a whole.
-pub fn cause_of(delta: f64, excess: f64) -> Cause {
-    if excess.abs() >= STABLE_BAND {
+/// `excess` how much more it changed than the machine as a whole, `margin` the noise floor.
+pub fn cause_of(delta: f64, excess: f64, margin: Option<f64>) -> Cause {
+    let band = stable_band(margin);
+    if excess.abs() >= band {
         Cause::Alone
-    } else if delta.abs() >= STABLE_BAND {
+    } else if delta.abs() >= band {
         Cause::Machine
     } else {
         Cause::Nothing
@@ -121,6 +131,11 @@ fn one_decimal(v: f64) -> String {
 /// "42,3 °C".
 pub fn temp(v: f64) -> String {
     format!("{} °C", one_decimal(v))
+}
+
+/// "± 0,6 °C": how much of a change could be noise.
+pub fn margin(v: f64) -> String {
+    format!("± {}", temp(v))
 }
 
 /// "+4,7 °C", "−1,1 °C" (a real minus sign); no sign when it rounds to nothing.
