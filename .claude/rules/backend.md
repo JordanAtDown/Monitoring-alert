@@ -8,7 +8,7 @@ paths:
 ## Architecture hexagonale simplifiée
 
 ```
-domain/       pur : modèle, catégories de charge, calcul de dérive (trends). Aucune E/S.
+domain/       pur : modèle, catégories de charge, calcul de dérive (trends), composants du PC (components). Aucune E/S.
 application/  cas d'usage + ports (traits dans ports.rs) : collect, monitor, queries, install, status, clock
 adapters/     technique : sqlite, lhm (HTTP), http (serveur + assets), config, logging, windows, pe, deploy
 daemon.rs     racine de composition : branche les adapters sur les cas d'usage

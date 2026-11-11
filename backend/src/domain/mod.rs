@@ -5,6 +5,7 @@
 //! trivial to test. It depends on nothing else of the crate; everything else
 //! depends on it.
 
+pub mod components;
 pub mod load;
 pub mod model;
 pub mod trends;
