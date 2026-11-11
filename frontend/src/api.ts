@@ -39,6 +39,22 @@ export interface Status {
   } | null;
 }
 
+export type Level = "ok" | "info" | "warn" | "bad";
+
+export interface Check {
+  id: string;
+  title: string;
+  level: Level;
+  message: string;
+  advice: string | null;
+}
+
+export interface Health {
+  overall: Level;
+  summary: string;
+  checks: Check[];
+}
+
 export interface Release {
   version: string;
   page_url: string;
@@ -103,6 +119,7 @@ async function getJson<T>(path: string, params: Record<string, string> = {}): Pr
 export const api = {
   status: () => getJson<Status>("/api/status"),
   update: () => getJson<UpdateInfo>("/api/update"),
+  health: () => getJson<Health>("/api/health"),
   summary: (load: Load) => getJson<Summary[]>("/api/summary", { load }),
   trend: (hardware: string, sensor: string, load: Load) =>
     getJson<Trend>("/api/trend", { hardware, sensor, load }),

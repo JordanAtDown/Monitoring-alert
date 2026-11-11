@@ -1,11 +1,11 @@
 import "./style.css";
-import { api, type Load, type Status, type Summary, type Trend, type UpdateInfo } from "./api";
+import { api, type Health, type Level, type Load, type Status, type Summary, type Trend, type UpdateInfo } from "./api";
 import { drawTrendChart } from "./chart";
 import { clear, h, svg } from "./dom";
-import { fmtAgo, fmtBytes, fmtDay, fmtInt, fmtMonthLong, fmtSigned, fmtTemp, parseDay } from "./format";
+import { fmtBytes, fmtDay, fmtInt, fmtMonthLong, fmtSigned, fmtTemp, parseDay } from "./format";
 import {
   groupTitle, hardwareKind, KIND_ORDER, LOADS, MIN_SPAN_DAYS, sensorLabel, spanInWords, STABLE_BAND,
-  verdictOf, VERDICT_LABEL, type Kind, type Verdict,
+  typeTitle, verdictOf, VERDICT_LABEL, type Kind, type Verdict,
 } from "./text";
 import { fillUpdateDialog, renderUpdateButton, versionLine } from "./update";
 
@@ -22,6 +22,7 @@ const state = {
   load: "idle" as Load,
   selected: null as Selection | null,
   status: null as Status | null,
+  health: null as Health | null,
   update: null as UpdateInfo | null,
   summary: [] as Summary[],
   trend: null as Trend | null,
@@ -68,38 +69,57 @@ function rememberHelp(closed: boolean): void {
   }
 }
 
-// ── Collection status ────────────────────────────────────────────────────────
+// ── Is everything working? ───────────────────────────────────────────────────
 
-function renderStatus(): void {
-  const host = $("status");
+const LEVEL_ICON: Record<Level, string> = { ok: "✓", info: "ℹ", warn: "⚠", bad: "✕" };
+
+/** The tab title shows the state too: a pinned tab is enough to see that all is well. */
+function setTabTitle(health: Health | null): void {
+  const problems = health ? health.checks.filter((c) => c.level === "warn" || c.level === "bad").length : 0;
+  document.title = !health ? "✕ Monitoring" : health.overall === "ok" ? "✓ Monitoring" : `${LEVEL_ICON[health.overall]} Monitoring (${problems})`;
+}
+
+function renderHealth(): void {
+  const host = $("health");
   clear(host);
-  const s = state.status;
-  const line = (kind: "ok" | "warn" | "bad", icon: string, text: string, detail?: string): void => {
+  const health = state.health;
+  setTabTitle(health);
+  if (!health) {
     host.append(
-      h("p", { class: `status status-${kind}` }, h("span", { class: "status-icon", "aria-hidden": "true" }, icon), text),
+      h("p", { class: "status status-bad" }, h("span", { class: "status-icon", "aria-hidden": "true" }, "✕"), "La page ne parvient plus à joindre le programme."),
+      h("p", { class: "status-detail" }, "Il est peut-être arrêté : lancez Monitoring depuis le menu Démarrer."),
     );
-    if (detail) host.append(h("p", { class: "status-detail" }, detail));
-  };
-  if (!s) {
-    line("bad", "✕", "La page ne parvient plus à joindre le programme.", "Il est peut-être arrêté : lancez Monitoring depuis le menu Démarrer.");
     return;
   }
-  const c = s.collector;
-  const stale = c.last_success === null
-    ? true
-    : (new Date(s.now).getTime() - new Date(c.last_success).getTime()) / 1000 > c.interval_secs * 3;
-  if (c.consecutive_failures > 0) {
-    const since = c.last_success ? ` depuis ${fmtAgo(c.last_success, s.now).replace("il y a ", "")}` : "";
-    line(
-      "bad", "✕",
-      `Les températures ne sont plus relevées${since}.`,
-      "LibreHardwareMonitor ne répond pas : lancez-le en administrateur et vérifiez que « Remote Web Server » est activé (Options).",
-    );
-  } else if (stale) {
-    line("warn", "⚠", "En attente de la première mesure…");
-  } else {
-    line("ok", "✓", `Tout fonctionne : dernière mesure ${fmtAgo(c.last_success, s.now)} (${fmtInt(c.last_sensor_count)} capteurs).`);
+  const kind = health.overall === "ok" ? "ok" : health.overall === "warn" ? "warn" : "bad";
+  host.append(h("p", { class: `status status-${kind}` }, h("span", { class: "status-icon", "aria-hidden": "true" }, LEVEL_ICON[health.overall]), health.summary));
+
+  // What is wrong, and what to do, right under the banner.
+  const problems = health.checks.filter((c) => c.level === "warn" || c.level === "bad");
+  if (problems.length > 0) {
+    const list = h("ul", { class: "problems" });
+    for (const c of problems) {
+      list.append(h("li", {}, h("strong", {}, `${c.title} : `), c.message, c.advice ? h("span", { class: "advice-inline" }, `Que faire : ${c.advice}`) : null));
+    }
+    host.append(list);
   }
+
+  const details = h("details", { class: "checks" }, h("summary", {}, `Voir les ${health.checks.length} vérifications`));
+  if (problems.length > 0) details.setAttribute("open", "");
+  const items = h("ul", { class: "check-list" });
+  for (const c of health.checks) {
+    items.append(
+      h(
+        "li",
+        { class: `check check-${c.level}` },
+        h("span", { class: "check-icon", "aria-hidden": "true" }, LEVEL_ICON[c.level]),
+        h("span", { class: "check-title" }, c.title),
+        h("span", { class: "check-message" }, c.message),
+      ),
+    );
+  }
+  details.append(items);
+  host.append(details);
 }
 
 // ── Choice of the load level ─────────────────────────────────────────────────
@@ -231,21 +251,52 @@ function verdictChip(summary: Summary): HTMLElement {
   return chip;
 }
 
-interface Group {
-  hardware: string;
+interface TypeGroup {
   kind: Kind;
-  rows: Summary[];
+  /** Hardware of this type, each with its sensors (the most changed first). */
+  hardwares: { hardware: string; rows: Summary[] }[];
 }
 
-function groupSummaries(summaries: Summary[]): Group[] {
+/** Sensors grouped by TYPE of component; inside a type, those of one piece of hardware stay together. */
+function groupByType(summaries: Summary[]): TypeGroup[] {
   const byHardware = new Map<string, Summary[]>();
   for (const s of summaries) byHardware.set(s.hardware, [...(byHardware.get(s.hardware) ?? []), s]);
-  const groups: Group[] = [...byHardware].map(([hardware, rows]) => ({
-    hardware,
-    kind: hardwareKind(hardware, rows.map((r) => r.sensor)),
-    rows: [...rows].sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity)),
-  }));
-  return groups.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.hardware.localeCompare(b.hardware));
+  const types = new Map<Kind, TypeGroup>();
+  for (const [hardware, rows] of byHardware) {
+    const kind = hardwareKind(hardware, rows.map((r) => r.sensor));
+    const group = types.get(kind) ?? { kind, hardwares: [] };
+    group.hardwares.push({ hardware, rows: [...rows].sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity)) });
+    types.set(kind, group);
+  }
+  for (const g of types.values()) g.hardwares.sort((a, b) => a.hardware.localeCompare(b.hardware));
+  return KIND_ORDER.filter((k) => types.has(k)).map((k) => types.get(k) as TypeGroup);
+}
+
+function sensorRow(row: Summary): HTMLElement {
+  const selected = state.selected?.hardware === row.hardware && state.selected?.sensor === row.sensor;
+  const name = sensorLabel(row.sensor);
+  const tr = h("tr", { tabindex: "0", "aria-selected": String(selected), class: selected ? "selected" : undefined });
+  tr.append(
+    h("th", { scope: "row" }, h("span", { class: "sensor" }, name.main), name.tech ? h("span", { class: "tech" }, name.tech) : null),
+    h("td", { class: "num" }, row.sufficient && row.baseline !== null ? fmtTemp(row.baseline) : "—"),
+    h("td", { class: "num" }, row.current === null ? "—" : fmtTemp(row.current)),
+    h("td", {}, row.sufficient ? verdictChip(row) : h("span", { class: "chip chip-unknown" }, `Pas assez de recul (${fmtInt(row.days)} j de mesures)`)),
+    h("td", { class: "spark" }, sparkline(row.sparkline)),
+  );
+  const select = (): void => {
+    state.selected = { hardware: row.hardware, sensor: row.sensor };
+    writeHash();
+    renderComponents();
+    void refreshTrend().then(() => $("detail").scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  tr.addEventListener("click", select);
+  tr.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      select();
+    }
+  });
+  return tr;
 }
 
 function renderComponents(): void {
@@ -256,35 +307,15 @@ function renderComponents(): void {
     host.append(h("p", { class: "muted" }, "Rien à afficher pour ce niveau de charge pour l'instant."));
     return;
   }
-  host.append(h("p", { class: "muted" }, "Cliquez sur une ligne pour voir la courbe du composant."));
+  host.append(h("p", { class: "muted" }, "Cliquez sur une ligne pour voir la courbe du capteur."));
 
-  for (const group of groupSummaries(state.summary)) {
+  for (const group of groupByType(state.summary)) {
+    const several = group.hardwares.length > 1;
     const body = h("tbody");
-    for (const row of group.rows) {
-      const selected = state.selected?.hardware === row.hardware && state.selected?.sensor === row.sensor;
-      const name = sensorLabel(row.sensor);
-      const tr = h("tr", { tabindex: "0", "aria-selected": String(selected), class: selected ? "selected" : undefined });
-      tr.append(
-        h("th", { scope: "row" }, h("span", { class: "sensor" }, name.main), name.tech ? h("span", { class: "tech" }, name.tech) : null),
-        h("td", { class: "num" }, row.sufficient && row.baseline !== null ? fmtTemp(row.baseline) : "—"),
-        h("td", { class: "num" }, row.current === null ? "—" : fmtTemp(row.current)),
-        h("td", {}, row.sufficient ? verdictChip(row) : h("span", { class: "chip chip-unknown" }, `Pas assez de recul (${fmtInt(row.days)} j de mesures)`)),
-        h("td", { class: "spark" }, sparkline(row.sparkline)),
-      );
-      const select = (): void => {
-        state.selected = { hardware: row.hardware, sensor: row.sensor };
-        writeHash();
-        renderComponents();
-        void refreshTrend().then(() => $("detail").scrollIntoView({ behavior: "smooth", block: "start" }));
-      };
-      tr.addEventListener("click", select);
-      tr.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          select();
-        }
-      });
-      body.append(tr);
+    for (const { hardware, rows } of group.hardwares) {
+      // Several pieces of hardware of the same type (e.g. three disks): name each one.
+      if (several) body.append(h("tr", { class: "subhead" }, h("th", { scope: "colgroup", colspan: "5" }, hardware.trim())));
+      for (const row of rows) body.append(sensorRow(row));
     }
     host.append(
       h(
@@ -293,9 +324,9 @@ function renderComponents(): void {
         h(
           "table",
           {},
-          h("caption", {}, groupTitle(group.kind, group.hardware)),
+          h("caption", {}, typeTitle(group.kind, group.hardwares.map((g) => g.hardware))),
           h("thead", {}, h("tr", {},
-            h("th", { scope: "col" }, "Composant"),
+            h("th", { scope: "col" }, "Capteur"),
             h("th", { scope: "col", class: "num" }, "Au début"),
             h("th", { scope: "col", class: "num" }, "Ces 30 derniers jours"),
             h("th", { scope: "col" }, "Évolution"),
@@ -498,10 +529,18 @@ async function refreshStatus(): Promise<void> {
   } catch {
     state.status = null;
   }
-  renderStatus();
   renderData();
   renderFooter();
   if (state.summary.length > 0) renderVerdict();
+}
+
+async function refreshHealth(): Promise<void> {
+  try {
+    state.health = await api.health();
+  } catch {
+    state.health = null;
+  }
+  renderHealth();
 }
 
 async function refreshUpdate(): Promise<void> {
@@ -578,7 +617,7 @@ function mount(): void {
       h("div", {}, h("h1", {}, "Monitoring"), h("p", { class: "subtitle" }, "Les températures de votre PC ont-elles changé depuis le début ?")),
       h("div", { id: "update-slot" }),
     ),
-    h("div", { id: "status", "aria-live": "polite" }),
+    h("section", { id: "health", class: "health", "aria-live": "polite" }),
     helpBlock(),
     h("section", { id: "verdict", class: "card", "aria-live": "polite" }),
     h("section", { id: "filters", class: "filters" }),
@@ -597,8 +636,10 @@ function mount(): void {
 function start(): void {
   mount();
   readHash();
+  void refreshHealth();
   void refreshStatus().then(refreshData);
   void refreshUpdate();
+  setInterval(() => void refreshHealth(), STATUS_REFRESH_MS);
   setInterval(() => void refreshStatus(), STATUS_REFRESH_MS);
   setInterval(() => void refreshData(), DATA_REFRESH_MS);
   setInterval(() => void refreshUpdate(), UPDATE_REFRESH_MS);

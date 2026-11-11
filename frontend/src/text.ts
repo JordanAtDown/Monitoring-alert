@@ -76,6 +76,19 @@ export function groupTitle(kind: Kind, hardware: string): string {
   return `${KIND_TITLE[kind]} — ${hardware.trim()}`;
 }
 
+const KIND_TITLE_PLURAL: Record<Kind, string> = {
+  cpu: "Processeurs",
+  gpu: "Cartes graphiques",
+  board: "Cartes mères",
+  disk: "Disques",
+  other: "Autres composants",
+};
+
+/** Title of a whole type of component: with its model when there is only one, else the plural. */
+export function typeTitle(kind: Kind, hardwares: string[]): string {
+  return hardwares.length === 1 ? groupTitle(kind, hardwares[0]) : KIND_TITLE_PLURAL[kind];
+}
+
 /** How long ago the history starts, in words ("environ 7 mois"). */
 export function spanInWords(days: number): string {
   if (days < 45) return `${days} jours`;

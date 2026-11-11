@@ -89,6 +89,26 @@ a { color: var(--series-1); }
 .status-bad .status-icon { background: var(--critical); }
 .status-detail { margin: 2px 0 0 32px; font-size: 14px; color: var(--ink-secondary); }
 
+/* ── Health ──────────────────────────────────────────────────── */
+.health { margin: 4px 0 0; }
+.status { font-size: 18px; font-weight: 650; }
+.problems { margin: 8px 0 0 32px; padding: 0; list-style: none; }
+.problems li { margin-bottom: 8px; }
+.advice-inline { display: block; margin-top: 2px; color: var(--ink-secondary); font-weight: 400; }
+.checks { margin: 8px 0 0 32px; }
+.checks summary { padding: 2px 0; font-size: 14px; }
+.check-list { margin: 6px 0 0; padding: 0; list-style: none; }
+.check { display: grid; grid-template-columns: 22px 190px 1fr; gap: 2px 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--grid); font-size: 14px; }
+.check:last-child { border-bottom: 0; }
+.check-icon { font-weight: 700; text-align: center; }
+.check-ok .check-icon { color: var(--good); }
+.check-warn .check-icon { color: var(--warning); }
+.check-bad .check-icon { color: var(--critical); }
+.check-info .check-icon { color: var(--ink-muted); }
+.check-title { font-weight: 600; }
+.check-message { color: var(--ink-secondary); }
+@media (max-width: 680px) { .check { grid-template-columns: 22px 1fr; } .check-message { grid-column: 2; } .problems, .checks { margin-left: 0; } }
+
 /* ── Help ────────────────────────────────────────────────────── */
 .help { margin: 16px 0; padding: 12px 16px; border-radius: 12px; background: var(--ghost); }
 .help summary { cursor: pointer; font-weight: 600; }
@@ -127,8 +147,10 @@ th[scope="row"] { font-weight: 500; }
 .sensor { display: block; }
 .tech { display: block; font-size: 12px; color: var(--ink-muted); font-weight: 400; }
 .spark { line-height: 0; width: 110px; }
-.table-wrap tbody tr { cursor: pointer; }
-.table-wrap tbody tr:hover { background: var(--ghost); }
+.subhead th { padding-top: 14px; font-size: 14px; font-weight: 650; color: var(--ink-secondary); border-bottom: 1px solid var(--axis); }
+.table-wrap tbody tr[tabindex] { cursor: pointer; }
+.table-wrap tbody tr { cursor: default; }
+.table-wrap tbody tr[tabindex]:hover { background: var(--ghost); }
 .table-wrap tbody tr[aria-selected="true"] { background: var(--selected); }
 
 .chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 14px; font-weight: 600; white-space: nowrap; background: var(--ghost); }

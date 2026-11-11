@@ -141,6 +141,7 @@ fn a_collector_that_cannot_reach_lhm_is_a_problem_with_a_remedy() {
     let mut s = healthy();
     s.collector.consecutive_failures = 3;
     s.collector.last_error = Some("Cannot reach LibreHardwareMonitor".into());
+    s.collector.last_success = Some("2026-11-11T14:50:00".into());
     let h = run(&s);
 
     assert_eq!(h.overall, Level::Bad);
@@ -149,9 +150,17 @@ fn a_collector_that_cannot_reach_lhm_is_a_problem_with_a_remedy() {
     assert_eq!(c.level, Level::Bad);
     assert!(
         c.message.contains("ne sont plus relevées")
-            && c.message.contains("dernière mesure il y a 2 min")
+            && c.message.contains("dernière mesure il y a 10 min")
     );
     assert!(c.advice.as_deref().unwrap().contains("Remote Web Server"));
+}
+
+#[test]
+fn right_after_a_failure_the_last_measurement_is_not_mentioned() {
+    let mut s = healthy();
+    s.collector.consecutive_failures = 1;
+    let h = run(&s); // last success was 2 minutes ago
+    assert!(!find(&h, "collection").message.contains("dernière mesure"));
 }
 
 #[test]

@@ -107,14 +107,18 @@ supprime l'ancien système.
 Il est écrit en langage courant ; les termes techniques sont dans « Détails techniques ».
 
 De haut en bas :
-- **État** : « Tout fonctionne, dernière mesure il y a 3 min », ou ce qu'il faut faire si LibreHardwareMonitor ne répond plus.
+- **État du système** : la page surveille elle-même que tout fonctionne. Une ligne « ✓ Tout fonctionne » (ou « ⚠ 2 points à
+  vérifier », « ✕ Un problème empêche le suivi ») et, dessous, **ce qu'il faut faire**. Le détail des vérifications (relevé
+  des températures, capteurs qui répondent, base de données, résumés quotidiens, démarrage automatique, mises à jour) est
+  déroulable. Le titre de l'onglet reprend l'état (✓ / ⚠ / ✕) : un onglet épinglé suffit pour voir que tout va bien.
+  Si le programme lui-même ne répond plus, la page le dit.
 - **Comment lire cette page ?** : cinq lignes d'explication, ouvertes la première fois.
 - **En résumé** : « Depuis le 8 avril (environ 7 mois de suivi), quand le PC est au repos : 4 composants plus chauds,
   9 stables, 2 plus froids », et le changement le plus marqué.
 - **Le PC est…** (au repos, charge légère, moyenne, élevée) : on ne compare que des situations identiques. « Au repos »
   est le plus parlant.
-- **Vos composants**, regroupés (processeur, carte graphique, carte mère, disques) : température *au début* (les 30
-  premiers jours de suivi), *ces 30 derniers jours*, et l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) avec
+- **Vos composants**, regroupés **par type** (processeur, carte graphique, carte mère, disques : tous les disques ensemble,
+  chacun sous son nom) : température *au début* (les 30 premiers jours de suivi), *ces 30 derniers jours*, et l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) avec
   l'écart. « Stable » veut dire moins de 1,5 °C d'écart : la plupart des capteurs ne mesurent qu'au degré près.
 - **Le composant choisi** : une phrase qui explique ses chiffres, sa courbe (un point par jour, ligne pleine = température
   habituelle sur 30 jours, tirets = niveau du début, zone teintée = écart, mois alternés en fond), deux options (plage de

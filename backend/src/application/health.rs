@@ -111,6 +111,8 @@ fn collection_check(i: &HealthInputs) -> Check {
             .last_success
             .as_deref()
             .and_then(|s| age_secs(s, i.now))
+            // Right after the failure "last measurement just now" would only confuse.
+            .filter(|a| *a >= 180)
             .map(|a| format!(" (dernière mesure {})", ago(a)))
             .unwrap_or_default();
         return check(

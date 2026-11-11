@@ -14,6 +14,11 @@ profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base d
 conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ### Added
+- **Supervision dans le tableau de bord** (`/api/health`) : la page vérifie que tout fonctionne et le dit en clair — relevé
+  des températures (LibreHardwareMonitor injoignable, silence de plus de 3 intervalles, aucune température), capteurs qui
+  ne répondent plus (nommés), base de données (taille, dernière écriture), résumés quotidiens (dernière réussite ou erreur),
+  démarrage automatique (Windows), mises à jour. Chaque anomalie dit quoi faire ; une mise à jour disponible ne rend jamais
+  la page orange. Le titre de l'onglet reprend l'état (✓ / ⚠ / ✕).
 - **Bouton « Mise à jour disponible »** dans le tableau de bord, avec les trois étapes à suivre (télécharger, lancer,
   suivre l'assistant). Le programme demande une fois par jour à GitHub la dernière version (requête anonyme,
   rien sur la machine) et l'expose sur `/api/update` ; il ne télécharge ni n'installe rien tout seul.
@@ -49,7 +54,8 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ### Changed
 - **Tableau de bord réécrit en langage courant** : une phrase de synthèse (« 4 composants plus chauds, 9 stables,
-  2 plus froids »), des composants regroupés (processeur, carte graphique, carte mère, disques) avec des noms lisibles,
+  2 plus froids »), des capteurs regroupés par type de composant (processeur, carte graphique, carte mère, disques — tous
+  les disques ensemble, chacun sous son nom) avec des noms lisibles,
   « au début » / « ces 30 derniers jours » / « Plus chaud · Stable · Plus froid », une phrase qui explique chaque courbe,
   un encart « Comment lire cette page ? » et un encart « Vos données » (ce qui est conservé, combien de temps, où).
   Les termes statistiques (médiane, p95, pente) passent dans « Détails techniques » ; la plage de chaque jour et la
