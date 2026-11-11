@@ -11,24 +11,26 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::collector::{CollectorStatus, StatusSnapshot};
-use crate::db::{self, LatestSnapshot};
-use crate::{assets, trends};
+use crate::application::ports::ReadModel;
+use crate::application::queries::{self, AppInfo};
+use crate::application::status::CollectorStatus;
+
+mod assets;
 
 /// Number of threads answering requests.
 const WORKERS: usize = 2;
 
+/// Opens a read model for one request.
+pub type ReadModelFactory = Box<dyn Fn() -> Result<Box<dyn ReadModel>> + Send + Sync>;
+
 pub struct AppState {
-    pub db_path: PathBuf,
+    pub open_read_model: ReadModelFactory,
     pub status: Arc<CollectorStatus>,
-    pub lhm_host: String,
-    pub lhm_port: u16,
-    pub raw_retention_days: u32,
+    pub info: AppInfo,
     /// Accepted `Host` header names; `None` accepts any (when listening beyond loopback).
     pub allowed_hosts: Option<Vec<String>>,
 }
@@ -184,7 +186,7 @@ fn static_file(path: &str) -> Reply {
 
 fn load_param(params: &[(String, String)]) -> std::result::Result<&str, Reply> {
     let load = param(params, "load").unwrap_or("idle");
-    if trends::LOAD_CATEGORIES.contains(&load) {
+    if queries::is_load_category(load) {
         Ok(load)
     } else {
         Err(Reply::error(
@@ -195,66 +197,21 @@ fn load_param(params: &[(String, String)]) -> std::result::Result<&str, Reply> {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Endpoints
+// Endpoints: parse the request, run a use case, serialize the answer
 // ──────────────────────────────────────────────────────────────
 
-#[derive(Serialize)]
-struct LhmInfo<'a> {
-    host: &'a str,
-    port: u16,
-}
-
-#[derive(Serialize)]
-struct DbInfo {
-    size_bytes: u64,
-    total_snapshots: i64,
-    first_ts: Option<String>,
-    last_ts: Option<String>,
-    raw_retention_days: u32,
-}
-
-#[derive(Serialize)]
-struct StatusResponse<'a> {
-    version: &'static str,
-    now: String,
-    collector: StatusSnapshot,
-    lhm: LhmInfo<'a>,
-    db: DbInfo,
-    latest: Option<LatestSnapshot>,
-}
-
-fn file_size(path: &std::path::Path) -> u64 {
-    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
-}
-
 fn api_status(state: &AppState) -> Result<Reply> {
-    let conn = db::open_read_only(&state.db_path)?;
-    let stats = db::get_overall_stats(&conn)?;
-    let mut wal = state.db_path.as_os_str().to_owned();
-    wal.push("-wal");
-
-    Ok(Reply::json(&StatusResponse {
-        version: env!("CARGO_PKG_VERSION"),
-        now: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-        collector: state.status.snapshot(),
-        lhm: LhmInfo {
-            host: &state.lhm_host,
-            port: state.lhm_port,
-        },
-        db: DbInfo {
-            size_bytes: file_size(&state.db_path) + file_size(&PathBuf::from(wal)),
-            total_snapshots: stats.total_snapshots,
-            first_ts: stats.first_ts,
-            last_ts: stats.last_ts,
-            raw_retention_days: state.raw_retention_days,
-        },
-        latest: db::get_latest_snapshot(&conn)?,
-    }))
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::status(
+        read.as_ref(),
+        &state.status,
+        &state.info,
+    )?))
 }
 
 fn api_series(state: &AppState) -> Result<Reply> {
-    let conn = db::open_read_only(&state.db_path)?;
-    Ok(Reply::json(&db::get_series(&conn)?))
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::series(read.as_ref())?))
 }
 
 fn api_trend(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
@@ -266,10 +223,13 @@ fn api_trend(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
         Ok(load) => load,
         Err(reply) => return Ok(reply),
     };
-    let conn = db::open_read_only(&state.db_path)?;
-    // The current day is incomplete: it would bias the daily median.
-    let stats = db::get_daily_stats(&conn, hardware, sensor, load, &db::day_string(0))?;
-    Ok(Reply::json(&trends::compute_trend(&stats)))
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::trend(
+        read.as_ref(),
+        hardware,
+        sensor,
+        load,
+    )?))
 }
 
 fn api_summary(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
@@ -277,14 +237,8 @@ fn api_summary(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
         Ok(load) => load,
         Err(reply) => return Ok(reply),
     };
-    let conn = db::open_read_only(&state.db_path)?;
-    let groups = db::get_daily_stats_for_load(&conn, load, &db::day_string(0))?;
-    let mut summaries: Vec<_> = groups
-        .iter()
-        .map(|(hardware, sensor, stats)| trends::summarize(hardware, sensor, load, stats))
-        .collect();
-    trends::sort_summaries(&mut summaries);
-    Ok(Reply::json(&summaries))
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::summary(read.as_ref(), load)?))
 }
 
 // ──────────────────────────────────────────────────────────────

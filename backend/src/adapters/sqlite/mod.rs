@@ -1,10 +1,16 @@
+//! SQLite adapter: schema and migrations, the SQL behind the ports, `SqliteStore`.
+
 use anyhow::{Context, Result};
-use chrono::{Duration, Local, NaiveDate};
+use chrono::NaiveDate;
 use rusqlite::{params, Connection};
-use serde::Serialize;
 use std::path::Path;
 
-use crate::trends::DayStat;
+use crate::application::clock::day_string;
+use crate::application::ports::{LatestReading, LatestSnapshot, OverallStats, SeriesInfo};
+use crate::domain::trends::DayStat;
+
+mod store;
+pub use store::{open_read_model, SqliteStore};
 
 /// Current schema version, stored in `PRAGMA user_version`.
 ///
@@ -215,13 +221,6 @@ pub fn rollup_since(conn: &Connection, from_day: &str) -> Result<usize> {
     Ok(written)
 }
 
-/// Returns today's local date and the one of `days_back` days ago, as `YYYY-MM-DD`.
-pub fn day_string(days_back: u32) -> String {
-    (Local::now().date_naive() - Duration::days(i64::from(days_back)))
-        .format("%Y-%m-%d")
-        .to_string()
-}
-
 pub fn insert_snapshot(
     conn: &Connection,
     ts: &str,
@@ -250,12 +249,6 @@ pub fn insert_reading(
     )
     .context("Failed to insert reading")?;
     Ok(())
-}
-
-pub struct OverallStats {
-    pub total_snapshots: i64,
-    pub first_ts: Option<String>,
-    pub last_ts: Option<String>,
 }
 
 pub fn get_overall_stats(conn: &Connection) -> Result<OverallStats> {
@@ -312,17 +305,6 @@ pub fn purge_old_snapshots(conn: &Connection, days: u32) -> Result<usize> {
 // ──────────────────────────────────────────────────────────────
 // Dashboard queries
 // ──────────────────────────────────────────────────────────────
-
-/// One (sensor, load category) series present in `daily_stats`.
-#[derive(Debug, Serialize)]
-pub struct SeriesInfo {
-    pub hardware: String,
-    pub sensor: String,
-    pub load_cat: String,
-    pub days: i64,
-    pub first_day: String,
-    pub last_day: String,
-}
 
 pub fn get_series(conn: &Connection) -> Result<Vec<SeriesInfo>> {
     let mut stmt = conn.prepare(
@@ -418,23 +400,6 @@ pub fn get_daily_stats_for_load(
         }
     }
     Ok(out)
-}
-
-#[derive(Debug, Serialize)]
-pub struct LatestReading {
-    pub hardware: String,
-    pub sensor: String,
-    pub value: f64,
-}
-
-/// The most recent snapshot with all its readings.
-#[derive(Debug, Serialize)]
-pub struct LatestSnapshot {
-    pub ts: String,
-    pub cpu_load: Option<f64>,
-    pub gpu_load: Option<f64>,
-    pub load_cat: String,
-    pub readings: Vec<LatestReading>,
 }
 
 pub fn get_latest_snapshot(conn: &Connection) -> Result<Option<LatestSnapshot>> {

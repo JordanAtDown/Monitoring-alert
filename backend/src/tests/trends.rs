@@ -1,4 +1,4 @@
-use crate::trends::{self, DayStat};
+use crate::domain::trends::{self, DayStat};
 use chrono::NaiveDate;
 
 fn day(n: i64) -> NaiveDate {

@@ -237,13 +237,13 @@ pub mod windows {
         // std::env::args_os(): [0] = exe path, [1] = our config path.
         let config_path_arg = std::env::args_os().nth(1);
         let config = match &config_path_arg {
-            Some(path) => crate::config::AppConfig::load_from(std::path::Path::new(path)),
-            None => crate::config::AppConfig::load(),
+            Some(path) => crate::adapters::config::AppConfig::load_from(std::path::Path::new(path)),
+            None => crate::adapters::config::AppConfig::load(),
         };
         // Ensure the log directory exists before trying to open the log file.
         let _ = std::fs::create_dir_all(&config.log_dir);
         let log_path = config.log_dir.join("monitoring-alert.log");
-        if let Err(e) = crate::logger::init(&log_path, &config.log_level) {
+        if let Err(e) = crate::adapters::logging::init(&log_path, &config.log_level) {
             // Last resort: log to stderr so Windows Event Log can capture it.
             eprintln!("[monitoring-alert] logger init failed: {:#}", e);
         }
@@ -252,15 +252,13 @@ pub mod windows {
             config_path_arg,
             config.db_path.display()
         );
-        let result = crate::collector::watch(
+        crate::daemon::supervise_collector(
+            &config,
             &config.db_path,
-            config.collect_interval_secs,
-            config.raw_retention_days,
-            &config.lhm_host,
-            config.lhm_port,
-            &crate::collector::CollectorStatus::new(config.collect_interval_secs),
-            stop_flag,
+            &crate::application::status::CollectorStatus::new(config.collect_interval_secs),
+            &stop_flag,
         );
+        let result: anyhow::Result<()> = Ok(());
 
         // Report Stopped
         let exit_code = match &result {

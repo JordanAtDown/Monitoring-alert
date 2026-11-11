@@ -1,19 +1,20 @@
 //! monitoring-alert — long-term temperature monitoring library.
 //!
-//! The `monitoring-alert` binary is the command-line interface; everything it
-//! does lives in this library so that other binaries can reuse it.
+//! A simplified hexagonal layout, inside one crate:
+//!
+//! * [`domain`]      the business core, pure (load levels, drift computation)
+//! * [`application`] the use cases and the ports (traits) they need
+//! * [`adapters`]    the technical side: SQLite, LibreHardwareMonitor over HTTP,
+//!   the web server, the config file, logging, Windows
+//! * [`daemon`]      the composition root that plugs the adapters in
+//!
+//! Dependencies point inwards only: adapters → application → domain.
+//! `tests/architecture.rs` enforces it.
 
-pub mod assets;
-pub mod collector;
-pub mod config;
+pub mod adapters;
+pub mod application;
 pub mod daemon;
-pub mod db;
-pub mod logger;
-pub mod sensors;
-pub mod server;
-pub mod service;
-pub mod store;
-pub mod trends;
+pub mod domain;
 
 #[cfg(test)]
 mod tests;

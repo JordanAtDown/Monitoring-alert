@@ -1,17 +1,11 @@
+//! LibreHardwareMonitor adapter: reads the sensors through its Remote Web Server
+//! (`GET /data.json`) and turns the JSON tree into a [`SnapshotData`].
+
 use anyhow::Result;
 use serde::Deserialize;
 
-pub struct TemperatureReading {
-    pub hardware: String,
-    pub sensor: String,
-    pub value: f64,
-}
-
-pub struct SnapshotData {
-    pub temperatures: Vec<TemperatureReading>,
-    pub cpu_load: Option<f64>,
-    pub gpu_load: Option<f64>,
-}
+use crate::application::ports::SensorSource;
+use crate::domain::model::{SnapshotData, TemperatureReading};
 
 // ── Parsing helpers ──────────────────────────────────────────────────────────
 
@@ -117,6 +111,32 @@ pub(crate) fn extract_snapshot(root: &Node) -> Result<SnapshotData> {
 
 // ── HTTP read ────────────────────────────────────────────────────────────────
 
+/// The sensors of a LibreHardwareMonitor instance.
+pub struct LhmSource {
+    host: String,
+    port: u16,
+}
+
+impl LhmSource {
+    pub fn new(host: &str, port: u16) -> Self {
+        Self {
+            host: host.to_string(),
+            port,
+        }
+    }
+}
+
+impl SensorSource for LhmSource {
+    fn read(&self) -> Result<SnapshotData> {
+        read_sensors(&self.host, self.port)
+    }
+
+    fn describe(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+}
+
+/// Polls LibreHardwareMonitor once.
 pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
     use anyhow::Context;
 

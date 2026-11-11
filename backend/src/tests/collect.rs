@@ -1,0 +1,236 @@
+use crate::adapters::sqlite::{self as db, SqliteStore};
+use crate::application::collect::collect_and_store;
+use crate::application::monitor::{run_monitor, MonitorSettings, StoreFactory};
+use crate::application::ports::{SensorSource, TemperatureStore};
+use crate::application::status::CollectorStatus;
+use crate::domain::model::{SnapshotData, TemperatureReading};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
+
+/// A sensor source that replays scripted answers and can raise a stop flag.
+struct FakeSource {
+    answers: Mutex<Vec<Result<SnapshotData, String>>>,
+    reads: AtomicUsize,
+    stop_after: Option<(usize, &'static AtomicBool)>,
+}
+
+fn reading(sensor: &str, value: f64) -> TemperatureReading {
+    TemperatureReading {
+        hardware: "CPU".into(),
+        sensor: sensor.into(),
+        value,
+    }
+}
+
+fn data(cpu: Option<f64>, gpu: Option<f64>, temps: &[(&str, f64)]) -> SnapshotData {
+    SnapshotData {
+        temperatures: temps.iter().map(|(s, v)| reading(s, *v)).collect(),
+        cpu_load: cpu,
+        gpu_load: gpu,
+    }
+}
+
+impl FakeSource {
+    fn new(answers: Vec<Result<SnapshotData, String>>) -> Self {
+        Self {
+            answers: Mutex::new(answers),
+            reads: AtomicUsize::new(0),
+            stop_after: None,
+        }
+    }
+}
+
+impl SensorSource for FakeSource {
+    fn read(&self) -> anyhow::Result<SnapshotData> {
+        let n = self.reads.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Some((limit, stop)) = self.stop_after {
+            if n >= limit {
+                stop.store(true, Ordering::SeqCst);
+            }
+        }
+        let mut answers = self.answers.lock().unwrap();
+        // The last scripted answer is repeated.
+        let answer = if answers.len() > 1 {
+            answers.remove(0)
+        } else {
+            answers[0].as_ref().map(clone_data).map_err(Clone::clone)
+        };
+        answer.map_err(|e| anyhow::anyhow!(e))
+    }
+
+    fn describe(&self) -> String {
+        "fake".into()
+    }
+}
+
+fn clone_data(d: &SnapshotData) -> SnapshotData {
+    data(
+        d.cpu_load,
+        d.gpu_load,
+        &d.temperatures
+            .iter()
+            .map(|r| (r.sensor.as_str(), r.value))
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn memory_store() -> SqliteStore {
+    SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap())
+}
+
+fn category_and_load(store: &SqliteStore) -> (String, Option<f64>, Option<f64>) {
+    store
+        .connection()
+        .query_row(
+            "SELECT load_cat, cpu_load, gpu_load FROM snapshots",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+}
+
+#[test]
+fn a_collection_stores_the_snapshot_and_its_readings() {
+    let store = memory_store();
+    let source = FakeSource::new(vec![Ok(data(
+        Some(12.0),
+        None,
+        &[("Package", 49.0), ("Core 1", 47.5)],
+    ))]);
+
+    assert_eq!(collect_and_store(&store, &source).unwrap(), 2);
+
+    let readings: i64 = store
+        .connection()
+        .query_row("SELECT COUNT(*) FROM readings", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(readings, 2);
+    assert_eq!(category_and_load(&store), ("idle".into(), Some(12.0), None));
+}
+
+#[test]
+fn the_load_category_follows_the_busiest_of_cpu_and_gpu() {
+    let store = memory_store();
+    // Gaming: GPU 90 %, CPU 15 % → heavy, not light.
+    let source = FakeSource::new(vec![Ok(data(Some(15.0), Some(90.0), &[("Package", 70.0)]))]);
+    collect_and_store(&store, &source).unwrap();
+    assert_eq!(category_and_load(&store).0, "heavy");
+}
+
+#[test]
+fn a_snapshot_without_any_load_is_idle() {
+    let store = memory_store();
+    let source = FakeSource::new(vec![Ok(data(None, None, &[("Package", 35.0)]))]);
+    collect_and_store(&store, &source).unwrap();
+    assert_eq!(category_and_load(&store).0, "idle");
+}
+
+#[test]
+fn no_temperature_sensor_is_reported_as_zero_readings() {
+    let store = memory_store();
+    let source = FakeSource::new(vec![Ok(data(Some(5.0), None, &[]))]);
+    assert_eq!(collect_and_store(&store, &source).unwrap(), 0);
+}
+
+#[test]
+fn a_failing_source_stores_nothing() {
+    let store = memory_store();
+    let source = FakeSource::new(vec![Err("LHM is down".into())]);
+
+    let error = collect_and_store(&store, &source).unwrap_err();
+    assert!(format!("{error:#}").contains("LHM is down"));
+    assert_eq!(store.overall_stats().unwrap().total_snapshots, 0);
+}
+
+#[test]
+fn a_snapshot_is_stored_atomically() {
+    // A reading that violates the schema must not leave a snapshot without readings behind.
+    let store = memory_store();
+    let bad = TemperatureReading {
+        hardware: "CPU".into(),
+        sensor: "Package".into(),
+        value: f64::NAN, // NaN is stored as NULL, which readings.value (NOT NULL) refuses
+    };
+    let snapshot = crate::domain::model::NewSnapshot {
+        ts: "2024-01-01T10:00:00",
+        cpu_load: None,
+        gpu_load: None,
+        load_cat: "idle",
+        readings: &[bad],
+    };
+    assert!(store.record_snapshot(&snapshot).is_err());
+    assert_eq!(store.overall_stats().unwrap().total_snapshots, 0);
+}
+
+// ── Collector status ──────────────────────────────────────────
+
+#[test]
+fn the_status_tracks_successes_and_failures() {
+    let status = CollectorStatus::new(300);
+    assert!(status.snapshot().last_attempt.is_none());
+
+    status.record_failure("boom");
+    status.record_failure("boom");
+    let s = status.snapshot();
+    assert_eq!(s.consecutive_failures, 2);
+    assert_eq!(s.last_error.as_deref(), Some("boom"));
+    assert!(s.last_attempt.is_some() && s.last_success.is_none());
+
+    status.record_success(7);
+    let s = status.snapshot();
+    assert_eq!((s.consecutive_failures, s.last_sensor_count), (0, 7));
+    assert!(s.last_error.is_none() && s.last_success.is_some());
+}
+
+// ── The collection loop ───────────────────────────────────────
+
+static STOP: AtomicBool = AtomicBool::new(false);
+
+#[test]
+fn the_monitor_collects_then_stops_when_asked() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    STOP.store(false, Ordering::SeqCst);
+
+    // read #1 = startup check, read #2 = first collection, which raises the stop flag.
+    let mut source = FakeSource::new(vec![Ok(data(Some(3.0), None, &[("Package", 40.0)]))]);
+    source.stop_after = Some((2, &STOP));
+    let open_store = || -> anyhow::Result<Box<dyn TemperatureStore>> {
+        Ok(Box::new(SqliteStore::new(db::init_db(&path)?)))
+    };
+    let factory: StoreFactory<'_> = &open_store;
+    let status = CollectorStatus::new(60);
+    let settings = MonitorSettings {
+        interval_secs: 60,
+        raw_retention_days: 90,
+    };
+
+    run_monitor(factory, &source, &settings, &status, &STOP).unwrap();
+
+    assert_eq!(source.reads.load(Ordering::SeqCst), 2);
+    let stored = SqliteStore::new(db::init_db(&path).unwrap());
+    assert_eq!(stored.overall_stats().unwrap().total_snapshots, 1);
+    let s = status.snapshot();
+    assert_eq!((s.consecutive_failures, s.last_sensor_count), (0, 1));
+}
+
+#[test]
+fn the_monitor_refuses_to_start_when_the_store_cannot_be_opened() {
+    let stop = AtomicBool::new(true);
+    let source = FakeSource::new(vec![Ok(data(None, None, &[]))]);
+    let open_store =
+        || -> anyhow::Result<Box<dyn TemperatureStore>> { anyhow::bail!("disk on fire") };
+    let settings = MonitorSettings {
+        interval_secs: 60,
+        raw_retention_days: 90,
+    };
+    let error = run_monitor(
+        &open_store,
+        &source,
+        &settings,
+        &CollectorStatus::new(60),
+        &stop,
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("disk on fire"));
+}

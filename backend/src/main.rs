@@ -1,7 +1,12 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use monitoring_alert::store::TemperatureStore as _;
-use monitoring_alert::{collector, config, daemon, db, logger, sensors, service, store};
+use monitoring_alert::adapters::sqlite::{self as db, SqliteStore};
+use monitoring_alert::adapters::{config, lhm, logging, windows_service as service};
+use monitoring_alert::application::collect::collect_and_store;
+use monitoring_alert::application::monitor::{run_monitor, MonitorSettings};
+use monitoring_alert::application::ports::{OverallStats, TemperatureStore};
+use monitoring_alert::application::status::CollectorStatus;
+use monitoring_alert::daemon;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -89,23 +94,30 @@ fn run_cli() -> Result<()> {
 
     // Init logger — directory from config (defaults to same dir as db_path).
     let log_path = cfg.log_dir.join("monitoring-alert.log");
-    let _ = logger::init(&log_path, &cfg.log_level);
+    let _ = logging::init(&log_path, &cfg.log_level);
 
     match cli.command {
         Commands::Collect => {
-            let store = store::SqliteStore::new(db::init_db(&db_path)?);
-            collector::collect_and_store(&store, &cfg.lhm_host, cfg.lhm_port)?;
+            let store = SqliteStore::new(db::init_db(&db_path)?);
+            let source = lhm::LhmSource::new(&cfg.lhm_host, cfg.lhm_port);
+            collect_and_store(&store, &source)?;
         }
         Commands::Watch { interval } => {
-            let stop = Arc::new(AtomicBool::new(false));
-            collector::watch(
-                &db_path,
-                interval,
-                cfg.raw_retention_days,
-                &cfg.lhm_host,
-                cfg.lhm_port,
-                &collector::CollectorStatus::new(interval),
-                stop,
+            let stop = AtomicBool::new(false);
+            let source = lhm::LhmSource::new(&cfg.lhm_host, cfg.lhm_port);
+            let settings = MonitorSettings {
+                interval_secs: interval,
+                raw_retention_days: cfg.raw_retention_days,
+            };
+            let open_store = || -> Result<Box<dyn TemperatureStore>> {
+                Ok(Box::new(SqliteStore::new(db::init_db(&db_path)?)))
+            };
+            run_monitor(
+                &open_store,
+                &source,
+                &settings,
+                &CollectorStatus::new(interval),
+                &stop,
             )?;
         }
         Commands::Serve => {
@@ -126,8 +138,8 @@ fn run_cli() -> Result<()> {
         }
         Commands::Db { action } => match action {
             DbAction::Stats => {
-                let store = store::SqliteStore::new(db::init_db(&db_path)?);
-                let stats = store.get_overall_stats()?;
+                let store = SqliteStore::new(db::init_db(&db_path)?);
+                let stats = store.overall_stats()?;
                 let size_bytes = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
                 println!("Base de données : {}", db_path.display());
                 println!(
@@ -193,8 +205,8 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
             }
         }
         Ok(conn) => {
-            let store = store::SqliteStore::new(conn);
-            let stats = store.get_overall_stats().unwrap_or(db::OverallStats {
+            let store = SqliteStore::new(conn);
+            let stats = store.overall_stats().unwrap_or(OverallStats {
                 total_snapshots: 0,
                 first_ts: None,
                 last_ts: None,
@@ -230,7 +242,7 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
             }
 
             if let Some(d) = days {
-                let min = monitoring_alert::trends::MIN_SPAN_DAYS;
+                let min = monitoring_alert::domain::trends::MIN_SPAN_DAYS;
                 if d >= min {
                     println!("     Suivi de dérive : disponible (≥ {} j de recul)", min);
                 } else {
@@ -267,7 +279,7 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
 
     // ── 4. LibreHardwareMonitor / HTTP ───────────────────────
     {
-        match sensors::read_sensors(&cfg.lhm_host, cfg.lhm_port) {
+        match lhm::read_sensors(&cfg.lhm_host, cfg.lhm_port) {
             Ok(data) if !data.temperatures.is_empty() => {
                 println!(
                     "  ✓  LibreHardwareMonitor HTTP accessible  ({} sonde(s) de température)",

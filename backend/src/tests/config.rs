@@ -1,4 +1,4 @@
-use crate::config::{AppConfig, DEFAULT_WEB_PORT};
+use crate::adapters::config::{AppConfig, DEFAULT_WEB_PORT};
 use std::path::Path;
 
 fn load(toml: &str) -> AppConfig {

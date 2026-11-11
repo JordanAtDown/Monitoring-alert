@@ -1,4 +1,5 @@
-use crate::db;
+use crate::adapters::sqlite as db;
+use crate::application::clock;
 use std::path::Path;
 
 fn make_conn() -> rusqlite::Connection {
@@ -329,8 +330,8 @@ fn purge_aggregates_before_deleting_and_keeps_the_aggregates() {
 #[test]
 fn purge_removes_whole_days_only() {
     let conn = make_conn();
-    let cutoff = db::day_string(30);
-    let before = db::day_string(31);
+    let cutoff = clock::day_string(30);
+    let before = clock::day_string(31);
     seed(
         &conn,
         &format!("{before}T23:59:59"),

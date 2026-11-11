@@ -1,7 +1,15 @@
-mod collector;
-mod common;
-mod config;
-mod db;
-mod sensors;
-mod server;
+// Domain
+mod load;
 mod trends;
+
+// Application
+mod collect;
+
+// Adapters
+mod config;
+mod http;
+mod lhm;
+mod sqlite;
+
+mod architecture;
+mod common;

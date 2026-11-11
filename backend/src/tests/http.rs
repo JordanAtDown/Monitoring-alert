@@ -1,13 +1,21 @@
-use crate::collector::CollectorStatus;
-use crate::db;
-use crate::server::{self, route, AppState};
+use crate::adapters::http::{self as server, route, AppState};
+use crate::adapters::sqlite::{self as db, open_read_model};
+use crate::application::clock;
+use crate::application::ports::ReadModel;
+use crate::application::queries::AppInfo;
+use crate::application::status::CollectorStatus;
 use crate::tests::common::insert_daily_series;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 struct Fixture {
     _dir: tempfile::TempDir,
+    path: std::path::PathBuf,
     state: AppState,
+}
+
+fn reader_for(path: std::path::PathBuf) -> server::ReadModelFactory {
+    Box::new(move || Ok(Box::new(open_read_model(&path)?) as Box<dyn ReadModel>))
 }
 
 fn fixture() -> Fixture {
@@ -35,14 +43,20 @@ fn fixture() -> Fixture {
     drop(conn);
 
     let state = AppState {
-        db_path: path,
+        open_read_model: reader_for(path.clone()),
         status: Arc::new(CollectorStatus::new(300)),
-        lhm_host: "127.0.0.1".into(),
-        lhm_port: 8085,
-        raw_retention_days: 90,
+        info: AppInfo {
+            lhm_host: "127.0.0.1".into(),
+            lhm_port: 8085,
+            raw_retention_days: 90,
+        },
         allowed_hosts: server::allowed_hosts_for("127.0.0.1"),
     };
-    Fixture { _dir: dir, state }
+    Fixture {
+        _dir: dir,
+        path,
+        state,
+    }
 }
 
 const HOST: Option<&str> = Some("127.0.0.1:8787");
@@ -202,10 +216,10 @@ fn summary_defaults_to_idle_and_filters_by_load() {
 #[test]
 fn the_current_day_is_left_out_of_the_trends() {
     let f = fixture();
-    let conn = db::init_db(&f.state.db_path).unwrap();
+    let conn = db::init_db(&f.path).unwrap();
     crate::tests::common::insert_daily(
         &conn,
-        &db::day_string(0),
+        &clock::day_string(0),
         "NVIDIA GPU",
         "GPU Core",
         "idle",
@@ -310,7 +324,7 @@ fn every_dashboard_file_is_served_with_its_content_type() {
 #[test]
 fn a_missing_database_is_an_error_not_a_panic() {
     let mut f = fixture();
-    f.state.db_path = f.state.db_path.with_file_name("missing.db");
+    f.state.open_read_model = reader_for(f.path.with_file_name("missing.db"));
     assert_eq!(route(&f.state, "GET", "/api/status", HOST).status, 500);
 }
 

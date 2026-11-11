@@ -1,4 +1,4 @@
-use crate::db;
+use crate::application::clock;
 
 /// Inserts one pre-computed daily aggregate (n = 288, i.e. a full day at 5 min).
 pub fn insert_daily(
@@ -38,7 +38,7 @@ pub fn insert_daily_series(
     // One transaction: on a file database every autocommit insert would be fsynced.
     let tx = conn.unchecked_transaction().expect("begin");
     for i in 0..days {
-        let day = db::day_string(days - i + 1);
+        let day = clock::day_string(days - i + 1);
         insert_daily(&tx, &day, hardware, sensor, load_cat, f(i));
     }
     tx.commit().expect("commit");

@@ -7,7 +7,7 @@
 /// - GPU detected via "images_icon/nvidia.png" in ImageURL
 /// - CPU Total load = 1.1 %
 /// - GPU Core load  = 0.0 %
-use crate::sensors::{collect, extract_snapshot, is_gpu_node, parse_number, Node};
+use crate::adapters::lhm::{collect, extract_snapshot, is_gpu_node, parse_number, Node};
 
 // ── parse_number ──────────────────────────────────────────────────────────────
 
@@ -486,4 +486,81 @@ fn benchmark_sata_ssd_sensor() {
         .collect();
     assert_eq!(sata.len(), 1, "Expected 1 sensor for Samsung 860 QVO");
     assert_eq!(sata[0].value, 28.0);
+}
+
+// ── collect_and_store against a fake LibreHardwareMonitor ─────
+
+mod fake_lhm {
+    use crate::adapters::lhm::LhmSource;
+    use crate::adapters::sqlite::{self as db, SqliteStore};
+    use crate::application::collect::collect_and_store;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    const DATA_JSON: &str = r#"{
+      "Text": "Sensor", "Value": "", "ImageURL": "", "Type": "", "Children": [
+        { "Text": "PC-TEST", "Value": "", "ImageURL": "", "Type": "", "Children": [
+          { "Text": "AMD Ryzen 7", "Value": "", "ImageURL": "images_icon/cpu.png", "Type": "", "Children": [
+            { "Text": "Temperatures", "Value": "", "ImageURL": "", "Type": "", "Children": [
+              { "Text": "CPU Package", "Value": "49,0 °C", "ImageURL": "", "Type": "Temperature", "Children": [] },
+              { "Text": "Core #1", "Value": "47,5 °C", "ImageURL": "", "Type": "Temperature", "Children": [] }
+            ]},
+            { "Text": "Load", "Value": "", "ImageURL": "", "Type": "", "Children": [
+              { "Text": "CPU Total", "Value": "45,0 %", "ImageURL": "", "Type": "Load", "Children": [] }
+            ]}
+          ]}
+        ]}
+      ]}"#;
+
+    /// Serves `body` on a free local port until `stop` is set. Returns the port.
+    pub fn spawn(body: &'static str, stop: Arc<AtomicBool>) -> u16 {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if let Ok(Some(req)) = server.recv_timeout(std::time::Duration::from_millis(100)) {
+                    let _ = req.respond(tiny_http::Response::from_string(body));
+                }
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn collects_temperatures_and_load_from_the_http_endpoint() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let port = spawn(DATA_JSON, stop.clone());
+        let store = SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap());
+
+        let n = collect_and_store(&store, &LhmSource::new("127.0.0.1", port)).unwrap();
+        stop.store(true, Ordering::Relaxed);
+
+        assert_eq!(n, 2);
+        let conn = store_conn(&store);
+        let (cat, cpu): (String, f64) = conn
+            .query_row("SELECT load_cat, cpu_load FROM snapshots", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((cat.as_str(), cpu), ("moderate", 45.0));
+        let temp: f64 = conn
+            .query_row(
+                "SELECT value FROM readings WHERE sensor = 'CPU Package'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(temp, 49.0);
+    }
+
+    #[test]
+    fn an_unreachable_endpoint_is_an_error() {
+        let store = SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap());
+        // Port 1 on loopback: nothing listens there.
+        assert!(collect_and_store(&store, &LhmSource::new("127.0.0.1", 1)).is_err());
+    }
+
+    fn store_conn(store: &SqliteStore) -> &rusqlite::Connection {
+        store.connection()
+    }
 }
