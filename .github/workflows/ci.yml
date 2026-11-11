@@ -132,7 +132,9 @@ jobs:
       - name: Install
         run: |
           $log = Join-Path $env:RUNNER_TEMP 'setup.log'
-          $p = Start-Process -FilePath 'dist\monitoring_0.0.0.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log" -Wait -PassThru
+          # Not -Wait: it also waits for the descendants of the installer, i.e. the daemon it starts.
+          $p = Start-Process -FilePath 'dist\monitoring_0.0.0.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log" -PassThru
+          if (-not $p.WaitForExit(180000)) { Get-Content $log -ErrorAction SilentlyContinue; throw 'the installer did not finish within 3 minutes' }
           Get-Content $log | Select-Object -First 60
           if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
 
@@ -162,7 +164,8 @@ jobs:
       - name: Uninstall
         run: |
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\Monitoring'
-          $p = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait -PassThru
+          $p = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -PassThru
+          if (-not $p.WaitForExit(180000)) { throw 'the uninstaller did not finish within 3 minutes' }
           if ($p.ExitCode -ne 0) { throw "uninstaller exited with $($p.ExitCode)" }
           Start-Sleep -Seconds 3
           if (Get-Process -Name 'monitoring-daemon' -ErrorAction SilentlyContinue) { throw 'the daemon is still running' }
