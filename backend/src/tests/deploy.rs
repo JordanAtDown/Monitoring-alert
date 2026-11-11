@@ -7,7 +7,6 @@ use std::path::Path;
 
 struct Layout {
     _dir: tempfile::TempDir,
-    archive: std::path::PathBuf,
     plan: DeployPlan,
 }
 
@@ -18,19 +17,13 @@ fn layout() -> Layout {
     fs::create_dir_all(&archive).unwrap();
     fs::write(archive.join("monitoring-alert.exe"), fake_pe(0x20b, 3)).unwrap();
     fs::write(archive.join("config.toml"), "web_port = 9000\n").unwrap();
-    fs::write(archive.join("uninstall.bat"), "@echo uninstall").unwrap();
-    fs::write(archive.join("update.bat"), "@echo update").unwrap();
     let plan = DeployPlan {
         source_exe: archive.join("monitoring-alert.exe"),
         install_dir: dir.path().join("Program Files").join("MonitoringAlert"),
         data_dir: dir.path().join("AppData").join("MonitoringAlert"),
         db_path: None,
     };
-    Layout {
-        _dir: dir,
-        archive,
-        plan,
-    }
+    Layout { _dir: dir, plan }
 }
 
 fn exists(p: &Path) -> bool {
@@ -50,9 +43,7 @@ fn a_fresh_install_puts_everything_in_place() {
         fs::read_to_string(l.plan.data_dir.join("config.toml")).unwrap(),
         "web_port = 9000\n"
     );
-    assert!(exists(&l.plan.data_dir.join("uninstall.bat")));
-    assert!(exists(&l.plan.data_dir.join("update.bat")));
-    assert_eq!(done.len(), 5);
+    assert_eq!(done.len(), 3);
 }
 
 #[test]
@@ -88,7 +79,7 @@ fn an_existing_config_is_never_overwritten() {
 }
 
 #[test]
-fn an_upgrade_replaces_the_executables_and_scripts() {
+fn an_upgrade_replaces_the_executables() {
     let l = layout();
     deploy_files(&l.plan).unwrap();
 
@@ -97,7 +88,6 @@ fn an_upgrade_replaces_the_executables_and_scripts() {
         fake_pe(0x20b, 3).iter().map(|b| b ^ 1).collect::<Vec<u8>>(),
     )
     .unwrap();
-    fs::write(l.archive.join("update.bat"), "@echo update v2").unwrap();
     // The new executable must be a valid PE: build it properly.
     let mut v2 = fake_pe(0x20b, 3);
     v2[0x300] = 0x42;
@@ -106,15 +96,11 @@ fn an_upgrade_replaces_the_executables_and_scripts() {
     deploy_files(&l.plan).unwrap();
     assert_eq!(fs::read(l.plan.cli_exe()).unwrap(), v2);
     assert_eq!(fs::read(l.plan.daemon_exe()).unwrap()[0x300], 0x42);
-    assert_eq!(
-        fs::read_to_string(l.plan.data_dir.join("update.bat")).unwrap(),
-        "@echo update v2"
-    );
 }
 
 #[test]
 fn running_from_the_install_directory_only_refreshes_the_daemon_copy() {
-    // What the v1.x update.bat leaves behind: the new executable already in place.
+    // The executable is already where it belongs (what the installer's --in-place does).
     let l = layout();
     fs::create_dir_all(&l.plan.install_dir).unwrap();
     fs::write(l.plan.cli_exe(), fake_pe(0x20b, 3)).unwrap();

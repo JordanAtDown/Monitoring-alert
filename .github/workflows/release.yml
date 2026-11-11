@@ -163,15 +163,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-      - name: Package installer archive
-        run: |
-          DIR="monitoring-alert-v${VERSION}-windows-x64"
-          mkdir "$DIR"
-          cp artifact/monitoring-alert.exe "$DIR/"
-          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/Register-Tasks.ps1 "$DIR/"
-          zip -r "${DIR}.zip" "$DIR/"
-          echo "ARCHIVE=${DIR}.zip" >> "$GITHUB_ENV"
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -182,5 +173,4 @@ jobs:
             --title "MonitoringAlert $GITHUB_REF_NAME" \
             --notes-file release_notes.md \
             "artifact/monitoring-alert.exe#monitoring-alert.exe" \
-            installer-out/monitoring-alert-setup-v*.exe \
-            "$ARCHIVE"
+            installer-out/monitoring-alert-setup-v*.exe

@@ -1,68 +1,7 @@
-//! The Windows scripts cannot run on CI's Linux, but the names they rely on can be checked.
+//! The Windows installer cannot run on CI's Linux, but the names it relies on can be checked.
 
-use crate::application::ports::{DAEMON_EXE_NAME, MIGRATION_SHIM_MARKER};
+use crate::application::ports::DAEMON_EXE_NAME;
 use std::path::Path;
-
-fn script(name: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../scripts")
-        .join(name);
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
-}
-
-#[test]
-fn the_migration_shim_carries_the_marker_the_installer_looks_for() {
-    // Without it the installer would delete the shim of the very update that runs it.
-    assert!(script("Register-Tasks.ps1").contains(MIGRATION_SHIM_MARKER));
-}
-
-#[test]
-fn the_migration_shim_runs_the_installer_with_the_parameters_v1_update_bat_passes() {
-    let shim = script("Register-Tasks.ps1");
-    assert!(shim.contains("[string]$ExePath"));
-    assert!(shim.contains("[string]$Username"));
-    assert!(shim.contains("& $ExePath install"));
-    // The v1.x script was mandatory-parameter based: the shim must never prompt.
-    assert!(!shim.contains("Mandatory"));
-}
-
-#[test]
-fn install_and_update_run_the_install_command() {
-    assert!(script("install.bat").contains("monitoring-alert.exe\" install"));
-    assert!(script("update.bat").contains("monitoring-alert.exe\" install"));
-}
-
-#[test]
-fn update_relaunches_itself_because_install_replaces_it() {
-    let update = script("update.bat");
-    assert!(update.contains("ma-update.bat"));
-    assert!(update.contains("\"%~1\"==\"run\""));
-}
-
-#[test]
-fn uninstall_removes_everything_a_1x_and_a_2x_install_register() {
-    let u = script("uninstall.bat");
-    for needed in [
-        DAEMON_EXE_NAME,
-        "sc delete MonitoringAlert",
-        "\\MonitoringAlert\\RapportJournalier",
-        "\\MonitoringAlert\\RapportHebdomadaire",
-        "\\MonitoringAlert\\RapportMensuel",
-        "CurrentVersion\\Run",
-        "AppUserModelId\\MonitoringAlert.TemperatureMonitor",
-    ] {
-        assert!(u.contains(needed), "uninstall.bat does not handle {needed}");
-    }
-    // The data is kept unless the user says otherwise.
-    assert!(u.contains("[o/N]"));
-}
-
-#[test]
-fn the_old_apply_config_script_is_gone() {
-    assert!(!Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../scripts/apply-config.bat")
-        .exists());
-}
 
 // ── The Inno Setup installer ──────────────────────────────────
 
@@ -100,7 +39,7 @@ fn the_installer_never_overwrites_or_removes_the_configuration() {
     let iss = installer();
     let config_line = iss
         .lines()
-        .find(|l| l.contains("scripts\\config.toml"))
+        .find(|l| l.contains("uninsneveruninstall"))
         .expect("config.toml entry");
     assert!(config_line.contains("onlyifdoesntexist"));
     assert!(config_line.contains("uninsneveruninstall"));
@@ -141,4 +80,25 @@ fn the_installer_is_built_by_ci_and_published_with_the_release() {
     assert!(ci.contains("installer\\monitoring-alert.iss"));
     assert!(release.contains("monitoring-alert-setup"));
     assert!(release.contains("installer-out/monitoring-alert-setup-v*.exe"));
+}
+
+#[test]
+fn the_obsolete_scripts_folder_is_gone() {
+    // The installer is the only way to install: the batch scripts, the zip archive and
+    // the 1.x migration shim were removed with it.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    assert!(!root.join("scripts").exists());
+}
+
+#[test]
+fn the_config_template_the_installer_ships_exists_next_to_it() {
+    let iss = installer();
+    let line = iss
+        .lines()
+        .find(|l| l.contains("DestDir: \"{app}\"") && l.contains("config.toml"))
+        .expect("config.toml entry");
+    assert!(line.contains("Source: \"config.toml\""));
+    assert!(Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../installer/config.toml")
+        .is_file());
 }

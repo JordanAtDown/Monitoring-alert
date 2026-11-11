@@ -46,7 +46,7 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 [Files]
 Source: "{#ExePath}"; DestDir: "{app}"; DestName: "monitoring-alert.exe"; Flags: ignoreversion
 ; Modele de configuration : jamais ecrase, jamais supprime a la desinstallation.
-Source: "..\scripts\config.toml"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "config.toml"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 ; Extrait au debut de l'assistant pour retrouver la base de donnees actuelle.
 Source: "{#ExePath}"; Flags: dontcopy
 

@@ -7,9 +7,6 @@ use std::time::Duration;
 use crate::adapters::pe;
 use crate::application::ports::DeployPlan;
 
-/// Helper scripts shipped next to the executable, copied to the data directory.
-const HELPER_SCRIPTS: &[&str] = &["uninstall.bat", "update.bat"];
-
 /// A file just released by a process that was stopped a moment ago can stay locked
 /// for a short while on Windows.
 const RETRIES: u32 = 8;
@@ -36,8 +33,8 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Installs the executables, the default config (never over an existing one) and
-/// the helper scripts. Returns one line per action.
+/// Installs the executables and the default config (never over an existing one).
+/// Returns one line per action.
 pub fn deploy_files(plan: &DeployPlan) -> Result<Vec<String>> {
     let mut done = Vec::new();
     std::fs::create_dir_all(&plan.install_dir)
@@ -64,7 +61,7 @@ pub fn deploy_files(plan: &DeployPlan) -> Result<Vec<String>> {
     })?;
     done.push(format!("Exécutable d'arrière-plan : {}", daemon.display()));
 
-    // Files shipped next to the executable of the archive.
+    // The config template shipped next to the executable.
     let source_dir = plan.source_exe.parent().unwrap_or(Path::new("."));
     let config = plan.data_dir.join("config.toml");
     let shipped_config = source_dir.join("config.toml");
@@ -72,14 +69,6 @@ pub fn deploy_files(plan: &DeployPlan) -> Result<Vec<String>> {
         std::fs::copy(&shipped_config, &config)
             .with_context(|| format!("Copie de {}", config.display()))?;
         done.push(format!("Configuration créée : {}", config.display()));
-    }
-    for script in HELPER_SCRIPTS {
-        let from = source_dir.join(script);
-        let to = plan.data_dir.join(script);
-        if from.is_file() && !same_file(&from, &to) {
-            std::fs::copy(&from, &to).with_context(|| format!("Copie de {}", to.display()))?;
-            done.push(format!("Script installé : {}", to.display()));
-        }
     }
     Ok(done)
 }

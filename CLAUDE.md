@@ -7,8 +7,8 @@ rapports, pas de notifications. Détails d'usage et d'architecture : [README.md]
 ```
 backend/    Rust — bibliothèque, CLI (monitoring-alert.exe), démon (copie monitoring-daemon.exe), serveur web
 frontend/   TypeScript (Vite + uPlot) — tableau de bord, embarqué dans l'exécutable par backend/build.rs
-installer/  monitoring-alert.iss — installateur Inno Setup (voie principale d'installation)
-scripts/    version portable : install.bat, update.bat, uninstall.bat ; config.toml (modèle) ; release.sh
+installer/  monitoring-alert.iss (installateur Inno Setup, seule voie d'installation) + config.toml (modèle)
+tools/      release.sh
 ```
 
 Le backend est en **architecture hexagonale simplifiée** : `domain/` (pur) ← `application/` (cas d'usage
@@ -51,7 +51,7 @@ corrige, on ne contourne pas le hook.
 |---|---|
 | Conventions backend, tests, architecture | `.claude/rules/backend.md` |
 | Conventions frontend et graphiques | `.claude/rules/frontend.md` |
-| Scripts `.bat`, installation, migration | `.claude/rules/windows-and-scripts.md` |
+| Installateur, code Windows, migration depuis la 1.x | `.claude/rules/windows-and-installer.md` |
 | CI et release (GitHub Actions) | `.claude/rules/ci.md` |
 | Quelle doc mettre à jour | `.claude/rules/docs.md` |
 | Faire un commit | skill `commit` |

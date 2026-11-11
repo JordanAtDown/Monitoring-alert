@@ -1,10 +1,9 @@
 # =============================================================
 #  MonitoringAlert — configuration
 #
-#  Facultatif : éditez ce fichier AVANT de lancer install.bat (installation neuve).
-#  Il est copié dans %LOCALAPPDATA%\Programs\MonitoringAlert\ s'il n'y en a pas
-#  déjà un : une configuration existante n'est jamais écrasée.
-#  Après modification d'une configuration installée : monitoring-alert.exe restart
+#  Modèle installé avec le programme : une configuration existante n'est jamais écrasée.
+#  Toutes les clés sont facultatives (les lignes commentées montrent le défaut).
+#  Après modification : monitoring-alert.exe restart
 # =============================================================
 
 # Chemin complet de la base de données de températures

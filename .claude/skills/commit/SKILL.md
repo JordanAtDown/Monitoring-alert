@@ -10,7 +10,7 @@ description: Faire un commit de ce projet — format Conventional Commits, atomi
    de comportement. Plusieurs petits commits clairs valent mieux qu'un gros. Pas de WIP sur `main`.
    Chaque commit **compile et passe les tests**.
 3. **Documentation** (voir `.claude/rules/docs.md`) : un `feat` ou `fix` visible met à jour README /
-   `scripts/config.toml` / CHANGELOG dans le même commit, ou dans un commit `docs` immédiatement après.
+   `installer/config.toml` / CHANGELOG dans le même commit, ou dans un commit `docs` immédiatement après.
 4. **Ajouter les fichiers explicitement** (`git add <chemins>`) — jamais un `git add -A` à l'aveugle quand le
    dossier contient des fichiers non liés (`frontend/node_modules`, `dist`, sorties de test…). Le hook
    `pre-commit` ne re-stage que les fichiers **déjà indexés** qu'il a reformatés : un fichier modifié mais
@@ -35,11 +35,11 @@ Co-Authored-By: …   (si le système en impose une)
 | `refactor` | réécriture interne, comportement inchangé |
 | `perf` | performances |
 | `test` | tests uniquement |
-| `chore` | outillage, scripts, dépendances |
+| `chore` | outillage, installateur, dépendances |
 | `build` | `Cargo.toml`, `build.rs`, build du frontend |
 | `ci` | GitHub Actions, hooks |
 
-Scopes usuels : `db`, `server`, `web`, `trends`, `install`, `config`, `collector`, `scripts`, `deps`,
+Scopes usuels : `db`, `server`, `web`, `trends`, `install`, `config`, `collector`, `installer`, `deps`,
 `crate`, `backend`. Un changement incompatible : `!` après le type/scope **et** un footer
 `BREAKING CHANGE:`.
 

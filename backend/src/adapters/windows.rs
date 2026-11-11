@@ -14,7 +14,7 @@ use winreg::RegKey;
 
 use crate::adapters::{config, deploy};
 use crate::application::ports::{
-    ConfigMigration, DeployPlan, HostSystem, LegacyFindings, DAEMON_EXE_NAME, MIGRATION_SHIM_MARKER,
+    ConfigMigration, DeployPlan, HostSystem, LegacyFindings, DAEMON_EXE_NAME,
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -62,18 +62,12 @@ impl HostSystem for WindowsHost {
         let aumid = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey_with_flags(LEGACY_AUMID_KEY, KEY_READ)
             .is_ok();
-        let mut scripts = Vec::new();
-        if data_dir.join("apply-config.bat").is_file() {
-            scripts.push("apply-config.bat".to_string());
-        }
-        let register = data_dir.join("Register-Tasks.ps1");
-        if register.is_file()
-            && !std::fs::read_to_string(&register)
-                .map(|t| t.contains(MIGRATION_SHIM_MARKER))
-                .unwrap_or(false)
-        {
-            scripts.push("Register-Tasks.ps1".to_string());
-        }
+        // Scripts of the v1.x installation: neither is shipped any more.
+        let scripts = ["apply-config.bat", "Register-Tasks.ps1"]
+            .iter()
+            .filter(|name| data_dir.join(name).is_file())
+            .map(|name| name.to_string())
+            .collect();
         Ok(LegacyFindings {
             service,
             tasks,

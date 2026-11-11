@@ -55,18 +55,9 @@ données (non par défaut) ; une base placée dans un autre dossier n'est **jama
 
 Mise à jour : lancer le nouvel installateur (`/VERYSILENT` pour le faire sans fenêtre).
 
-### Version portable (archive zip)
-
-L'archive `monitoring-alert-vX.Y.Z-windows-x64.zip` contient l'exécutable et trois scripts, sans assistant :
-
-1. La décompresser, *(facultatif)* éditer `config.toml`.
-2. **`install.bat`** (administrateur la première fois si une 1.x est installée) : copie dans
-   `%LOCALAPPDATA%\Programs\MonitoringAlert\`, démarrage automatique, démarrage.
-3. Mise à jour : `update.bat`. Désinstallation : `uninstall.bat`.
-
 ### Migration depuis la version 1.x
 
-C'est automatique, avec l'installateur comme avec `install.bat`, et **la base de données est conservée**.
+C'est automatique, et **la base de données est conservée**.
 Si un service Windows 1.x est présent, l'installateur propose de se relancer en administrateur (c'est le seul
 cas où il en faut : supprimer ce service l'exige). Il :
 
@@ -75,14 +66,14 @@ cas où il en faut : supprimer ce service l'exige). Il :
 | Service Windows `MonitoringAlert` | arrêté et supprimé (si ça échoue : l'installation s'arrête, relancez en administrateur) |
 | Tâches planifiées de rapport (journalier / hebdo / mensuel) | supprimées |
 | Enregistrement des notifications toast (AUMID) | supprimé |
-| `apply-config.bat`, ancien `Register-Tasks.ps1` | supprimés |
+| `apply-config.bat`, `Register-Tasks.ps1`, `update.bat`, `uninstall.bat` du dossier de données | `apply-config.bat` et `Register-Tasks.ps1` sont supprimés (les deux autres sont inoffensifs : supprimez-les) |
 | `config.toml` | clés obsolètes retirées (`install_dir`, `reports_dir`, `*_report_*`, `retention_days`), vos autres valeurs (dont `db_path`) conservées, ancienne version sauvegardée en `config.toml.v1.bak` |
 | `temperatures.db` | **migrée sur place** au premier démarrage, où qu'elle soit : une copie de sécurité `temperatures.db.v1.bak` est écrite à côté, puis l'historique est agrégé par jour |
 | Rapports `.md` du dossier `rapports\` | non touchés (supprimez-les si vous n'en voulez plus) |
 
-Mise à jour d'une 1.x avec l'ancien `update.bat` : ça fonctionne aussi (l'archive contient un
-`Register-Tasks.ps1` de transition qui lance la migration). Si le dossier `\MonitoringAlert\` vide reste
-visible dans le Planificateur de tâches, il est inoffensif.
+Si le dossier `\MonitoringAlert\` vide reste visible dans le Planificateur de tâches, il est inoffensif.
+L'ancien `update.bat` de la 1.x ne fonctionne plus (il cherchait une archive zip, qui n'est plus publiée) :
+utilisez l'installateur.
 
 > **Mesures brutes** : par défaut seuls les **90 derniers jours** de mesures brutes sont gardés
 > (`raw_retention_days`). Avant toute suppression, elles sont résumées par jour (médiane, min, p95,
@@ -91,8 +82,9 @@ visible dans le Planificateur de tâches, il est inoffensif.
 
 ### Repartir de zéro (en gardant la base)
 
-Désinstaller (ou `uninstall.bat`, administrateur, qui fonctionne quelle que soit la version installée, 1.x ou
-2.x), en répondant **non** à la suppression des données, puis réinstaller : l'assistant retrouve la base.
+Désinstaller depuis Windows en répondant **non** à la suppression des données, puis réinstaller : l'assistant
+retrouve la base. Pour nettoyer une 1.x qui ne se lance plus, installez simplement la nouvelle version : elle
+supprime l'ancien système.
 
 ---
 
@@ -152,7 +144,7 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
 
 | Commande | Rôle |
 |---|---|
-| `install [--in-place] [--db-path <fichier>]` | Installe / met à jour / migre depuis la 1.x. `--in-place` : l'exécutable est déjà à sa place (installateur). `--db-path` : base à utiliser |
+| `install [--in-place] [--db-path <fichier>]` | Ce que fait l'installateur : nettoie une 1.x, migre `config.toml`, démarrage automatique, démarrage. `--in-place` : l'exécutable est déjà à sa place. `--db-path` : base à utiliser |
 | `uninstall` | Arrête le processus, retire le démarrage automatique (ne supprime aucun fichier) |
 | `start` · `stop` · `restart` | Gère le processus d'arrière-plan |
 | `serve` | Collecte + tableau de bord au premier plan |
@@ -211,8 +203,8 @@ supprime dans la même transaction ; après une grosse purge le fichier est comp
 ```
 backend/    Rust : la bibliothèque, la CLI, le démon et le serveur web
 frontend/   TypeScript (Vite + uPlot) : le tableau de bord
-installer/  monitoring-alert.iss : installateur Inno Setup
-scripts/    version portable : install.bat, update.bat, uninstall.bat, config.toml ; release.sh
+installer/  monitoring-alert.iss (installateur Inno Setup) et config.toml (modèle installé)
+tools/      release.sh
 ```
 
 ### Architecture du backend (hexagonale simplifiée)

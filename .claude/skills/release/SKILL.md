@@ -15,10 +15,10 @@ Publier pousse un tag et déclenche une release publique : ne le faire que si l'
    notes de la release), et que le README est à jour.
 4. Vérifier la CI sur `main` (verte) et que le frontend se construit : `npm ci && npm run build` dans
    `frontend/`.
-5. Lancer `./scripts/release.sh X.Y.Z`. Il met à jour `backend/Cargo.toml`, promeut `[Unreleased]` en
+5. Lancer `./tools/release.sh X.Y.Z`. Il met à jour `backend/Cargo.toml`, promeut `[Unreleased]` en
    `[X.Y.Z]`, lance `cargo test`, commit `chore(release): bump version to X.Y.Z`, crée le tag annoté
    `vX.Y.Z` et pousse le commit et le tag.
-6. `release.yml` construit le frontend puis l'exécutable et publie l'archive. Suivre l'exécution
-   (`gh run watch`) et vérifier le contenu de l'archive publiée (voir `.claude/rules/ci.md`).
+6. `release.yml` construit le frontend puis l'exécutable et publie l'installateur. Suivre l'exécution
+   (`gh run watch`) et vérifier les fichiers publiés : `monitoring-alert-setup-vX.Y.Z.exe` et `monitoring-alert.exe` (voir `.claude/rules/ci.md`).
 
 Ne jamais déplacer ni supprimer un tag publié.

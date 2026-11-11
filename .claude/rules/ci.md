@@ -11,9 +11,6 @@ paths:
   vérification du script. Tout doit être vert.
 - `release.yml` (tag `vX.Y.Z`) : lint, **build du frontend puis** `cargo build --release` (le tableau de
   bord est embarqué : sans lui `build.rs` refuse le build), tests, puis un job `installer` (compile
-  `monitoring-alert-setup-vX.Y.Z.exe` à partir de l'exécutable construit), puis publication de l'installateur et
-  de l'archive `monitoring-alert-vX.Y.Z-windows-x64.zip` avec les notes extraites de `CHANGELOG.md`.
-- Le contenu de l'archive (version portable) est la liste du `cp` de l'étape « Package installer archive » : la tenir
-  synchronisée avec `scripts/` (aujourd'hui : exe, `config.toml`, `install.bat`, `update.bat`,
-  `uninstall.bat`, `Register-Tasks.ps1`).
+  `monitoring-alert-setup-vX.Y.Z.exe` à partir de l'exécutable construit), puis publication de l'installateur et de
+  `monitoring-alert.exe` avec les notes extraites de `CHANGELOG.md`. Il n'y a plus d'archive zip.
 - Les actions utilisées sont épinglées sur une version majeure.

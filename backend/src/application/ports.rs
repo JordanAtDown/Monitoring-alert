@@ -132,10 +132,6 @@ pub enum ConfigMigration {
     },
 }
 
-/// Text that identifies `scripts/Register-Tasks.ps1` as the migration shim shipped since 2.0
-/// (and not the v1.x script of the same name, which created the report tasks).
-pub const MIGRATION_SHIM_MARKER: &str = "monitoring-alert-migration-shim";
-
 /// File name of the background executable.
 pub const DAEMON_EXE_NAME: &str = "monitoring-daemon.exe";
 
@@ -175,7 +171,7 @@ pub trait HostSystem {
     /// Rewrites a v1.x `config.toml` without its obsolete keys.
     fn migrate_config(&self, config_path: &std::path::Path) -> Result<ConfigMigration>;
 
-    /// Puts the executables, the default config and the helper scripts in place.
+    /// Puts the executables and the default config in place.
     /// Returns what was written, one line per file.
     fn deploy(&self, plan: &DeployPlan) -> Result<Vec<String>>;
 

@@ -12,7 +12,7 @@ Une clé de configuration touche toujours les mêmes endroits. Les faire **tous*
    - valeur par défaut et bornes dans `from_raw` ;
    - clé affichée dans `render_config` (c'est le modèle écrit par la migration d'une config 1.x), avec un
      défaut commenté.
-2. `scripts/config.toml` : la clé, son commentaire et son défaut (ligne commentée si c'est le défaut).
+2. `installer/config.toml` : la clé, son commentaire et son défaut (ligne commentée si c'est le défaut).
 3. `README.md` : tableau « Configuration » (et la section concernée si le comportement change).
 4. `CHANGELOG.md` : sous `## [Unreleased]`.
 5. Tests dans `backend/src/tests/config.rs` : valeur lue, défaut, bornes. Le test

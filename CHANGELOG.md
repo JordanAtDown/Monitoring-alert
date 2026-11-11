@@ -16,11 +16,10 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   installation par utilisateur **sans droits administrateur**, entrée dans les Applications installées,
   raccourci vers le tableau de bord, mise à jour en relançant l'installateur. Il détecte la base de
   données de l'installation actuelle (page « Base de données ») et la conserve ou la remplace. Il ne
-  demande l'administrateur que pour supprimer l'ancien service Windows d'une 1.x. L'archive zip reste
-  disponible comme version portable.
+  demande l'administrateur que pour supprimer l'ancien service Windows d'une 1.x. 
 - `monitoring-alert.exe db locate [--porcelain]` (où est la base actuelle, ce qu'elle contient, sans rien
   modifier), `install --in-place` (exécutable déjà en place) et `install --db-path <fichier>`.
-- La CI compile le script de l'installateur à chaque push ; la release publie l'installateur à côté de l'archive.
+- La CI compile le script de l'installateur à chaque push ; la release publie l'installateur et l'exécutable.
 - **Tableau de bord web** (`http://127.0.0.1:8787/`, TypeScript + uPlot, thèmes clair et sombre)
   pour suivre la dérive des températures sur toute la durée de la collecte : tableau de tous les
   capteurs (écart à la référence, pente en °C/mois, mini-courbe), graphique par capteur et par
@@ -37,10 +36,6 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   planifiées de rapport, enregistrement toast, anciens scripts), migre `config.toml` (sauvegarde
   `config.toml.v1.bak`), crée `monitoring-daemon.exe` (copie sans fenêtre console), active le
   démarrage automatique (clé `Run` de l'utilisateur) et démarre le processus.
-- `uninstall.bat` (version portable) indépendant de la version installée (1.x ou 2.x) ; conserve la base et
-  `config.toml` sauf confirmation.
-- `Register-Tasks.ps1` de transition : une mise à jour lancée par l'ancien `update.bat` aboutit
-  à la migration.
 - Mode WAL (lecture du tableau de bord pendant l'écriture), snapshot et relevés écrits dans une
   seule transaction.
 - Architecture hexagonale simplifiée du backend (`domain` / `application` / `adapters`), avec un
@@ -58,12 +53,16 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   reliquats de la 1.x.
 - `install_dir` et `db_path` valent par défaut le dossier de `config.toml` (installation possible
   sans droits administrateur).
-- `update.bat` lance l'installation de la nouvelle version et se relance depuis `%TEMP%`.
 - Dossiers renommés : `monitoring-alert/` → `backend/`, nouveau `frontend/`.
 - Lecture des capteurs et chargement de la configuration disponibles sur toutes les plateformes
   (le code est testable hors Windows).
 
 ### Removed
+- Le dossier `scripts/` : `install.bat`, `update.bat`, `uninstall.bat`, `Register-Tasks.ps1`, et l'archive zip
+  publiée avec chaque release. L'installateur les remplace (mise à jour = relancer l'installateur,
+  désinstallation depuis Windows). L'ancien `update.bat` d'une 1.x, qui cherchait cette archive, ne
+  fonctionne plus : installer la nouvelle version à la main. `config.toml` (modèle) est dans `installer/`,
+  `release.sh` dans `tools/`.
 - La clé `install_dir` (l'exécutable tourne là où il est installé ; ignorée, retirée par la migration : une
   config 1.x ne ramène donc plus `Program Files`).
 - Les rapports (texte, Markdown), les notifications toast et leur enregistrement, les tâches

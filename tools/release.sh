@@ -2,8 +2,8 @@
 # =============================================================
 #  release.sh — Create a new versioned release
 #
-#  Usage : ./scripts/release.sh <X.Y.Z>
-#  Example: ./scripts/release.sh 0.2.0
+#  Usage : ./tools/release.sh <X.Y.Z>
+#  Example: ./tools/release.sh 0.2.0
 #
 #  What this script does:
 #    1. Validates the version argument (X.Y.Z format)

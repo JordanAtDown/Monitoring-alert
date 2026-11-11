@@ -92,7 +92,7 @@ fn a_v1_config_still_loads_and_its_obsolete_keys_are_ignored() {
 
 #[test]
 fn the_shipped_config_template_parses_and_is_free_of_obsolete_keys() {
-    let template = include_str!("../../../scripts/config.toml");
+    let template = include_str!("../../../installer/config.toml");
     for obsolete in [
         "reports_dir",
         "report_enabled",

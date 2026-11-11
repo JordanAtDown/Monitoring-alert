@@ -94,7 +94,7 @@ fn data_dir() -> PathBuf {
 
 /// The files of this installation: where this executable runs from, and where it goes.
 ///
-/// Extracted from the portable archive, it installs itself into the data directory.
+/// Run from anywhere else (a download folder), it installs itself into the data directory.
 /// With `in_place` (the .exe installer already put it where it belongs) it stays where it is.
 fn deploy_plan(in_place: bool, db_path: Option<PathBuf>) -> Result<DeployPlan> {
     let data_dir = data_dir();
@@ -350,7 +350,7 @@ fn run_check(db_path: &Path, cfg: &config::AppConfig) {
             "  ✗  Le tableau de bord ne répond pas ({}:{})",
             cfg.web_host, cfg.web_port
         );
-        println!("     → monitoring-alert.exe start   (ou install.bat si ce n'est pas installé)");
+        println!("     → monitoring-alert.exe start   (ou relancez l'installateur si ce n'est pas installé)");
     }
     println!();
 
@@ -361,7 +361,7 @@ fn run_check(db_path: &Path, cfg: &config::AppConfig) {
             _ => {
                 issues += 1;
                 println!("  ✗  Démarrage automatique non configuré");
-                println!("     → Lancez install.bat");
+                println!("     → Relancez l'installateur");
             }
         }
         if let Ok(left) = host.legacy_findings(&data_dir()) {
@@ -380,7 +380,7 @@ fn run_check(db_path: &Path, cfg: &config::AppConfig) {
                 for script in &left.scripts {
                     println!("     • script {script}");
                 }
-                println!("     → Relancez install.bat en administrateur : ils sont supprimés automatiquement");
+                println!("     → Relancez l'installateur (en administrateur) : ils sont supprimés automatiquement");
             }
         }
         println!();
