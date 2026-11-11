@@ -1,177 +1,59 @@
-# CLAUDE.md — Workflow de développement monitoring-alert
+# CLAUDE.md — monitoring-alert
 
-Ce fichier définit les conventions et le workflow à respecter pour toutes les
-contributions au projet **monitoring-alert**.
-
----
-
-## Conventional Commits
-
-Tous les commits **doivent** suivre la spécification
-[Conventional Commits v1.0](https://www.conventionalcommits.org/en/v1.0.0/).
-
-### Format
+Suivi long terme de la **dérive des températures** : un processus d'arrière-plan collecte les
+capteurs de LibreHardwareMonitor et sert un tableau de bord local. Pas de service Windows, pas de
+rapports, pas de notifications. Détails d'usage et d'architecture : [README.md](README.md).
 
 ```
-<type>(<scope>): <description courte>
-
-[corps optionnel]
-
-[footer optionnel : BREAKING CHANGE, closes #issue, etc.]
+backend/    Rust — bibliothèque, CLI (monitoring-alert.exe), démon (copie monitoring-daemon.exe), serveur web
+frontend/   TypeScript (Vite + uPlot) — tableau de bord, embarqué dans l'exécutable par backend/build.rs
+scripts/    install.bat, update.bat, uninstall.bat, config.toml (modèle), release.sh
 ```
 
-### Types autorisés
+Le backend est en **architecture hexagonale simplifiée** : `domain/` (pur) ← `application/` (cas d'usage
++ ports) ← `adapters/` (SQLite, LHM, HTTP, Windows…). Les dépendances ne vont que vers l'intérieur,
+`tests/architecture.rs` le vérifie. Détail : `.claude/rules/backend.md`.
 
-| Type | Quand l'utiliser |
-|---|---|
-| `feat` | Nouvelle fonctionnalité visible par l'utilisateur |
-| `fix` | Correction de bug |
-| `docs` | Documentation uniquement (README, CHANGELOG, commentaires) |
-| `style` | Formatage, espaces, virgules — aucun changement de logique |
-| `refactor` | Réécriture interne sans changer le comportement |
-| `perf` | Amélioration des performances |
-| `test` | Ajout ou modification de tests |
-| `chore` | Outillage, CI, dépendances, scripts |
-| `build` | Système de build, Cargo.toml |
-| `ci` | GitHub Actions, hooks |
-
-### Exemples valides
-
-```
-feat(collector): add GPU load tracking in snapshots
-fix(db): handle missing ProgramData directory on service start
-docs(readme): add LibreHardwareMonitor WMI setup instructions
-chore(deps): bump rusqlite to 0.32
-ci: add cargo audit step to build workflow
-```
-
-### Exemples invalides ❌
-
-```
-fix stuff
-WIP
-update
-feat: many things at once
-```
-
----
-
-## Commits atomiques
-
-**Un commit = une intention.**
-
-- Ne pas mélanger un `fix` et un `feat` dans le même commit
-- Ne pas committer du code WIP sur `main`
-- Préférer plusieurs petits commits clairs à un gros commit flou
-- Chaque commit doit compiler et passer les tests (`cargo check` doit réussir)
-
----
-
-## Branche de travail
-
-**Toujours travailler sur `main`.** Ce projet n'utilise pas de branches de
-fonctionnalité ni de Pull Requests.
-
-| Règle | Détail |
-|---|---|
-| Branche unique | `main` — tout le travail se fait ici |
-| Push direct | `git push origin main` après chaque commit |
-| Jamais de branche intermédiaire | Pas de `feat/*`, `fix/*`, ni PR |
-
----
-
-## Workflow de développement
-
-```
-1. git pull origin main              — synchroniser avant de commencer
-2. Développer en commits atomiques
-3. git push -u origin main           — pousser immédiatement sur main
-```
-
-> Claude doit systématiquement pousser sur `main` et uniquement sur `main`,
-> sans créer de branche intermédiaire ni de Pull Request.
-
----
-
-## Pre-commit hooks
-
-Les hooks sont dans `.githooks/`. Les activer une fois :
+## Commandes
 
 ```bash
-git config core.hooksPath .githooks
-```
-
-Le hook `pre-commit` exécute dans l'ordre :
-
-1. `cargo fmt --check` — vérifie le formatage (sans modifier les fichiers)
-2. `cargo clippy -- -D warnings` — interdit tous les warnings Clippy
-3. `cargo test` — fait tourner toute la suite de tests
-
-> Le commit est **bloqué** si l'une de ces étapes échoue.
-
----
-
-## Tests
-
-```bash
-# Lancer tous les tests
+# Backend (depuis backend/)
 cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings   # code cfg(windows), depuis Linux
 
-# Lancer un test précis
-cargo test nom_du_test
-
-# Avec sortie verbose
-cargo test -- --nocapture
+# Frontend (depuis frontend/)
+npm ci && npm run build            # typecheck + build → frontend/dist
 ```
 
-Les tests doivent couvrir au minimum :
-- `collector::load_category` — toutes les plages
-- `db` — init, insert, query (tests avec DB en mémoire `:memory:`)
-- `report` — vérifier que le rendu ne panique pas sur une DB vide
+Le hook `pre-commit` (cargo fmt, clippy, tests) et le hook `commit-msg` (Conventional Commits) sont dans
+`.githooks/`. À activer une fois : `git config core.hooksPath .githooks`. Un commit refusé par un hook se
+corrige, on ne contourne pas le hook.
 
----
+## Règles non négociables
 
-## CI / GitHub Actions
+- **Branche unique : `main`.** Pas de branche, pas de Pull Request. Toujours `git pull origin main` avant de
+  commencer, et `git push origin main` après chaque commit.
+- **Commits Conventional Commits, atomiques** (une intention par commit, chacun compile et passe les tests).
+  Procédure et exemples : skill `commit`.
+- **Documentation à jour dans le même commit** que le comportement qu'elle décrit : `.claude/rules/docs.md`.
+- **Aucune dépendance sans justification** (message de commit), licence MIT ou Apache-2.0, privilégier
+  les crates `bundled`/statiques. Le frontend reste sans framework.
+- **Ne jamais supprimer ni réécrire la base de données d'un utilisateur** : toute évolution du schéma est une
+  migration automatique avec sauvegarde (skill `db-migration`).
+- Le code Windows ne peut pas être exécuté ici : il est vérifié par `cargo clippy --target
+  x86_64-pc-windows-gnu`, des tests sur un faux système hôte, et en le gardant le plus fin possible.
 
-Le workflow `.github/workflows/build.yml` se déclenche sur :
-- Tout push sur `main`
-- Toute Pull Request ciblant `main`
+## Où est le reste
 
-Étapes du workflow :
-1. `cargo fmt --check`
-2. `cargo clippy -- -D warnings`
-3. `cargo build --release`
-4. `cargo test`
-
-> Tout merge sur `main` requiert que la CI soit verte.
-
----
-
-## Dépendances
-
-- Ne pas ajouter de dépendance sans justification dans la PR
-- Préférer les crates avec feature `bundled` / `static` pour éviter les DLL externes
-- Vérifier les licences : MIT ou Apache-2.0 requis
-
----
-
-## Documentation
-
-**À chaque commit, vérifier que la documentation est à jour.**
-
-| Fichier | Mettre à jour si… |
+| Sujet | Où |
 |---|---|
-| `README.md` | Changement de comportement visible (install, config, CLI, rapport) |
-| `scripts/config.toml` | Ajout ou suppression d'une clé de configuration |
-| `CHANGELOG.md` | Avant chaque release (toujours) |
-
-> Un commit `feat` ou `fix` qui modifie le comportement visible doit être accompagné
-> d'un commit `docs` (ou inclure la mise à jour dans le même commit si elle est mineure).
-
----
-
-## Versioning
-
-- Suivre [SemVer](https://semver.org/) : `MAJOR.MINOR.PATCH`
-- Mettre à jour `CHANGELOG.md` avant chaque release
-- Tagger la release : `git tag -s v0.1.0 -m "chore: release v0.1.0"`
+| Conventions backend, tests, architecture | `.claude/rules/backend.md` |
+| Conventions frontend et graphiques | `.claude/rules/frontend.md` |
+| Scripts `.bat`, installation, migration | `.claude/rules/windows-and-scripts.md` |
+| CI et release (GitHub Actions) | `.claude/rules/ci.md` |
+| Quelle doc mettre à jour | `.claude/rules/docs.md` |
+| Faire un commit | skill `commit` |
+| Publier une version (SemVer, tag, CHANGELOG) | skill `release` (manuel) |
+| Ajouter une clé de configuration | skill `add-config-key` |
+| Changer le schéma SQLite | skill `db-migration` |
