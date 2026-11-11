@@ -1,142 +1,89 @@
 // Curves: every component on one chart, each one can be switched off to see the others better.
 
-import type { Trend } from "../api";
+import type { CurveSeries, Curves, CurvesMode } from "../api";
 import { drawChart, type ChartSeries } from "../chart";
-import { sensorLabel, type Component } from "../components";
 import { clear, h } from "../dom";
-import { fmtSigned, fmtTemp } from "../format";
-import { colorValue, colorVar, disposeCharts, state, trackChart, trendOf, type Actions, type Mode } from "../state";
-import { LOADS } from "../text";
-import { loadFilter, monthlyMatrix } from "../widgets";
+import { colorValue, colorVar, disposeCharts, state, trackChart, type Actions } from "../state";
+import { loadFilter, textTable } from "../widgets";
 
-interface Line {
-  component: Component;
-  index: number;
-  trend: Trend | null;
+const MODES: { id: CurvesMode; text: string }[] = [
+  { id: "temp", text: "Températures" },
+  { id: "delta", text: "Écart depuis le début" },
+];
+
+function chartSeries(s: CurveSeries): ChartSeries {
+  return { id: s.key, label: s.title, color: colorValue(s.slot), values: new Map(s.points.map((p) => [p.day, p.value])) };
 }
 
-function lines(): Line[] {
-  return state.components.map((component, index) => {
-    const trend = trendOf(component.main.hardware, component.main.sensor) ?? null;
-    return { component, index, trend: trend && trend.points.length > 0 ? trend : null };
-  });
-}
-
-/** Can this line be drawn in the current mode? "Change since the beginning" needs a beginning. */
-function drawable(line: Line): boolean {
-  return line.trend !== null && (state.mode === "temp" || line.trend.baseline !== null);
-}
-
-function seriesOf(line: Line): ChartSeries {
-  const trend = line.trend as Trend;
-  const base = state.mode === "delta" ? (trend.baseline as number) : 0;
-  return {
-    id: line.component.key,
-    label: line.component.title,
-    color: colorValue(line.index),
-    values: new Map(trend.rolling.map((r) => [r.day, r.value - base])),
-  };
-}
-
-function segmented(label: string, options: { id: Mode; text: string }[], onPick: (m: Mode) => void): HTMLElement {
-  const group = h("div", { class: "segmented", role: "group", "aria-label": label });
-  for (const o of options) {
-    const button = h("button", { type: "button", class: "segment", "aria-pressed": String(state.mode === o.id) }, o.text);
-    button.addEventListener("click", () => onPick(o.id));
-    group.append(button);
-  }
-  return group;
-}
-
-export function renderCurves(host: HTMLElement, actions: Actions): void {
+export function renderCurves(host: HTMLElement, data: Curves, actions: Actions): void {
   clear(host);
-  const load = LOADS.find((l) => l.id === state.load);
-  const all = lines();
-
-  const card = h("section", { id: "curves", class: "card" }, h("h2", {}, "Courbes"), loadFilter(actions));
+  const card = h("section", { id: "curves", class: "card" }, h("h2", {}, "Courbes"));
   host.append(card);
-  if (all.every((l) => l.trend === null)) {
+  if (state.overview) card.append(loadFilter(state.overview.load, actions));
+  const all = data.series;
+  if (all.every((s) => s.points.length === 0 && s.note === "pas de mesure")) {
     card.append(h("p", { class: "muted" }, "Pas encore de journée complète avec assez de mesures à ce niveau de charge."));
     return;
   }
-  card.append(
-    h(
-      "p",
-      { class: "muted" },
-      `Chaque ligne montre la température habituelle d'un composant ${load?.when}, mois après mois. Décochez un composant pour mieux voir les autres.`,
-    ),
-  );
+  card.append(h("p", { class: "muted" }, "Chaque ligne montre la température habituelle d'un composant, mois après mois. Décochez un composant pour mieux voir les autres."));
 
   const picker = h("ul", { class: "picker" });
   const chart = h("div", { class: "chart", role: "img", "aria-label": "Courbes de la température de chaque composant dans le temps" });
   const tableSlot = h("div");
   const empty = h("p", { class: "muted", hidden: true }, "Aucun composant affiché : cochez-en au moins un.");
 
-  const visible = (): Line[] => all.filter((l) => drawable(l) && !state.hidden.has(l.component.key));
+  const visible = (): { s: CurveSeries; index: number }[] =>
+    all.map((s, index) => ({ s, index })).filter(({ s }) => s.available && !state.hidden.has(s.key));
 
   const redraw = (): void => {
     clear(chart);
     for (const li of picker.querySelectorAll<HTMLElement>("li")) {
-      const line = all[Number(li.dataset.index)];
+      const s = all[Number(li.dataset.index)];
       const input = li.querySelector("input") as HTMLInputElement;
-      const ok = drawable(line);
-      input.disabled = !ok;
-      input.checked = ok && !state.hidden.has(line.component.key);
+      input.disabled = !s.available;
+      input.checked = s.available && !state.hidden.has(s.key);
       li.classList.toggle("off", !input.checked);
-      const now = li.querySelector(".series-now") as HTMLElement;
-      now.textContent = !line.trend ? "pas de mesure" : !ok ? "pas assez de recul" : state.mode === "delta" ? (line.component.main.delta === null ? "—" : fmtSigned(line.component.main.delta)) : line.component.main.current === null ? "—" : fmtTemp(line.component.main.current);
+      (li.querySelector(".series-now") as HTMLElement).textContent = s.note ?? s.now ?? "—";
     }
     const shown = visible();
     empty.hidden = shown.length > 0;
     chart.hidden = shown.length === 0;
     clear(tableSlot);
     if (shown.length === 0) return;
-    const reference =
-      state.mode === "delta"
-        ? { value: 0, label: "Au début" }
-        : shown.length === 1 && shown[0].trend?.baseline != null
-          ? { value: shown[0].trend.baseline, label: `Au début : ${fmtTemp(shown[0].trend.baseline)}` }
-          : null;
-    trackChart(drawChart(chart, { series: shown.map(seriesOf), unit: state.mode, reference }));
+    // A single line shows where it began; in "change" mode every line shares the beginning (0).
+    const reference = data.mode === "delta" ? shown[0].s.reference : shown.length === 1 ? shown[0].s.reference : null;
+    trackChart(drawChart(chart, { series: shown.map(({ s }) => chartSeries(s)), unit: data.mode, reference }));
     tableSlot.append(
       h(
         "details",
         {},
         h("summary", {}, "Voir les chiffres, mois par mois"),
-        monthlyMatrix(shown.map((l) => ({ label: l.component.title, trend: l.trend as Trend, baseline: l.trend?.baseline ?? null })), state.mode === "delta"),
+        textTable(["Mois", ...shown.map(({ s }) => s.title)], data.months.map((m) => [m.label, ...shown.map(({ index }) => m.cells[index] ?? "—")])),
       ),
     );
   };
-
   const refresh = (): void => {
     disposeCharts();
     redraw();
   };
 
-  for (const line of all) {
+  all.forEach((s, index) => {
     const input = h("input", { type: "checkbox" });
     input.addEventListener("change", () => {
-      if (input.checked) state.hidden.delete(line.component.key);
-      else state.hidden.add(line.component.key);
+      if (input.checked) state.hidden.delete(s.key);
+      else state.hidden.add(s.key);
       refresh();
     });
     const swatch = h("span", { class: "swatch", "aria-hidden": "true" });
-    swatch.style.background = colorVar(line.index);
+    swatch.style.background = colorVar(s.slot);
     picker.append(
       h(
         "li",
-        { "data-index": String(line.index) },
-        h(
-          "label",
-          { class: "series-toggle" },
-          input,
-          swatch,
-          h("span", { class: "series-text" }, h("span", { class: "series-name" }, line.component.title), h("span", { class: "series-sensor" }, sensorLabel(line.component.main.sensor, line.component.kind).main)),
-          h("span", { class: "series-now" }),
-        ),
+        { "data-index": String(index) },
+        h("label", { class: "series-toggle" }, input, swatch, h("span", { class: "series-text" }, h("span", { class: "series-name" }, s.title), h("span", { class: "series-sensor" }, s.sensor_name)), h("span", { class: "series-now" })),
       ),
     );
-  }
+  });
 
   const showAll = h("button", { type: "button", class: "link-button" }, "Tout afficher");
   const none = h("button", { type: "button", class: "link-button" }, "Tout masquer");
@@ -145,28 +92,27 @@ export function renderCurves(host: HTMLElement, actions: Actions): void {
     refresh();
   });
   none.addEventListener("click", () => {
-    for (const l of all) state.hidden.add(l.component.key);
+    for (const s of all) state.hidden.add(s.key);
     refresh();
   });
 
-  const modes = segmented(
-    "Ce que montrent les courbes",
-    [
-      { id: "temp", text: "Températures" },
-      { id: "delta", text: "Écart depuis le début" },
-    ],
-    (m) => {
-      if (state.mode === m) return;
-      state.mode = m;
-      for (const b of modes.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.textContent === (m === "temp" ? "Températures" : "Écart depuis le début")));
-      hint.textContent = modeHint();
-      refresh();
-    },
-  );
-  const modeHint = (): string =>
-    state.mode === "temp" ? "Température habituelle de chaque composant." : "Combien de degrés de plus ou de moins qu'au début : 0 = comme au début. Pratique pour comparer des composants de températures différentes.";
-  const hint = h("p", { class: "hint" }, modeHint());
+  const modes = h("div", { class: "segmented", role: "group", "aria-label": "Ce que montrent les courbes" });
+  for (const m of MODES) {
+    const button = h("button", { type: "button", class: "segment", "aria-pressed": String(state.mode === m.id) }, m.text);
+    button.addEventListener("click", () => {
+      if (state.mode !== m.id) actions.setMode(m.id);
+    });
+    modes.append(button);
+  }
 
-  card.append(h("div", { class: "curve-controls" }, modes, h("span", { class: "bulk" }, showAll, " · ", none)), picker, hint, empty, chart, h("p", { class: "hint" }, "Glissez sur la courbe pour zoomer, double-cliquez pour revenir. Les bandes grises alternées marquent les mois."), tableSlot);
+  card.append(
+    h("div", { class: "curve-controls" }, modes, h("span", { class: "bulk" }, showAll, " · ", none)),
+    picker,
+    h("p", { class: "hint" }, data.hint),
+    empty,
+    chart,
+    h("p", { class: "hint" }, "Glissez sur la courbe pour zoomer, double-cliquez pour revenir. Les bandes grises alternées marquent les mois."),
+    tableSlot,
+  );
   redraw();
 }

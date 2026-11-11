@@ -30,6 +30,8 @@ export interface Status {
     last_ts: string | null;
     raw_retention_days: number;
   };
+  /** What is kept, for how long and where, in words. */
+  data: { title: string; text: string }[];
   latest: {
     ts: string;
     cpu_load: number | null;
@@ -69,43 +71,89 @@ export interface UpdateInfo {
   latest: Release | null;
   checked_at: string | null;
   error: string | null;
+  /** One line for the footer. */
+  line: string;
+  /** Text of the update button, when there is something to update to. */
+  button: string | null;
+  published: string | null;
 }
 
-export interface Point {
-  day: string;
-  median: number;
-  min: number;
-  p95: number;
-  max: number;
-  n: number;
+/** How a sensor or a component changed since the beginning: the word and the figure, already written. */
+export interface Verdict {
+  id: "warmer" | "stable" | "cooler" | "unknown";
+  label: string;
+  detail: string | null;
 }
 
-export interface Trend {
-  points: Point[];
-  rolling: { day: string; value: number }[];
-  days: number;
-  span_days: number;
-  sufficient: boolean;
-  baseline: number | null;
-  baseline_from: string | null;
-  baseline_to: string | null;
-  delta: number | null;
-  slope_per_month: number | null;
-  fit_start: number | null;
-}
-
-export interface Summary {
+export interface SensorView {
   hardware: string;
   sensor: string;
-  load_cat: Load;
-  days: number;
-  span_days: number;
-  sufficient: boolean;
-  baseline: number | null;
-  current: number | null;
-  delta: number | null;
-  slope_per_month: number | null;
+  name: string;
+  tech: string | null;
+  baseline: string | null;
+  current: string | null;
+  verdict: Verdict;
   sparkline: number[];
+}
+
+export interface ComponentView {
+  key: string;
+  kind: string;
+  title: string;
+  subtitle: string | null;
+  /** Position among the components: gives the color. */
+  slot: number;
+  main: SensorView;
+  sensors: SensorView[];
+}
+
+export interface Overview {
+  load: { id: Load; label: string; note: string; choices: { id: Load; label: string }[] };
+  headline: {
+    state: "empty" | "few" | "ok";
+    lead: string;
+    detail: string | null;
+    tiles: { verdict: Verdict["id"]; count: number; words: string }[];
+  };
+  components: ComponentView[];
+}
+
+export interface Reference {
+  value: number;
+  label: string;
+}
+
+export interface CurveSeries {
+  key: string;
+  title: string;
+  sensor_name: string;
+  slot: number;
+  now: string | null;
+  available: boolean;
+  note: string | null;
+  points: { day: string; value: number }[];
+  reference: Reference | null;
+}
+
+export type CurvesMode = "temp" | "delta";
+
+export interface Curves {
+  mode: CurvesMode;
+  hint: string;
+  series: CurveSeries[];
+  months: { label: string; cells: (string | null)[] }[];
+}
+
+export interface SensorPage {
+  name: string;
+  subtitle: string;
+  slot: number | null;
+  story: { kind: "story" | "advice"; spans: { text: string; strong: boolean }[] }[];
+  rolling: { day: string; value: number }[];
+  reference: Reference | null;
+  legend: string[];
+  months: { label: string; days: number; usual: string; lowest: string; highest: string }[];
+  technical: { label: string; text: string }[];
 }
 
 async function getJson<T>(path: string, params: Record<string, string> = {}): Promise<T> {
@@ -119,7 +167,7 @@ export const api = {
   status: () => getJson<Status>("/api/status"),
   update: () => getJson<UpdateInfo>("/api/update"),
   health: () => getJson<Health>("/api/health"),
-  summary: (load: Load) => getJson<Summary[]>("/api/summary", { load }),
-  trend: (hardware: string, sensor: string, load: Load) =>
-    getJson<Trend>("/api/trend", { hardware, sensor, load }),
+  overview: (load: Load) => getJson<Overview>("/api/overview", { load }),
+  curves: (load: Load, mode: CurvesMode) => getJson<Curves>("/api/curves", { load, mode }),
+  sensor: (hardware: string, sensor: string, load: Load) => getJson<SensorPage>("/api/sensor", { hardware, sensor, load }),
 };

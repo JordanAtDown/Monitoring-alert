@@ -1,6 +1,5 @@
 import type { UpdateInfo } from "./api";
 import { clear, h } from "./dom";
-import { fmtDay } from "./format";
 
 /** Only GitHub links are ever followed (the server filters them too). */
 function safeUrl(url: string | null | undefined): string | null {
@@ -15,7 +14,7 @@ export function renderUpdateButton(slot: HTMLElement, info: UpdateInfo | null, d
     "button",
     { type: "button", class: "update-button", "aria-haspopup": "dialog" },
     h("span", { "aria-hidden": "true" }, "⬆ "),
-    `Mise à jour disponible : version ${info.latest.version}`,
+    info.button ?? `Mise à jour disponible : version ${info.latest.version}`,
   );
   button.addEventListener("click", () => {
     if (!dialog.open) dialog.showModal();
@@ -63,7 +62,7 @@ export function fillUpdateDialog(dialog: HTMLDialogElement, info: UpdateInfo | n
 
   dialog.append(
     h("h2", {}, "Une nouvelle version est disponible"),
-    h("p", { class: "versions" }, `Vous avez la version ${info.current}. La version ${latest.version} est disponible${latest.published_at ? `, publiée le ${fmtDay(latest.published_at.slice(0, 10))}` : ""}.`),
+    h("p", { class: "versions" }, `Vous avez la version ${info.current}. La version ${latest.version} est disponible${info.published ? `, publiée le ${info.published}` : ""}.`),
     h("h3", {}, "Comment mettre à jour"),
     steps,
   );
@@ -80,15 +79,4 @@ function closeButton(dialog: HTMLDialogElement): HTMLElement {
   const button = h("button", { type: "button", class: "close-button" }, "Fermer");
   button.addEventListener("click", () => dialog.close());
   return h("div", { class: "dialog-actions" }, button);
-}
-
-/** One line for the footer: which version runs, and whether it is the latest. */
-export function versionLine(version: string | null, info: UpdateInfo | null): string {
-  const v = version ?? info?.current ?? "?";
-  if (!info) return `Monitoring ${v}`;
-  if (!info.enabled) return `Monitoring ${v} — recherche de mises à jour désactivée`;
-  if (info.available && info.latest) return `Monitoring ${v} — la version ${info.latest.version} est disponible`;
-  if (info.latest) return `Monitoring ${v} — à jour`;
-  if (info.error) return `Monitoring ${v} — impossible de chercher les mises à jour pour le moment`;
-  return `Monitoring ${v} — recherche de mises à jour en cours…`;
 }

@@ -1,7 +1,6 @@
 // "État": is everything working? Plus where the data is and which version runs.
 
 import { clear, h } from "../dom";
-import { fmtBytes, fmtDay, fmtInt } from "../format";
 import { LEVEL_ICON, state } from "../state";
 
 /** The tab title shows the state too: a pinned tab is enough to see that all is well. */
@@ -60,21 +59,9 @@ function checksCard(): HTMLElement {
 }
 
 function dataCard(): HTMLElement | null {
-  const s = state.status;
-  if (!s) return null;
-  const minutes = Math.round(s.collector.interval_secs / 60);
-  return h(
-    "section",
-    { id: "data", class: "card" },
-    h("h2", {}, "Vos données"),
-    h(
-      "ul",
-      { class: "data-list" },
-      h("li", {}, h("strong", {}, "Résumé de chaque jour"), ` pour tous les capteurs${s.db.history_since ? `, depuis le ${fmtDay(s.db.history_since)}` : ""} : conservé sans limite. C'est lui qui permet de suivre l'évolution sur des mois.`),
-      h("li", {}, h("strong", {}, "Mesures détaillées"), ` (${minutes === 1 ? "une par minute" : `une toutes les ${fmtInt(minutes)} minutes`}) : conservées ${fmtInt(s.db.raw_retention_days)} jours, ${fmtInt(s.db.total_snapshots)} relevés actuellement. Avant d'être supprimées, elles sont résumées.`),
-      h("li", {}, h("strong", {}, "Fichier"), ` : ${s.db.path} (${fmtBytes(s.db.size_bytes)})`),
-    ),
-  );
+  const facts = state.status?.data;
+  if (!facts) return null;
+  return h("section", { id: "data", class: "card" }, h("h2", {}, "Vos données"), h("ul", { class: "data-list" }, ...facts.map((f) => h("li", {}, h("strong", {}, f.title), f.text))));
 }
 
 export function renderStatus(host: HTMLElement): void {

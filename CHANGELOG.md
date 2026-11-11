@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quotidien** et non plus depuis la première mesure brute : après la purge des mesures brutes, `check` annonçait
   « 51 j » alors que 217 jours de résumés existaient.
 
+- **Le backend décide, le frontend affiche** : le regroupement par composant, les verdicts (« stable » sous 1,5 °C…), les
+  phrases et les nombres écrits en français viennent de l'API. Nouvelles routes prêtes à afficher : `/api/overview`
+  (accueil), `/api/curves` (courbes de tous les composants, en températures ou en écart), `/api/sensor` (un capteur
+  expliqué) ; `/api/status` dit en clair ce qui est conservé, `/api/update` donne la phrase du pied de page. Les routes
+  de données (`/api/summary`, `/api/trend`, `/api/series`) restent. Côté code : un endpoint = un fichier = un cas
+  d'usage (`application/usecases/`), qui appelle le code métier du domaine.
+
 ### Removed
 - Du graphique d'un capteur : la plage de chaque jour, la droite de tendance et la zone teintée (tout est dans les
   chiffres « mois par mois » et les « Détails techniques »).

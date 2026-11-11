@@ -1,8 +1,6 @@
 // What the page knows at a given moment, shared by the views. The views only read it; main.ts changes it.
 
-import type { Health, Level, Load, Status, Summary, Trend, UpdateInfo } from "./api";
-import type { Component } from "./components";
-import { LOADS } from "./text";
+import type { Curves, CurvesMode, Health, Level, Load, Overview, SensorPage, Status, UpdateInfo } from "./api";
 import { readTheme, SERIES_COUNT } from "./theme";
 
 export type Page = "home" | "curves" | "details" | "status";
@@ -13,8 +11,7 @@ export const PAGES: { id: Page; label: string }[] = [
   { id: "status", label: "État" },
 ];
 
-/** What the curves show: the temperatures, or the change since the beginning. */
-export type Mode = "temp" | "delta";
+const LOAD_IDS: Load[] = ["idle", "light", "moderate", "heavy"];
 
 export interface Selection {
   hardware: string;
@@ -31,13 +28,14 @@ export const state = {
   status: null as Status | null,
   health: null as Health | null,
   update: null as UpdateInfo | null,
-  summary: [] as Summary[],
-  components: [] as Component[],
+  /** The home page at the current load level (the choices of load levels come with it). */
+  overview: null as Overview | null,
   /** Components the reader switched off on the curves. */
   hidden: new Set<string>(),
-  mode: "temp" as Mode,
-  /** Daily curves already fetched for the current load level; `null` = fetch failed. */
-  trends: new Map<string, Trend | null>(),
+  mode: "temp" as CurvesMode,
+  /** Pages already fetched for the current load level; `null` = the fetch failed. */
+  curves: new Map<CurvesMode, Curves | null>(),
+  sensors: new Map<string, SensorPage | null>(),
 };
 
 /** What the views can ask the page to do. */
@@ -45,10 +43,10 @@ export interface Actions {
   setLoad(load: Load): void;
   /** Opens (or closes, with null) a sensor on the Details page. */
   select(sel: Selection | null): void;
+  setMode(mode: CurvesMode): void;
 }
 
-export const trendKey = (load: Load, hardware: string, sensor: string): string => `${load}|${hardware}|${sensor}`;
-export const trendOf = (hardware: string, sensor: string): Trend | null | undefined => state.trends.get(trendKey(state.load, hardware, sensor));
+export const sensorKey = (s: Selection): string => `${s.hardware}|${s.sensor}`;
 
 // ── Charts alive on the page ─────────────────────────────────────────────────
 
@@ -71,7 +69,7 @@ export function readHash(): void {
   const page = params.get("page");
   state.page = PAGES.some((p) => p.id === page) ? (page as Page) : "home";
   const load = params.get("load");
-  if (LOADS.some((l) => l.id === load)) state.load = load as Load;
+  if (LOAD_IDS.includes(load as Load)) state.load = load as Load;
   const hardware = params.get("hw");
   const sensor = params.get("sensor");
   state.selected = hardware && sensor ? { hardware, sensor } : null;

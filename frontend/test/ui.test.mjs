@@ -17,8 +17,8 @@ const RELEASE = {
   notes: "Un tableau de bord plus lisible.",
   published_at: "2026-11-20T10:00:00Z",
 };
-const UPDATE_AVAILABLE = { current: "2.0.0", enabled: true, available: true, checked_at: "2026-11-11T15:00:00", error: null, latest: RELEASE };
-const UPDATE_NONE = { current: "2.0.0", enabled: true, available: false, checked_at: "2026-11-11T15:00:00", error: null, latest: { ...RELEASE, version: "2.0.0" } };
+const UPDATE_AVAILABLE = { current: "2.0.0", enabled: true, available: true, checked_at: "2026-11-11T15:00:00", error: null, latest: RELEASE, line: "Monitoring 2.0.0 — la version 2.1.0 est disponible", button: "Mise à jour disponible : version 2.1.0", published: "20 novembre 2026" };
+const UPDATE_NONE = { current: "2.0.0", enabled: true, available: false, checked_at: "2026-11-11T15:00:00", error: null, latest: { ...RELEASE, version: "2.0.0" }, line: "Monitoring 2.0.0 — à jour", button: null, published: null };
 
 const check = (id, title, level, message) => ({ id, title, level, message });
 const HEALTH_OK = {
@@ -37,7 +37,7 @@ const HEALTH_OK = {
 /** Opens the real page in a simulated browser, with the API answering from recorded responses. */
 const READY = { home: ".comp-card", curves: "#curves .picker", details: "#components table", status: "#health" };
 
-async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status = fixture("status.json"), summary = fixture("summary-idle.json"), health = HEALTH_OK } = {}) {
+async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status = fixture("status.json"), overview = fixture("overview-idle.json"), curves = {}, sensor = fixture("sensor-disk1.json"), health = HEALTH_OK } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
     url: `http://127.0.0.1:8787/#page=${page}${hash}`,
     runScripts: "outside-only",
@@ -52,10 +52,19 @@ async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status
   const errors = [];
   const requests = [];
   w.addEventListener("error", (e) => errors.push(String(e.message)));
+  const curvesByMode = { temp: fixture("curves-idle-temp.json"), delta: fixture("curves-idle-delta.json"), ...curves };
   w.fetch = async (url) => {
     const u = new URL(url, "http://x");
     requests.push(u.pathname + u.search);
-    const body = { "/api/status": status, "/api/health": health, "/api/update": update, "/api/summary": summary, "/api/trend": fixture("trend-cpu-idle.json") }[u.pathname];
+    const load = u.searchParams.get("load");
+    const body = {
+      "/api/status": status,
+      "/api/health": health,
+      "/api/update": update,
+      "/api/overview": load === "idle" || !load ? overview : { ...overview, load: { ...overview.load, id: load, label: "Charge légère" }, headline: { ...overview.headline, lead: `Depuis le début, ${load} :` } },
+      "/api/curves": curvesByMode[u.searchParams.get("mode") ?? "temp"],
+      "/api/sensor": sensor,
+    }[u.pathname];
     return body ? new Response(JSON.stringify(body)) : new Response("{}", { status: 404 });
   };
   w.eval(code);
@@ -68,6 +77,7 @@ async function openPage({ page = "home", hash = "", update = UPDATE_NONE, status
 
 const click = (page, el) => el.dispatchEvent(new page.w.Event("click", { bubbles: true }));
 const change = (page, el) => el.dispatchEvent(new page.w.Event("change", { bubbles: true }));
+const labels = (page) => page.d.querySelector(".u-wrap-stub").getAttribute("data-labels");
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 
@@ -80,12 +90,28 @@ test("a menu leads to four pages, and the current one is marked", async () => {
   page.close();
 });
 
+// ── The page decides nothing ─────────────────────────────────────────────────
+
+test("the page prints what the backend says, word for word", async () => {
+  const overview = fixture("overview-idle.json");
+  overview.headline.lead = "Une phrase écrite par le backend :";
+  overview.headline.tiles = [{ verdict: "warmer", count: 42, words: "mots du backend" }];
+  overview.headline.detail = "Un détail du backend.";
+  overview.components[0].title = "Mon composant";
+  overview.components[0].main.verdict = { id: "warmer", label: "Un mot à moi", detail: "+9,9 °C" };
+  overview.components[0].main.baseline = "1,0 °C";
+  const page = await openPage({ overview });
+  assert.match(page.text("#verdict")[0], /Une phrase écrite par le backend :.*42mots du backend.*Un détail du backend\./);
+  assert.match(page.text(".comp-card")[0], /Mon composant.*Un mot à moi\+9,9 °C.*1,0 °C/);
+  page.close();
+});
+
 // ── Home ─────────────────────────────────────────────────────────────────────
 
-test("the home page says in plain words how many components got warmer, stayed stable or cooled", async () => {
+test("the home page gives the answer in a few words and counts the components", async () => {
   const page = await openPage();
   const verdict = page.text("#verdict")[0];
-  assert.match(verdict, /Depuis le 17 septembre 2025 \(environ 7 mois de suivi\), quand le PC est au repos/);
+  assert.match(verdict, /Depuis le 8 avril 2026 \(environ 7 mois de suivi\), quand le PC est au repos :/);
   assert.match(verdict, /3composants plus chauds qu'au début/);
   assert.match(verdict, /3composants stables/);
   assert.match(verdict, /1composant plus froid qu'au début/);
@@ -98,8 +124,7 @@ test("each part of the PC has its own card: the case and the motherboard apart, 
   const page = await openPage();
   assert.deepEqual(page.text(".comp-title"), ["Processeur", "Carte graphique", "Carte mère", "Boîtier", "Disque 1", "Disque 2", "Disque 3"]);
   const subtitles = page.text(".comp-sub");
-  assert.equal(subtitles[0], "AMD Ryzen 7 5700X", "the motherboard's processor probe does not add a model");
-  assert.equal(subtitles[2], "Gigabyte B550I AORUS PRO AX");
+  assert.equal(subtitles[0], "AMD Ryzen 7 5700X");
   assert.equal(subtitles[3], "", "the case has no model");
   assert.deepEqual(subtitles.slice(4), ["CT500P310SSD8", "Samsung SSD 860 QVO 1TB", "Samsung SSD 970 EVO Plus 250GB"]);
   page.close();
@@ -119,10 +144,11 @@ test("the filter 'Le PC est…' sits in the cards it changes, not in a bar at th
   const page = await openPage();
   assert.equal(page.d.querySelectorAll("#verdict .segmented").length, 1);
   assert.equal(page.d.querySelectorAll("header .segmented, #tabs .segmented").length, 0);
+  assert.match(page.text("#verdict .filters-hint")[0], /^Au repos : moins de 15 %/);
   click(page, [...page.d.querySelectorAll("#verdict .segment")].find((b) => b.textContent === "Charge légère"));
   await page.settle();
-  assert.ok(page.requests.includes("/api/summary?load=light"));
-  assert.match(page.text("#verdict")[0], /quand le PC est peu sollicité/);
+  assert.ok(page.requests.includes("/api/overview?load=light"));
+  assert.match(page.text("#verdict")[0], /Depuis le début, light :/);
   page.close();
 });
 
@@ -133,17 +159,17 @@ test("a card of the home page opens the curves with that component alone", async
   assert.match(card.getAttribute("href"), /only=case/);
   page.close();
   const curves = await openPage({ page: "curves", hash: "&only=case" });
-  const checked = [...curves.d.querySelectorAll(".picker input")].map((i) => i.checked);
-  assert.deepEqual(checked, [false, false, false, true, false, false, false]);
-  assert.equal(curves.d.querySelector(".u-wrap-stub").getAttribute("data-labels"), "Boîtier|Au début : 37,7 °C", "one line, and the level of the beginning");
+  assert.deepEqual([...curves.d.querySelectorAll(".picker input")].map((i) => i.checked), [false, false, false, true, false, false, false]);
+  assert.match(labels(curves), /^Boîtier\|Au début : /, "one line, and the level of the beginning");
   curves.close();
 });
 
-test("too little history says how much is needed instead of inventing a trend", async () => {
-  const summary = fixture("summary-idle.json").map((s) => ({ ...s, sufficient: false, delta: null, baseline: null, days: 12, span_days: 20 }));
-  const page = await openPage({ summary });
-  assert.match(page.text("#verdict")[0], /Pas encore assez d'historique pour comparer.*60 jours de suivi dont 40 jours avec des mesures/);
-  assert.match(page.text(".comp-card")[0], /Pas assez de recul/);
+test("too little history: the page prints the explanation it is given and invents no tiles", async () => {
+  const overview = fixture("overview-idle.json");
+  overview.headline = { state: "few", lead: "Pas encore assez d'historique pour comparer.", detail: "Pour dire si une température a changé, il faut au moins 60 jours de suivi.", tiles: [] };
+  const page = await openPage({ overview });
+  assert.match(page.text("#verdict")[0], /Pas encore assez d'historique pour comparer\..*au moins 60 jours/);
+  assert.equal(page.d.querySelectorAll(".tile").length, 0);
   page.close();
 });
 
@@ -162,7 +188,7 @@ test("the curves show every component, each with its own color, and any can be s
   const page = await openPage({ page: "curves" });
   assert.deepEqual(page.text(".series-name"), ["Processeur", "Carte graphique", "Carte mère", "Boîtier", "Disque 1", "Disque 2", "Disque 3"]);
   assert.ok([...page.d.querySelectorAll(".picker input")].every((i) => i.checked));
-  assert.equal(page.d.querySelector(".u-wrap-stub").getAttribute("data-labels"), "Processeur|Carte graphique|Carte mère|Boîtier|Disque 1|Disque 2|Disque 3");
+  assert.equal(labels(page), "Processeur|Carte graphique|Carte mère|Boîtier|Disque 1|Disque 2|Disque 3");
 
   const swatches = [...page.d.querySelectorAll(".picker .swatch")].map((s) => s.style.background);
   assert.equal(new Set(swatches).size, 7, "one color per component");
@@ -170,39 +196,63 @@ test("the curves show every component, each with its own color, and any can be s
   const disk1 = page.d.querySelectorAll(".picker input")[4];
   disk1.checked = false;
   change(page, disk1);
-  assert.equal(page.d.querySelector(".u-wrap-stub").getAttribute("data-labels"), "Processeur|Carte graphique|Carte mère|Boîtier|Disque 2|Disque 3");
+  assert.equal(labels(page), "Processeur|Carte graphique|Carte mère|Boîtier|Disque 2|Disque 3");
   assert.deepEqual([...page.d.querySelectorAll(".picker .swatch")].map((s) => s.style.background), swatches, "switching one off never repaints the others");
 
   click(page, [...page.d.querySelectorAll(".link-button")].find((b) => b.textContent === "Tout masquer"));
-  assert.ok(page.d.querySelector("#curves .u-wrap-stub") === null);
+  assert.equal(page.d.querySelector("#curves .u-wrap-stub"), null);
   assert.match(page.text("#curves")[0], /Aucun composant affiché/);
   click(page, [...page.d.querySelectorAll(".link-button")].find((b) => b.textContent === "Tout afficher"));
-  assert.equal(page.d.querySelector(".u-wrap-stub").getAttribute("data-series").length > 0, true);
+  assert.ok(page.d.querySelector(".u-wrap-stub"));
   assert.deepEqual(page.errors, []);
   page.close();
 });
 
-test("the curves can show the change since the beginning, which makes small drifts visible", async () => {
+test("the legend shows the figure the backend wrote, and a line that cannot be drawn is greyed with its reason", async () => {
+  const temp = fixture("curves-idle-temp.json");
+  temp.series[6].available = false;
+  temp.series[6].note = "pas assez de recul";
+  const page = await openPage({ page: "curves", curves: { temp } });
+  assert.match(page.text(".series-now")[0], /^\d+,\d °C$/);
+  assert.equal(page.text(".series-now")[6], "pas assez de recul");
+  assert.ok(page.d.querySelectorAll(".picker input")[6].disabled);
+  assert.ok(!labels(page).includes("Disque 3"));
+  page.close();
+});
+
+test("the curves can show the change since the beginning, fetched from the backend", async () => {
   const page = await openPage({ page: "curves" });
-  assert.match(page.text(".series-now")[0], /47,4 °C/);
   click(page, [...page.d.querySelectorAll("#curves .segment")].find((b) => b.textContent === "Écart depuis le début"));
-  assert.match(page.text(".series-now")[0], /−0,9 °C/);
-  assert.match(page.d.querySelector(".u-wrap-stub").getAttribute("data-labels"), /Au début$/, "a line marks the beginning (0)");
+  await page.settle();
+  assert.ok(page.requests.includes("/api/curves?load=idle&mode=delta"));
+  assert.match(page.text(".series-now")[0], /^[+−]?\d+,\d °C$/);
+  assert.match(labels(page), /Au début$/, "a line marks the beginning (0)");
+  assert.match(page.text("#curves .hint")[0], /Combien de degrés de plus ou de moins/);
+  page.close();
+});
+
+test("the months table follows the lines that are shown", async () => {
+  const page = await openPage({ page: "curves" });
+  const heads = () => page.text("#curves .monthly thead th");
+  assert.deepEqual(heads(), ["Mois", "Processeur", "Carte graphique", "Carte mère", "Boîtier", "Disque 1", "Disque 2", "Disque 3"]);
+  const box = page.d.querySelectorAll(".picker input")[1];
+  box.checked = false;
+  change(page, box);
+  assert.deepEqual(heads().slice(0, 3), ["Mois", "Processeur", "Carte mère"]);
+  assert.match(page.text("#curves .monthly tbody tr")[0], /^avril 2026 ?48,4 °C ?41,0 °C/, "the cells of the shown lines only");
   page.close();
 });
 
 test("the filter 'Le PC est…' is right above the chart", async () => {
   const page = await openPage({ page: "curves" });
-  const card = page.d.querySelector("#curves");
-  assert.ok(card.querySelector(".segmented"));
-  const kids = [...card.children].map((c) => c.className);
+  const kids = [...page.d.querySelector("#curves").children].map((c) => c.className);
   assert.ok(kids.indexOf("load-filter") < kids.indexOf("curve-controls"));
   page.close();
 });
 
 // ── Details ──────────────────────────────────────────────────────────────────
 
-test("the details list every sensor under its component, the processor probe of the motherboard with the processor", async () => {
+test("the details list every sensor under its component, with the names the backend gives", async () => {
   const page = await openPage({ page: "details" });
   assert.deepEqual(page.text("#components caption"), [
     "Processeur — AMD Ryzen 7 5700X",
@@ -215,26 +265,30 @@ test("the details list every sensor under its component, the processor probe of 
   ]);
   const tables = [...page.d.querySelectorAll("#components table")];
   const names = (i) => [...tables[i].querySelectorAll("tbody th .sensor")].map((e) => e.textContent);
-  assert.deepEqual(names(0), ["Cœurs du processeur", "Puce de calcul du processeur", "Sonde de la carte mère, près du processeur"]);
-  assert.deepEqual([...names(2)].sort(), ["Alimentation du processeur", "Alimentation du processeur (SoC)", "Chipset de la carte mère"].sort());
-  assert.ok(!names(2).includes("Sonde de la carte mère, près du processeur"));
+  assert.equal(names(0)[0], "Cœurs du processeur", "the sensor that stands for the component comes first");
+  assert.ok(names(0).includes("Sonde de la carte mère, près du processeur"));
   assert.deepEqual(names(3), ["Intérieur du boîtier"]);
-  assert.deepEqual(names(6), ["Température du disque", "Sonde interne n° 1", "Sonde interne n° 2"]);
+  assert.equal(names(6)[0], "Température du disque");
+  assert.match(page.text("#components tbody tr")[0], /Cœurs du processeurCore \(Tctl\/Tdie\).*°C.*°C/);
   page.close();
 });
 
 test("a sensor opens in place with its story, its curve and its figures", async () => {
   const page = await openPage({ page: "details" });
-  const row = page.d.querySelector("#components tbody tr");
+  const row = [...page.d.querySelectorAll("#components tbody tr")].find((r) => r.textContent.startsWith("Température du disque"));
   click(page, row);
   await page.settle();
-  assert.match(page.text(".detail .story")[0], /Au début \(du 17 septembre 2025 au 16 octobre 2025\), sa température habituelle était de 37,7 °C\. Ces 30 derniers jours : 42,3 °C, soit 4,7 °C de plus qu'au début\./);
+  assert.ok(page.requests.some((r) => r.startsWith("/api/sensor?") && r.includes("CT500P310SSD8")));
+  assert.match(page.text(".detail .story")[0], /^Au début \(du .* au .*\), sa température habituelle était de \d+,\d °C\. Ces 30 derniers jours : \d+,\d °C, soit .*de plus qu'au début\.$/);
+  assert.equal(page.d.querySelectorAll(".detail .story strong").length, 2, "the figures are in bold");
   assert.match(page.text(".detail .advice")[0], /poussière.*pâte thermique.*ventilateur/);
-  assert.equal(page.d.querySelector(".detail .u-wrap-stub").getAttribute("data-labels").split("|").length, 2, "one line plus the beginning");
-  assert.equal(page.d.querySelectorAll(".detail .toggle").length, 0, "no extra layers to configure");
+  assert.match(page.text(".detail .muted")[0], /^Disque 1 · CT500P310SSD8 · au repos/);
+  assert.equal(labels(page).split("|").length, 2, "one line plus the beginning");
+  assert.match(page.text(".detail details")[1], /Pente générale/);
   assert.ok(page.d.querySelector('#components tr[aria-expanded="true"]'));
-  click(page, page.d.querySelector("#components tbody tr"));
+  click(page, page.d.querySelector('#components tr[aria-expanded="true"]'));
   assert.equal(page.d.querySelector(".detail"), null, "a second click closes it");
+  assert.deepEqual(page.errors, []);
   page.close();
 });
 
@@ -333,11 +387,12 @@ test("when the program cannot be reached the page says so instead of freezing on
 });
 
 
-test("the status page says where the data is and for how long it is kept", async () => {
+
+test("the status page says where the data is and for how long it is kept, as the backend wrote it", async () => {
   const page = await openPage({ page: "status" });
   const [daily, raw, file] = page.text("#data li");
-  assert.match(daily, /Résumé de chaque jour pour tous les capteurs, depuis le 17 septembre 2025 : conservé sans limite/);
-  assert.match(raw, /une toutes les 5 minutes\) : conservées 365 jours/);
-  assert.match(file, /E:\\monitoring\.db\\temperatures\.db/);
+  assert.match(daily, /Résumé de chaque jour pour tous les capteurs, depuis le 8 avril 2026 : conservé sans limite/);
+  assert.match(raw, /Mesures détaillées \(une toutes les 5 minutes\) : conservées 365 jours/);
+  assert.match(file, /Fichier : E:\\monitoring\.db\\temperatures\.db \(1,8 Mo\)/);
   page.close();
 });
