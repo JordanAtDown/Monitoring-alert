@@ -560,3 +560,144 @@ fn the_overview_rejects_an_unknown_load() {
     let f = fixture();
     assert_eq!(get(&f, "/api/overview?load=turbo").0, 400);
 }
+
+// ── /api/curves ───────────────────────────────────────────────
+
+fn series_named<'a>(v: &'a serde_json::Value, title: &str) -> &'a serde_json::Value {
+    v["series"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["title"] == title)
+        .unwrap_or_else(|| panic!("no series {title}"))
+}
+
+#[test]
+fn the_curves_give_one_line_per_component_in_temperatures() {
+    let f = fixture();
+    let (code, v) = get(&f, "/api/curves?load=idle");
+    assert_eq!(code, 200);
+    assert_eq!(v["mode"], "temp");
+    let cpu = series_named(&v, "Processeur");
+    assert_eq!(cpu["available"], true);
+    assert_eq!(cpu["sensor_name"], "Cœurs du processeur");
+    assert!(cpu["now"].as_str().unwrap().ends_with(" °C"));
+    assert!(cpu["points"].as_array().unwrap().len() > 300);
+    assert!(cpu["reference"]["label"]
+        .as_str()
+        .unwrap()
+        .starts_with("Au début : "));
+    // The disk has 20 days only: drawn, but with no beginning to compare to.
+    let disk = series_named(&v, "Disque");
+    assert_eq!(disk["available"], true);
+    assert_eq!(disk["reference"], serde_json::Value::Null);
+}
+
+#[test]
+fn the_curves_can_show_the_change_since_the_beginning() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/curves?load=idle&mode=delta");
+    assert_eq!(v["mode"], "delta");
+    let cpu = series_named(&v, "Processeur");
+    assert!(cpu["now"].as_str().unwrap().starts_with('+'));
+    assert_eq!(cpu["reference"]["value"], 0.0);
+    // Starts around 0, ends where the sensor drifted to.
+    let points = cpu["points"].as_array().unwrap();
+    assert!(points[0]["value"].as_f64().unwrap().abs() < 1.0);
+    assert!(points.last().unwrap()["value"].as_f64().unwrap() > 3.0);
+    // No beginning yet: said in words, not drawn.
+    let disk = series_named(&v, "Disque");
+    assert_eq!(disk["available"], false);
+    assert_eq!(disk["note"], "pas assez de recul");
+    assert!(disk["points"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn the_curves_come_with_their_months_as_a_table() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/curves?load=idle");
+    let months = v["months"].as_array().unwrap();
+    assert!(months.len() >= 12);
+    assert!(months[0]["label"].as_str().unwrap().contains(' '));
+    // One cell per series, in the same order; a month a sensor did not cover is empty.
+    assert_eq!(
+        months[0]["cells"].as_array().unwrap().len(),
+        v["series"].as_array().unwrap().len()
+    );
+    assert!(months.last().unwrap()["cells"][0]
+        .as_str()
+        .unwrap()
+        .ends_with(" °C"));
+}
+
+#[test]
+fn the_curves_reject_an_unknown_mode_or_load() {
+    let f = fixture();
+    assert_eq!(get(&f, "/api/curves?mode=percent").0, 400);
+    assert_eq!(get(&f, "/api/curves?load=turbo").0, 400);
+}
+
+// ── /api/sensor ───────────────────────────────────────────────
+
+#[test]
+fn a_sensor_is_explained_in_a_sentence_with_its_figures_in_bold() {
+    let f = fixture();
+    let (code, v) = get(
+        &f,
+        "/api/sensor?hardware=AMD%20Ryzen%207&sensor=Core%20(Tctl%2FTdie)&load=idle",
+    );
+    assert_eq!(code, 200);
+    assert_eq!(v["name"], "Cœurs du processeur");
+    assert_eq!(
+        v["subtitle"],
+        "Processeur · AMD Ryzen 7 · au repos · capteur « Core (Tctl/Tdie) »"
+    );
+    let story = &v["story"][0];
+    assert_eq!(story["kind"], "story");
+    let spans = story["spans"].as_array().unwrap();
+    let text: String = spans.iter().map(|s| s["text"].as_str().unwrap()).collect();
+    assert!(text.starts_with("Au début (du "), "{text}");
+    assert!(text.contains("sa température habituelle était de "));
+    assert!(text.contains("de plus qu'au début."));
+    assert_eq!(spans.iter().filter(|s| s["strong"] == true).count(), 2);
+    // It got warmer: what may explain it is said, as a separate line.
+    assert_eq!(v["story"][1]["kind"], "advice");
+    assert_eq!(v["legend"].as_array().unwrap().len(), 2);
+    assert!(!v["rolling"].as_array().unwrap().is_empty());
+    assert!(v["months"][0]["usual"].as_str().unwrap().ends_with(" °C"));
+    assert_eq!(v["technical"][0]["label"], "Pente générale");
+    assert!(v["technical"][0]["text"].as_str().unwrap().starts_with('+'));
+}
+
+#[test]
+fn a_young_sensor_says_it_is_too_early_and_offers_no_statistics() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/sensor?hardware=NVMe&sensor=Temperature&load=idle");
+    let text = v["story"][0]["spans"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("Pour l'instant : 20 jours de mesures sur 20 jours de suivi"),
+        "{text}"
+    );
+    assert_eq!(v["story"].as_array().unwrap().len(), 1);
+    assert!(v["technical"].as_array().unwrap().is_empty());
+    assert_eq!(v["reference"], serde_json::Value::Null);
+    assert_eq!(v["legend"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn an_unknown_sensor_is_an_empty_page_not_an_error() {
+    let f = fixture();
+    let (code, v) = get(&f, "/api/sensor?hardware=Nope&sensor=Nothing&load=idle");
+    assert_eq!(code, 200);
+    assert!(v["story"][0]["spans"][0]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("Pas encore de journée complète"));
+    assert!(v["rolling"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_sensor_needs_a_hardware_and_a_name() {
+    let f = fixture();
+    assert_eq!(get(&f, "/api/sensor?sensor=x").0, 400);
+}

@@ -146,3 +146,22 @@ pub fn overview(
 ) -> Result<crate::application::overview::Overview> {
     crate::application::overview::overview(read, load)
 }
+
+/// The curves of every component, ready to display.
+pub fn curves(
+    read: &dyn ReadModel,
+    load: &str,
+    mode: crate::application::curves::Mode,
+) -> Result<crate::application::curves::Curves> {
+    crate::application::curves::curves(read, load, mode)
+}
+
+/// The page of one sensor, ready to display.
+pub fn sensor(
+    read: &dyn ReadModel,
+    hardware: &str,
+    sensor: &str,
+    load: &str,
+) -> Result<crate::application::sensor::SensorPage> {
+    crate::application::sensor::sensor_page(read, hardware, sensor, load)
+}

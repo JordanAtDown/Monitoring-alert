@@ -183,3 +183,21 @@ fn summaries_are_sorted_by_drift_then_unknowns_by_name() {
     let order: Vec<&str> = v.iter().map(|s| s.sensor.as_str()).collect();
     assert_eq!(order, ["D big", "C small", "A young", "B young"]);
 }
+
+#[test]
+fn the_daily_points_are_grouped_by_calendar_month() {
+    let t = trends::compute_trend(&series(100, |i| 40.0 + i as f64 * 0.1));
+    let months = trends::monthly(&t.points);
+    // 2024-01-01 + 100 days: January, February, March, April (to the 10th).
+    let keys: Vec<&str> = months.iter().map(|m| m.key.as_str()).collect();
+    assert_eq!(keys, ["2024-01", "2024-02", "2024-03", "2024-04"]);
+    assert_eq!(months[0].days, 31);
+    assert_eq!(months[0].first_day, "2024-01-01");
+    assert!(months[0].min < months[0].median && months[0].median < months[0].max);
+    assert!(months[1].median > months[0].median);
+}
+
+#[test]
+fn no_points_means_no_months() {
+    assert!(trends::monthly(&[]).is_empty());
+}

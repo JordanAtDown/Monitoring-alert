@@ -268,3 +268,44 @@ pub fn sort_summaries(summaries: &mut [SensorSummary]) {
         (None, None) => (&a.hardware, &a.sensor).cmp(&(&b.hardware, &b.sensor)),
     });
 }
+
+/// One calendar month of a sensor's daily points.
+#[derive(Debug, PartialEq)]
+pub struct Month {
+    /// `YYYY-MM`.
+    pub key: String,
+    /// A day of that month (`YYYY-MM-DD`), to name it.
+    pub first_day: String,
+    /// Days with measurements.
+    pub days: usize,
+    /// Median of the daily medians.
+    pub median: f64,
+    pub min: f64,
+    pub max: f64,
+}
+
+/// The daily points grouped by calendar month, oldest first: the table view of a chart.
+pub fn monthly(points: &[Point]) -> Vec<Month> {
+    let mut months: Vec<(String, Vec<&Point>)> = Vec::new();
+    for p in points {
+        let key = p.day.get(..7).unwrap_or(&p.day).to_string();
+        match months.last_mut() {
+            Some((k, list)) if *k == key => list.push(p),
+            _ => months.push((key, vec![p])),
+        }
+    }
+    months
+        .into_iter()
+        .map(|(key, list)| {
+            let mut medians: Vec<f64> = list.iter().map(|p| p.median).collect();
+            Month {
+                key,
+                first_day: list[0].day.clone(),
+                days: list.len(),
+                median: median_of(&mut medians),
+                min: list.iter().map(|p| p.min).fold(f64::INFINITY, f64::min),
+                max: list.iter().map(|p| p.max).fold(f64::NEG_INFINITY, f64::max),
+            }
+        })
+        .collect()
+}

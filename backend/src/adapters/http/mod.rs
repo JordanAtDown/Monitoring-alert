@@ -7,6 +7,8 @@
 //! * `GET /api/trend?hardware=&sensor=&load=` — drift chart data of one sensor
 //! * `GET /api/summary?load=` — drift overview of all the sensors
 //! * `GET /api/overview?load=` — the home of the dashboard: headline and components, ready to display
+//! * `GET /api/curves?load=&mode=temp|delta` — one line per component, ready to draw
+//! * `GET /api/sensor?hardware=&sensor=&load=` — one sensor: its story, curve and months, ready to display
 //!
 //! The server only reads. It listens on the loopback interface by default and
 //! refuses requests whose `Host` header is not a loopback name, which blocks
@@ -18,6 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::application::curves::Mode;
 use crate::application::ports::ReadModel;
 use crate::application::queries::{self, AppInfo};
 use crate::application::status::CollectorStatus;
@@ -170,6 +173,8 @@ pub fn route(state: &AppState, method: &str, url: &str, host: Option<&str>) -> R
         "/api/trend" => api_trend(state, &params),
         "/api/summary" => api_summary(state, &params),
         "/api/overview" => api_overview(state, &params),
+        "/api/curves" => api_curves(state, &params),
+        "/api/sensor" => api_sensor(state, &params),
         p if p.starts_with("/api/") => Ok(Reply::error(404, "unknown endpoint")),
         p => Ok(static_file(p)),
     };
@@ -268,6 +273,36 @@ fn api_overview(state: &AppState, params: &[(String, String)]) -> Result<Reply> 
     };
     let read = (state.open_read_model)()?;
     Ok(Reply::json(&queries::overview(read.as_ref(), load)?))
+}
+
+fn api_curves(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
+    let load = match load_param(params) {
+        Ok(load) => load,
+        Err(reply) => return Ok(reply),
+    };
+    let Some(mode) = Mode::parse(param(params, "mode").unwrap_or("temp")) else {
+        return Ok(Reply::error(400, "mode must be temp or delta"));
+    };
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::curves(read.as_ref(), load, mode)?))
+}
+
+fn api_sensor(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
+    let (Some(hardware), Some(sensor)) = (param(params, "hardware"), param(params, "sensor"))
+    else {
+        return Ok(Reply::error(400, "hardware and sensor are required"));
+    };
+    let load = match load_param(params) {
+        Ok(load) => load,
+        Err(reply) => return Ok(reply),
+    };
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::sensor(
+        read.as_ref(),
+        hardware,
+        sensor,
+        load,
+    )?))
 }
 
 // ──────────────────────────────────────────────────────────────

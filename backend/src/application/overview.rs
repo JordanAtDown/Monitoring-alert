@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use crate::application::clock::day_string;
 use crate::application::ports::ReadModel;
 use crate::domain::components::{self, sensor_name, Component, Kind};
-use crate::domain::trends::{self, SensorSummary, MIN_SPAN_DAYS};
+use crate::domain::trends::{self, DayStat, SensorSummary, MIN_SPAN_DAYS};
 use crate::domain::wording::{self, plural, verdict_of, Verdict, STABLE_BAND};
 
 /// "Plus chaud +4,7 °C", "Pas assez de recul (12 j de mesures)".
@@ -303,14 +303,22 @@ fn headline(
     }
 }
 
-/// The home page at one load level.
-pub fn overview(read: &dyn ReadModel, load: &str) -> Result<Overview> {
+/// What every page of the dashboard starts from: the daily figures of every sensor at one load.
+pub struct Context {
+    pub groups: Vec<(String, String, Vec<DayStat>)>,
+    pub summaries: Vec<SensorSummary>,
+    /// Every sensor the machine reports (the numbering of the disks must not depend on the load level).
+    pub seen: Vec<(String, String)>,
+    pub since: Option<String>,
+}
+
+pub fn context(read: &dyn ReadModel, load: &str) -> Result<Context> {
     let groups = read.daily_stats_for_load(load, &day_string(0))?;
-    let summaries: Vec<SensorSummary> = groups
+    let summaries = groups
         .iter()
         .map(|(h, s, stats)| trends::summarize(h, s, load, stats))
         .collect();
-    let seen: Vec<(String, String)> = read
+    let seen = read
         .latest_snapshot()?
         .map(|l| {
             l.readings
@@ -319,12 +327,23 @@ pub fn overview(read: &dyn ReadModel, load: &str) -> Result<Overview> {
                 .collect()
         })
         .unwrap_or_default();
-    let since = read
-        .overall_stats()?
-        .history_start_day()
-        .map(str::to_string);
+    Ok(Context {
+        groups,
+        summaries,
+        seen,
+        since: read
+            .overall_stats()?
+            .history_start_day()
+            .map(str::to_string),
+    })
+}
 
-    let components: Vec<ComponentView> = components_with_data(&seen, &summaries)
+/// The home page at one load level.
+pub fn overview(read: &dyn ReadModel, load: &str) -> Result<Overview> {
+    let ctx = context(read, load)?;
+    let summaries = &ctx.summaries;
+    let since = ctx.since.clone();
+    let components: Vec<ComponentView> = components_with_data(&ctx.seen, summaries)
         .into_iter()
         .map(|(slot, c, rows)| {
             let sensors: Vec<SensorView> = rows.iter().map(|s| sensor_view(s, c.kind)).collect();
