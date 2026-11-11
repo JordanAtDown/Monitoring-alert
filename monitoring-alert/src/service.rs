@@ -258,6 +258,7 @@ pub mod windows {
             config.raw_retention_days,
             &config.lhm_host,
             config.lhm_port,
+            &crate::collector::CollectorStatus::new(config.collect_interval_secs),
             stop_flag,
         );
 

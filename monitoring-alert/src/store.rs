@@ -54,6 +54,12 @@ impl SqliteStore {
     pub fn new(conn: rusqlite::Connection) -> Self {
         Self(conn)
     }
+
+    /// Direct access to the connection, for tests that inspect the stored rows.
+    #[cfg(test)]
+    pub fn connection(&self) -> &rusqlite::Connection {
+        &self.0
+    }
 }
 
 impl TemperatureStore for SqliteStore {

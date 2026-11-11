@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use chrono::Local;
+use serde::Serialize;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::store::{SqliteStore, TemperatureStore};
 use crate::{db, sensors};
@@ -15,17 +16,98 @@ const EMPTY_ALERT_THRESHOLD: u32 = 12;
 const VACUUM_AFTER_PURGE_SNAPSHOTS: usize = 5000;
 
 /// Retry interval (seconds) while waiting for LHM to become available at startup.
-#[cfg(windows)]
 const LHM_RETRY_INTERVAL_SECS: u64 = 10;
 
 /// Maximum number of startup retry attempts before giving up and entering the normal loop.
 /// 10s × 30 = 5 min, matching the default collection interval.
-#[cfg(windows)]
 const LHM_RETRY_MAX_ATTEMPTS: u32 = 30;
+
+// ──────────────────────────────────────────────────────────────
+// Collector health, shared with the dashboard
+// ──────────────────────────────────────────────────────────────
+
+#[derive(Default)]
+struct StatusInner {
+    last_attempt: Option<String>,
+    last_success: Option<String>,
+    last_error: Option<String>,
+    consecutive_failures: u32,
+    last_sensor_count: usize,
+}
+
+/// What the collector is doing, as shown by the dashboard.
+#[derive(Debug, Serialize)]
+pub struct StatusSnapshot {
+    pub started_at: String,
+    pub interval_secs: u64,
+    pub last_attempt: Option<String>,
+    pub last_success: Option<String>,
+    pub last_error: Option<String>,
+    pub consecutive_failures: u32,
+    pub last_sensor_count: usize,
+}
+
+/// Health of the collection loop, written by the collector and read by the web server.
+pub struct CollectorStatus {
+    started_at: String,
+    interval_secs: u64,
+    inner: Mutex<StatusInner>,
+}
+
+fn now_string() -> String {
+    Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+}
+
+impl CollectorStatus {
+    pub fn new(interval_secs: u64) -> Self {
+        Self {
+            started_at: now_string(),
+            interval_secs,
+            inner: Mutex::new(StatusInner::default()),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, StatusInner> {
+        // A poisoned lock only means another thread panicked mid-update: the data is plain.
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A collection reached LibreHardwareMonitor (`sensors` temperature readings stored).
+    pub fn record_success(&self, sensors: usize) {
+        let now = now_string();
+        let mut s = self.lock();
+        s.last_attempt = Some(now.clone());
+        s.last_success = Some(now);
+        s.last_error = None;
+        s.consecutive_failures = 0;
+        s.last_sensor_count = sensors;
+    }
+
+    /// A collection failed (LibreHardwareMonitor unreachable, database error…).
+    pub fn record_failure(&self, error: &str) {
+        let mut s = self.lock();
+        s.last_attempt = Some(now_string());
+        s.last_error = Some(error.to_string());
+        s.consecutive_failures = s.consecutive_failures.saturating_add(1);
+    }
+
+    pub fn snapshot(&self) -> StatusSnapshot {
+        let s = self.lock();
+        StatusSnapshot {
+            started_at: self.started_at.clone(),
+            interval_secs: self.interval_secs,
+            last_attempt: s.last_attempt.clone(),
+            last_success: s.last_success.clone(),
+            last_error: s.last_error.clone(),
+            consecutive_failures: s.consecutive_failures,
+            last_sensor_count: s.last_sensor_count,
+        }
+    }
+}
 
 /// Sleeps for `secs` seconds in 1-second increments, checking the stop signal between each.
 /// Returns `true` if the stop signal fired before the full duration elapsed.
-fn sleep_interruptible(secs: u64, stop: &Arc<AtomicBool>) -> bool {
+pub fn sleep_interruptible(secs: u64, stop: &Arc<AtomicBool>) -> bool {
     let mut elapsed = 0u64;
     while elapsed < secs {
         if stop.load(Ordering::Relaxed) {
@@ -112,6 +194,7 @@ pub fn watch(
     raw_retention_days: u32,
     lhm_host: &str,
     lhm_port: u16,
+    status: &CollectorStatus,
     stop: Arc<AtomicBool>,
 ) -> Result<()> {
     let conn = db::init_db(db_path).context("Failed to open database")?;
@@ -134,17 +217,11 @@ pub fn watch(
                 .map(|first| (chrono::Local::now().date_naive() - first).num_days());
             let readiness = match days {
                 None => "aucune donnée".to_string(),
-                Some(d) if d < 2 => format!("{d} j — aucune comparaison disponible"),
-                Some(d) if d < 14 => format!("{d} j — 24h OK, 7j/30j/90j/180j en attente"),
-                Some(d) if d < 60 => format!(
-                    "{d} j — 24h+7j OK, 30j/90j/180j en attente (notifications: dans {} j)",
-                    60 - d
+                Some(d) if d < crate::trends::MIN_SPAN_DAYS => format!(
+                    "{d} j — dérive affichée à partir de {} j de recul",
+                    crate::trends::MIN_SPAN_DAYS
                 ),
-                Some(d) if d < 180 => {
-                    format!("{d} j — 24h+7j+30j OK (notifications actives), 90j/180j en attente")
-                }
-                Some(d) if d < 360 => format!("{d} j — 24h+7j+30j+90j OK, 180j en attente"),
-                Some(d) => format!("{d} j — toutes les fenêtres disponibles"),
+                Some(d) => format!("{d} j — suivi de dérive disponible"),
             };
             tracing::info!(
                 "Startup check — DB OK ({} snapshot(s), last: {}, données: {})",
@@ -155,9 +232,9 @@ pub fn watch(
         }
         Err(e) => tracing::error!("Startup check — DB error: {:#}", e),
     }
-    #[cfg(windows)]
     match sensors::read_sensors(lhm_host, lhm_port) {
         Ok(data) if data.temperatures.is_empty() => {
+            status.record_success(0);
             tracing::warn!(
                 "Startup check — LHM reachable at {}:{} but 0 temperature sensors found. \
                  Ensure LibreHardwareMonitor is running as administrator with Remote Web Server enabled.",
@@ -165,6 +242,7 @@ pub fn watch(
             );
         }
         Ok(data) => {
+            status.record_success(data.temperatures.len());
             tracing::info!(
                 "Startup check — LHM OK at {}:{} ({} sensor(s) detected)",
                 lhm_host,
@@ -172,7 +250,8 @@ pub fn watch(
                 data.temperatures.len()
             );
         }
-        Err(_) => {
+        Err(e) => {
+            status.record_failure(&format!("{e:#}"));
             tracing::warn!(
                 "Startup check — LHM unreachable at {}:{}, waiting up to {} min for it to start…",
                 lhm_host,
@@ -186,6 +265,7 @@ pub fn watch(
                 }
                 match sensors::read_sensors(lhm_host, lhm_port) {
                     Ok(data) => {
+                        status.record_success(data.temperatures.len());
                         tracing::info!(
                             "LHM ready after {} retry(ies) — {} sensor(s) detected",
                             attempt,
@@ -194,7 +274,8 @@ pub fn watch(
                         lhm_ready = true;
                         break;
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        status.record_failure(&format!("{e:#}"));
                         tracing::warn!(
                             "LHM not ready (attempt {}/{}), retrying in {}s…",
                             attempt,
@@ -267,7 +348,12 @@ pub fn watch(
             first_run = false;
         }
 
-        match collect_and_store(&store, lhm_host, lhm_port) {
+        let outcome = collect_and_store(&store, lhm_host, lhm_port);
+        match &outcome {
+            Ok(n) => status.record_success(*n),
+            Err(e) => status.record_failure(&format!("{e:#}")),
+        }
+        match outcome {
             Ok(0) => {
                 empty_streak += 1;
                 if empty_streak == EMPTY_ALERT_THRESHOLD {

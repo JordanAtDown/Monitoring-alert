@@ -1,0 +1,45 @@
+use crate::db;
+
+/// Inserts one pre-computed daily aggregate (n = 288, i.e. a full day at 5 min).
+pub fn insert_daily(
+    conn: &rusqlite::Connection,
+    day: &str,
+    hardware: &str,
+    sensor: &str,
+    load_cat: &str,
+    median: f64,
+) {
+    conn.execute(
+        "INSERT INTO daily_stats (day, hardware, sensor, load_cat, n, min, median, p95, max, avg)
+         VALUES (?1, ?2, ?3, ?4, 288, ?5, ?6, ?7, ?8, ?6)",
+        rusqlite::params![
+            day,
+            hardware,
+            sensor,
+            load_cat,
+            median - 2.0,
+            median,
+            median + 3.0,
+            median + 5.0
+        ],
+    )
+    .expect("insert daily_stats");
+}
+
+/// `days` consecutive days ending the day before yesterday, oldest first, medians from `f(index)`.
+pub fn insert_daily_series(
+    conn: &rusqlite::Connection,
+    hardware: &str,
+    sensor: &str,
+    load_cat: &str,
+    days: u32,
+    f: impl Fn(u32) -> f64,
+) {
+    // One transaction: on a file database every autocommit insert would be fsynced.
+    let tx = conn.unchecked_transaction().expect("begin");
+    for i in 0..days {
+        let day = db::day_string(days - i + 1);
+        insert_daily(&tx, &day, hardware, sensor, load_cat, f(i));
+    }
+    tx.commit().expect("commit");
+}

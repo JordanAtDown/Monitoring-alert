@@ -1,9 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-#[cfg(windows)]
-use monitoring_alert::sensors;
 use monitoring_alert::store::TemperatureStore as _;
-use monitoring_alert::{collector, config, db, logger, service, store};
+use monitoring_alert::{collector, config, daemon, db, logger, sensors, service, store};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -46,6 +44,8 @@ enum Commands {
         #[arg(long, default_value = "300")]
         interval: u64,
     },
+    /// Lance la collecte et le tableau de bord web (au premier plan)
+    Serve,
     /// Vérifie la configuration, la base de données, le service et LHM
     Check,
     /// Gestion du service Windows
@@ -104,8 +104,12 @@ fn run_cli() -> Result<()> {
                 cfg.raw_retention_days,
                 &cfg.lhm_host,
                 cfg.lhm_port,
+                &collector::CollectorStatus::new(interval),
                 stop,
             )?;
+        }
+        Commands::Serve => {
+            daemon::run(&cfg, &db_path, Arc::new(AtomicBool::new(false)))?;
         }
         Commands::Service { action } => match action {
             ServiceAction::Install => {
@@ -225,26 +229,17 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
                 println!("     Données collectées : aucune mesure encore enregistrée");
             }
 
-            // Report readiness: each window needs 2× its duration to compare current vs previous.
-            println!("     Maturité des comparaisons :");
-            const WINDOWS: &[(i64, &str, &str)] = &[
-                (2, "24h", ""),
-                (14, " 7j", ""),
-                (60, "30j", ""),
-                (180, "90j", ""),
-                (360, "180j", ""),
-            ];
-            let today = chrono::Local::now().date_naive();
-            for &(needed, label, note) in WINDOWS {
-                let collected = days.unwrap_or(0);
-                if collected >= needed {
-                    println!("       {}  ✓ comparaison disponible{}", label, note);
+            if let Some(d) = days {
+                let min = monitoring_alert::trends::MIN_SPAN_DAYS;
+                if d >= min {
+                    println!("     Suivi de dérive : disponible (≥ {} j de recul)", min);
                 } else {
-                    let remaining = needed - collected;
-                    let ready_date = today + chrono::Duration::days(remaining);
+                    let ready = chrono::Local::now().date_naive() + chrono::Duration::days(min - d);
                     println!(
-                        "       {}  … dans {} j  (dispo le {}{})",
-                        label, remaining, ready_date, note
+                        "     Suivi de dérive : dans {} j (dispo le {}) — il faut {} j de recul",
+                        min - d,
+                        ready,
+                        min
                     );
                 }
             }
@@ -271,7 +266,6 @@ fn run_check(db_path: &std::path::Path, cfg: &config::AppConfig) {
     }
 
     // ── 4. LibreHardwareMonitor / HTTP ───────────────────────
-    #[cfg(windows)]
     {
         match sensors::read_sensors(&cfg.lhm_host, cfg.lhm_port) {
             Ok(data) if !data.temperatures.is_empty() => {

@@ -98,3 +98,98 @@ fn effective_load_both_zero() {
     assert_eq!(load, Some(0.0));
     assert_eq!(load_category(load.unwrap()), "idle");
 }
+
+// ── collect_and_store against a fake LibreHardwareMonitor ─────
+
+mod fake_lhm {
+    use crate::collector::{collect_and_store, CollectorStatus};
+    use crate::db;
+    use crate::store::SqliteStore;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    const DATA_JSON: &str = r#"{
+      "Text": "Sensor", "Value": "", "ImageURL": "", "Type": "", "Children": [
+        { "Text": "PC-TEST", "Value": "", "ImageURL": "", "Type": "", "Children": [
+          { "Text": "AMD Ryzen 7", "Value": "", "ImageURL": "images_icon/cpu.png", "Type": "", "Children": [
+            { "Text": "Temperatures", "Value": "", "ImageURL": "", "Type": "", "Children": [
+              { "Text": "CPU Package", "Value": "49,0 °C", "ImageURL": "", "Type": "Temperature", "Children": [] },
+              { "Text": "Core #1", "Value": "47,5 °C", "ImageURL": "", "Type": "Temperature", "Children": [] }
+            ]},
+            { "Text": "Load", "Value": "", "ImageURL": "", "Type": "", "Children": [
+              { "Text": "CPU Total", "Value": "45,0 %", "ImageURL": "", "Type": "Load", "Children": [] }
+            ]}
+          ]}
+        ]}
+      ]}"#;
+
+    /// Serves `body` on a free local port until `stop` is set. Returns the port.
+    pub fn spawn(body: &'static str, stop: Arc<AtomicBool>) -> u16 {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                if let Ok(Some(req)) = server.recv_timeout(std::time::Duration::from_millis(100)) {
+                    let _ = req.respond(tiny_http::Response::from_string(body));
+                }
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn collects_temperatures_and_load_from_the_http_endpoint() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let port = spawn(DATA_JSON, stop.clone());
+        let store = SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap());
+
+        let n = collect_and_store(&store, "127.0.0.1", port).unwrap();
+        stop.store(true, Ordering::Relaxed);
+
+        assert_eq!(n, 2);
+        let conn = store_conn(&store);
+        let (cat, cpu): (String, f64) = conn
+            .query_row("SELECT load_cat, cpu_load FROM snapshots", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((cat.as_str(), cpu), ("moderate", 45.0));
+        let temp: f64 = conn
+            .query_row(
+                "SELECT value FROM readings WHERE sensor = 'CPU Package'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(temp, 49.0);
+    }
+
+    #[test]
+    fn an_unreachable_endpoint_is_an_error() {
+        let store = SqliteStore::new(db::init_db(std::path::Path::new(":memory:")).unwrap());
+        // Port 1 on loopback: nothing listens there.
+        assert!(collect_and_store(&store, "127.0.0.1", 1).is_err());
+    }
+
+    #[test]
+    fn the_status_tracks_successes_and_failures() {
+        let status = CollectorStatus::new(300);
+        assert!(status.snapshot().last_attempt.is_none());
+
+        status.record_failure("boom");
+        status.record_failure("boom");
+        let s = status.snapshot();
+        assert_eq!(s.consecutive_failures, 2);
+        assert_eq!(s.last_error.as_deref(), Some("boom"));
+        assert!(s.last_attempt.is_some() && s.last_success.is_none());
+
+        status.record_success(7);
+        let s = status.snapshot();
+        assert_eq!((s.consecutive_failures, s.last_sensor_count), (0, 7));
+        assert!(s.last_error.is_none() && s.last_success.is_some());
+    }
+
+    fn store_conn(store: &SqliteStore) -> &rusqlite::Connection {
+        store.connection()
+    }
+}

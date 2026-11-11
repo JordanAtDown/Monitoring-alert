@@ -1,5 +1,4 @@
 use anyhow::Result;
-#[cfg(any(windows, test))]
 use serde::Deserialize;
 
 pub struct TemperatureReading {
@@ -14,9 +13,8 @@ pub struct SnapshotData {
     pub gpu_load: Option<f64>,
 }
 
-// ── Parsing helpers — used on Windows and in tests ───────────────────────────
+// ── Parsing helpers ──────────────────────────────────────────────────────────
 
-#[cfg(any(windows, test))]
 #[derive(Deserialize)]
 pub(crate) struct Node {
     #[serde(rename = "Text")]
@@ -34,20 +32,17 @@ pub(crate) struct Node {
 }
 
 /// Parses a French-locale number string like "49,0 °C" or "1,1 %" → 49.0 / 1.1
-#[cfg(any(windows, test))]
 pub(crate) fn parse_number(s: &str) -> Option<f64> {
     s.split_whitespace().next()?.replace(',', ".").parse().ok()
 }
 
 /// Detects GPU hardware nodes by their ImageURL (e.g. "images_icon/nvidia.png").
 /// Using ImageURL avoids false positives on "AMD Ryzen" CPU names.
-#[cfg(any(windows, test))]
 pub(crate) fn is_gpu_node(image_url: &str) -> bool {
     let u = image_url.to_lowercase();
     u.contains("nvidia") || u.contains("ati") || u.contains("gpu")
 }
 
-#[cfg(any(windows, test))]
 pub(crate) fn collect(
     node: &Node,
     hardware: &str,
@@ -89,7 +84,6 @@ pub(crate) fn collect(
 }
 
 /// Builds a `SnapshotData` from the LHM JSON tree (parsed `Node`).
-#[cfg(any(windows, test))]
 pub(crate) fn extract_snapshot(root: &Node) -> Result<SnapshotData> {
     use anyhow::Context;
     // JSON tree: root ("Sensor") → computer ("PC-JORDAN") → hardware nodes (CPU, GPU, ...)
@@ -121,9 +115,8 @@ pub(crate) fn extract_snapshot(root: &Node) -> Result<SnapshotData> {
     })
 }
 
-// ── HTTP read — Windows only ──────────────────────────────────────────────────
+// ── HTTP read ────────────────────────────────────────────────────────────────
 
-#[cfg(windows)]
 pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
     use anyhow::Context;
 
@@ -143,9 +136,4 @@ pub fn read_sensors(lhm_host: &str, lhm_port: u16) -> Result<SnapshotData> {
         .context("Failed to parse LibreHardwareMonitor JSON response")?;
 
     extract_snapshot(&root)
-}
-
-#[cfg(not(windows))]
-pub fn read_sensors(_lhm_host: &str, _lhm_port: u16) -> Result<SnapshotData> {
-    anyhow::bail!("Sensor reading is only supported on Windows")
 }

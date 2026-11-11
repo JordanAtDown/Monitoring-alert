@@ -38,6 +38,15 @@ lhm_host = "127.0.0.1"
 # Défaut : 8085
 lhm_port = 8085
 
+# Adresse d'écoute du tableau de bord web (suivi de la dérive des températures)
+# Défaut : "127.0.0.1" (cette machine uniquement). Mettre "0.0.0.0" pour l'ouvrir
+# au réseau local : il n'y a AUCUNE authentification, à ne faire que sur un réseau de confiance.
+web_host = "127.0.0.1"
+
+# Port du tableau de bord : http://127.0.0.1:8787/
+# Défaut : 8787
+web_port = 8787
+
 # Niveau de log : "error" | "warn" | "info" (défaut) | "debug" | "trace"
 # Passer à "debug" pour diagnostiquer un problème (collecte, capteurs, etc.)
 log_level = "info"
