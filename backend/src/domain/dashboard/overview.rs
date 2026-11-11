@@ -19,14 +19,20 @@ pub struct VerdictView {
 }
 
 fn verdict_view(s: &SensorSummary) -> VerdictView {
-    let delta = if s.sufficient { s.delta } else { None };
-    let id = verdict_of(delta);
+    let drift = s.drift();
+    let id = verdict_of(drift);
     VerdictView {
         id,
         label: id.label(),
-        detail: match delta {
-            Some(d) => Some(wording::signed(d)),
-            None => Some(format!("({} j de mesures)", s.days)),
+        detail: match (drift, s.last_day.as_deref()) {
+            (Some(d), _) => Some(wording::signed(d)),
+            // Measured once, but not any more: say since when, rather than count days of
+            // history as if the figures were still coming in.
+            (None, Some(last)) if !s.fresh => Some(format!(
+                "(plus de mesures depuis le {})",
+                wording::date(last)
+            )),
+            (None, _) => Some(format!("({} j de mesures)", s.days)),
         },
     }
 }
@@ -157,7 +163,8 @@ fn sensor_view(s: &SensorSummary, kind: Kind) -> SensorView {
         name,
         tech,
         baseline: s.baseline.filter(|_| s.sufficient).map(wording::temp),
-        current: s.current.map(wording::temp),
+        // "Ces 30 derniers jours" has to be about the last 30 days, or show nothing.
+        current: s.current.filter(|_| s.fresh).map(wording::temp),
         verdict: verdict_view(s),
         sparkline: s.sparkline.clone(),
     }

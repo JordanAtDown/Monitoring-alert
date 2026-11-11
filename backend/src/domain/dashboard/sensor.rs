@@ -98,6 +98,15 @@ fn story(t: &trends::Trend, machine: Option<f64>) -> Vec<Line> {
             "Pas encore de journée complète avec assez de mesures pour ce capteur à ce niveau de charge.".into(),
         )];
     }
+    if !t.fresh {
+        let last = t
+            .last_day
+            .as_deref()
+            .map_or("un moment".to_string(), wording::date);
+        return vec![plain(format!(
+            "Ce capteur n'a plus été mesuré à ce niveau de charge depuis le {last}. Il n'y a donc rien à dire de ses 30 derniers jours ; sa courbe s'arrête à cette date."
+        ))];
+    }
     let (Some(baseline), Some(delta)) = (t.baseline, t.delta) else {
         return vec![plain(format!(
             "Pour l'instant : {} jours de mesures sur {} jours de suivi. C'est trop court pour dire si la température a changé (il faut au moins {MIN_SPAN_DAYS} jours de suivi, dont 40 avec des mesures). La courbe est déjà tracée.",
@@ -147,7 +156,7 @@ pub fn build(facts: &Facts, hardware: &str, sensor: &str, load: &str) -> SensorP
         .iter()
         .find(|(h, s, _)| h == hardware && s == sensor)
         .map_or(&[][..], |(_, _, d)| d.as_slice());
-    let trend = trends::compute_trend(stats);
+    let trend = trends::compute_trend(stats, facts.today);
 
     let mut all = facts.seen.clone();
     all.extend(

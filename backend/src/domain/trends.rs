@@ -38,6 +38,10 @@ pub const MIN_SPAN_DAYS: i64 = 60;
 /// Minimum series with a known drift before a machine-wide drift is computed: the median of
 /// one or two of them would say nothing about the machine as a whole.
 pub const MIN_COMMON_SERIES: usize = 3;
+/// Days without a measurement after which the latest rolling median stops standing for "the last
+/// 30 days": past half the window, most of what it averages is not recent any more. It happens
+/// whenever a load level is no longer reached — the day gaming stops, `heavy` goes quiet.
+pub const STALE_AFTER_DAYS: i64 = 15;
 /// Days per month used to express the slope.
 const DAYS_PER_MONTH: f64 = 30.4375;
 /// Maximum number of points of the sparkline given for each sensor.
@@ -95,6 +99,13 @@ pub struct Trend {
     /// Value of that least-squares line on the first day with data, so a chart can
     /// draw it: `fit_start + slope_per_month / 30.4375 * days_since_first_day`.
     pub fit_start: Option<f64>,
+    /// Last day with a measurement.
+    pub last_day: Option<String>,
+    /// Days since that day; `0` when it is today's.
+    pub quiet_days: i64,
+    /// `false` once the series has been quiet for more than [`STALE_AFTER_DAYS`]: its latest
+    /// figure is still true, but it is not about the last 30 days any more.
+    pub fresh: bool,
 }
 
 /// One row of the all-sensors overview.
@@ -113,12 +124,19 @@ pub struct SensorSummary {
     pub slope_per_month: Option<f64>,
     /// Rolling median, down-sampled for a small inline chart.
     pub sparkline: Vec<f64>,
+    /// Last day with a measurement.
+    pub last_day: Option<String>,
+    pub quiet_days: i64,
+    /// `false` once the series went quiet: see [`Trend::fresh`].
+    pub fresh: bool,
 }
 
 impl SensorSummary {
-    /// Its drift, only when there is enough history to stand behind it.
+    /// Its drift, only when there is enough history to stand behind it **and** it is still
+    /// being measured: a figure from two months ago must not drive a verdict today, nor count
+    /// towards the drift of the machine.
     pub fn drift(&self) -> Option<f64> {
-        self.delta.filter(|_| self.sufficient)
+        self.delta.filter(|_| self.sufficient && self.fresh)
     }
 }
 
@@ -170,8 +188,9 @@ fn fmt_day(day: NaiveDate) -> String {
     day.format("%Y-%m-%d").to_string()
 }
 
-/// Computes the trend of one series. `stats` must be sorted by ascending day.
-pub fn compute_trend(stats: &[DayStat]) -> Trend {
+/// Computes the trend of one series. `stats` must be sorted by ascending day; `today` is the
+/// day the figures are read on, which decides whether the series is still being measured.
+pub fn compute_trend(stats: &[DayStat], today: NaiveDate) -> Trend {
     let points: Vec<DayStat> = stats
         .iter()
         .filter(|s| s.n >= MIN_DAY_SAMPLES)
@@ -212,9 +231,14 @@ pub fn compute_trend(stats: &[DayStat]) -> Trend {
         }
     }
 
+    let last_day = points.last().map(|p| p.day);
+    let quiet_days = last_day.map_or(0, |d| (today - d).num_days());
     Trend {
         days: points.len(),
         span_days,
+        last_day: last_day.map(fmt_day),
+        quiet_days,
+        fresh: last_day.is_some() && quiet_days <= STALE_AFTER_DAYS,
         sufficient,
         baseline,
         baseline_from,
@@ -255,8 +279,14 @@ fn downsample(values: &[f64]) -> Vec<f64> {
 }
 
 /// Builds the overview row of one series.
-pub fn summarize(hardware: &str, sensor: &str, load_cat: &str, stats: &[DayStat]) -> SensorSummary {
-    let trend = compute_trend(stats);
+pub fn summarize(
+    hardware: &str,
+    sensor: &str,
+    load_cat: &str,
+    stats: &[DayStat],
+    today: NaiveDate,
+) -> SensorSummary {
+    let trend = compute_trend(stats, today);
     let rolling: Vec<f64> = trend.rolling.iter().map(|p| p.value).collect();
     SensorSummary {
         hardware: hardware.to_string(),
@@ -270,6 +300,9 @@ pub fn summarize(hardware: &str, sensor: &str, load_cat: &str, stats: &[DayStat]
         delta: trend.delta,
         slope_per_month: trend.slope_per_month,
         sparkline: downsample(&rolling),
+        last_day: trend.last_day,
+        quiet_days: trend.quiet_days,
+        fresh: trend.fresh,
     }
 }
 

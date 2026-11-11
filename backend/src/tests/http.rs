@@ -5,7 +5,7 @@ use crate::application::clock;
 use crate::application::ports::ReadModel;
 use crate::application::status::CollectorStatus;
 use crate::application::updates::UpdateStatus;
-use crate::tests::common::insert_daily_series;
+use crate::tests::common::{insert_daily_series, insert_daily_series_ending};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -37,6 +37,16 @@ fn fixture() -> Fixture {
         "heavy",
         100,
         |_| 80.0,
+    );
+    // A load level that stopped being reached 40 days ago: plenty of history, nothing recent.
+    insert_daily_series_ending(
+        &conn,
+        "AMD Ryzen 7",
+        "Core (Tctl/Tdie)",
+        "light",
+        120,
+        40,
+        |_| 50.0,
     );
     let snap =
         db::insert_snapshot(&conn, "2030-01-01T10:00:00", Some(3.0), Some(1.0), "idle").unwrap();
@@ -128,7 +138,8 @@ fn series_lists_each_sensor_per_load_category() {
     let f = fixture();
     let (code, v) = get(&f, "/api/series");
     assert_eq!(code, 200);
-    assert_eq!(v.as_array().unwrap().len(), 4);
+    // Three sensors at idle, the processor at heavy, and the processor at light (gone quiet).
+    assert_eq!(v.as_array().unwrap().len(), 5);
 }
 
 #[test]
@@ -582,6 +593,37 @@ fn an_overview_without_enough_history_says_how_much_is_needed() {
     let (_, v) = get(&f, "/api/overview?load=moderate");
     assert_eq!(v["headline"]["state"], "empty");
     assert_eq!(v["components"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn a_sensor_that_stopped_being_measured_says_since_when_instead_of_a_stale_figure() {
+    let f = fixture();
+    let (code, v) = get(&f, "/api/overview?load=light");
+    assert_eq!(code, 200);
+    let cpu = &v["components"][0]["main"];
+    // It has 120 days of history, but none of it is recent.
+    assert_eq!(cpu["verdict"]["id"], "unknown");
+    assert_eq!(cpu["current"], serde_json::Value::Null);
+    let detail = cpu["verdict"]["detail"].as_str().unwrap();
+    assert!(
+        detail.starts_with("(plus de mesures depuis le "),
+        "{detail}"
+    );
+}
+
+#[test]
+fn a_quiet_series_is_reported_as_such_by_the_trend() {
+    let f = fixture();
+    let (_, v) = get(
+        &f,
+        "/api/trend?hardware=AMD+Ryzen+7&sensor=Core+(Tctl/Tdie)&load=light",
+    );
+    assert_eq!(v["fresh"], false);
+    assert_eq!(v["quiet_days"], 40);
+    // The history is there and the figures are kept: only their freshness is in question.
+    assert_eq!(v["sufficient"], true);
+    assert_eq!(v["days"], 120);
+    assert!(v["delta"].is_number());
 }
 
 #[test]

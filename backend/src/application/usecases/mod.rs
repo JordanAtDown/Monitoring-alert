@@ -14,7 +14,7 @@ pub mod list_series;
 
 use anyhow::Result;
 
-use crate::application::clock::day_string;
+use crate::application::clock::{day_string, today};
 use crate::application::ports::ReadModel;
 use crate::domain::dashboard::Facts;
 use crate::domain::trends;
@@ -25,7 +25,7 @@ pub(crate) fn gather_facts(read: &dyn ReadModel, load: &str) -> Result<Facts> {
     let groups = read.daily_stats_for_load(load, &day_string(0))?;
     let summaries = groups
         .iter()
-        .map(|(h, s, stats)| trends::summarize(h, s, load, stats))
+        .map(|(h, s, stats)| trends::summarize(h, s, load, stats, today()))
         .collect();
     let seen = read
         .latest_snapshot()?
@@ -44,5 +44,6 @@ pub(crate) fn gather_facts(read: &dyn ReadModel, load: &str) -> Result<Facts> {
             .overall_stats()?
             .history_start_day()
             .map(str::to_string),
+        today: today(),
     })
 }

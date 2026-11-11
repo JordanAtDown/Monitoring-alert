@@ -193,7 +193,11 @@ automatiquement (créée par `install`) ; le Gestionnaire des tâches affiche ce
 3. **Agrégats quotidiens** par (jour, capteur, catégorie) : nombre de mesures, min, médiane, p95, max, moyenne.
    Un jour compte à partir de 6 mesures. Le jour en cours est exclu (incomplet).
 4. **Référence** : médiane des médianes des 30 premiers jours. **Médiane glissante** : médiane des médianes
-   des 30 derniers jours calendaires (≥ 10 jours dans la fenêtre).
+   des 30 derniers jours calendaires (≥ 10 jours dans la fenêtre). Si le capteur n'a plus rien mesuré à ce
+   niveau de charge depuis **plus de 15 jours**, sa dernière médiane glissante ne décrit plus « ces 30
+   derniers jours » : elle est gardée mais n'est plus annoncée comme récente, ne porte plus de verdict et ne
+   compte plus dans la dérive de la machine. C'est le cas normal d'un niveau de charge qu'on n'atteint plus
+   (arrêter de jouer fait taire « charge élevée »).
 5. **Écart** = médiane glissante actuelle − référence. **Pente** = droite des moindres carrés sur toutes les
    médianes quotidiennes, en °C/mois.
 6. **Dérive de la machine** = médiane des écarts des composants, une voix par composant (le capteur qui

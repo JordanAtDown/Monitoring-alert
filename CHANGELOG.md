@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Un niveau de charge qu'on n'atteint plus n'affiche plus un chiffre périmé.** La dernière médiane glissante
+  était présentée comme « ces 30 derniers jours » même si la dernière mesure datait de deux mois (après avoir
+  arrêté de jouer, par exemple). Au-delà de 15 jours sans mesure, la page dit « plus de mesures depuis le … »
+  au lieu du chiffre, ne prononce plus de verdict, et la série ne compte plus dans la dérive commune à la machine.
+
 ### Added
 - **La saison ou le composant : le tableau de bord tranche.** Chaque composant est comparé à la **dérive commune à
   toute la machine** (médiane des écarts, une voix par composant) ; son *excès* sur cette dérive est ce qui distingue

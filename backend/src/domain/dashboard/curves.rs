@@ -116,6 +116,7 @@ pub fn build(facts: &Facts, mode: Mode) -> Curves {
             stats
                 .get(&(c.main.0.as_str(), c.main.1.as_str()))
                 .map_or(&[][..], |d| d.as_slice()),
+            facts.today,
         );
         let has_points = !trend.points.is_empty();
         let delta_mode = mode == Mode::Delta;
@@ -124,6 +125,8 @@ pub fn build(facts: &Facts, mode: Mode) -> Curves {
             Some("pas de mesure".to_string())
         } else if !available {
             Some("pas assez de recul".to_string())
+        } else if !trend.fresh {
+            Some("plus de mesures récentes".to_string())
         } else {
             None
         };
@@ -154,9 +157,9 @@ pub fn build(facts: &Facts, mode: Mode) -> Curves {
             }
         });
         let now = if delta_mode {
-            summary.delta.map(wording::signed)
+            summary.drift().map(wording::signed)
         } else {
-            summary.current.map(wording::temp)
+            summary.current.filter(|_| summary.fresh).map(wording::temp)
         };
         series.push(CurveSeries {
             key: c.key.clone(),

@@ -7,6 +7,8 @@ pub mod data;
 pub mod overview;
 pub mod sensor;
 
+use chrono::NaiveDate;
+
 use crate::domain::trends::{self, DayStat, SensorSummary};
 
 /// What every page starts from: the daily figures of every sensor at one load level.
@@ -19,6 +21,8 @@ pub struct Facts {
     pub seen: Vec<(String, String)>,
     /// First day with daily aggregates.
     pub since: Option<String>,
+    /// The day the pages are read on: what decides whether a series still gets measured.
+    pub today: NaiveDate,
 }
 
 impl Facts {

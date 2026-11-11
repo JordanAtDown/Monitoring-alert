@@ -34,9 +34,10 @@ fn machine(drifts: &[(&str, &str, f64)]) -> Facts {
         .iter()
         .map(|(h, s, d)| (h.to_string(), s.to_string(), ramp(*d)))
         .collect();
+    let today = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap() + chrono::Duration::days(DAYS);
     let summaries = groups
         .iter()
-        .map(|(h, s, stats)| trends::summarize(h, s, "idle", stats))
+        .map(|(h, s, stats)| trends::summarize(h, s, "idle", stats, today))
         .collect();
     let seen = groups
         .iter()
@@ -47,6 +48,7 @@ fn machine(drifts: &[(&str, &str, f64)]) -> Facts {
         summaries,
         seen,
         since: Some("2024-01-01".into()),
+        today,
     }
 }
 

@@ -35,10 +35,24 @@ pub fn insert_daily_series(
     days: u32,
     f: impl Fn(u32) -> f64,
 ) {
+    insert_daily_series_ending(conn, hardware, sensor, load_cat, days, 2, f);
+}
+
+/// Same, but the series stops `ends_days_ago` days ago: how a load level that is not reached
+/// any more looks in the database.
+pub fn insert_daily_series_ending(
+    conn: &rusqlite::Connection,
+    hardware: &str,
+    sensor: &str,
+    load_cat: &str,
+    days: u32,
+    ends_days_ago: u32,
+    f: impl Fn(u32) -> f64,
+) {
     // One transaction: on a file database every autocommit insert would be fsynced.
     let tx = conn.unchecked_transaction().expect("begin");
     for i in 0..days {
-        let day = clock::day_string(days - i + 1);
+        let day = clock::day_string(days - 1 - i + ends_days_ago);
         insert_daily(&tx, &day, hardware, sensor, load_cat, f(i));
     }
     tx.commit().expect("commit");
