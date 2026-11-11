@@ -77,6 +77,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Test the dashboard
+        working-directory: frontend
+        run: npm test
+
   installer:
     name: Installer (compile the Inno Setup script)
     runs-on: windows-latest
@@ -160,6 +164,34 @@ jobs:
           $page = (Invoke-WebRequest -Uri 'http://127.0.0.1:8787/' -UseBasicParsing).Content
           if ($page -notmatch '<title>Monitoring</title>') { throw 'unexpected dashboard page' }
           & (Join-Path $dir 'monitoring.exe') db locate
+
+      # An update is the next installer run over the existing installation.
+      - name: Build a newer installer
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.0.1 "/DExePath=..\backend\target\release\monitoring.exe" installer\monitoring.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Update over the existing installation
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Monitoring'
+          Add-Content -Path (Join-Path $dir 'config.toml') -Value "`n# edited by the user"
+          $before = (Get-Process -Name 'monitoring-daemon').Id
+          $log = Join-Path $env:RUNNER_TEMP 'update.log'
+          $p = Start-Process -FilePath 'dist\monitoring_0.0.1.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log" -PassThru
+          if (-not $p.WaitForExit(180000)) { Get-Content $log -ErrorAction SilentlyContinue; throw 'the update did not finish within 3 minutes' }
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; throw "the update exited with $($p.ExitCode)" }
+          $up = $false
+          for ($i = 0; $i -lt 40; $i++) {
+            try { Invoke-WebRequest -Uri 'http://127.0.0.1:8787/api/series' -UseBasicParsing | Out-Null; $up = $true; break }
+            catch { Start-Sleep -Seconds 1 }
+          }
+          if (-not $up) { throw 'the dashboard does not answer after the update' }
+          $after = (Get-Process -Name 'monitoring-daemon').Id
+          if ($after -eq $before) { throw 'the daemon was not restarted by the update' }
+          if (-not (Select-String -Path (Join-Path $dir 'config.toml') -Pattern 'edited by the user' -Quiet)) { throw 'the update overwrote config.toml' }
+          $entries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | Where-Object { $_.GetValue('DisplayName') -eq 'Monitoring' })
+          if ($entries.Count -ne 1) { throw "expected one entry in Installed apps, found $($entries.Count)" }
+          if ($entries[0].GetValue('DisplayVersion') -ne '0.0.1') { throw "version shown is $($entries[0].GetValue('DisplayVersion'))" }
 
       - name: Uninstall
         run: |
