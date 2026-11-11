@@ -81,6 +81,27 @@ begin
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+{ Refuse un dossier qui exige les droits administrateur (ex. Program Files) : l'installation
+  echouerait en fin de course avec "Acces refuse". }
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dir: String;
+begin
+  Result := True;
+  if (CurPageID = wpSelectDir) and (not IsAdmin) then
+  begin
+    Dir := Lowercase(WizardDirValue);
+    if (Pos(Lowercase(ExpandConstant('{commonpf}')), Dir) = 1) or
+       (Pos(Lowercase(ExpandConstant('{commonpf32}')), Dir) = 1) then
+    begin
+      MsgBox('Ce dossier nécessite les droits administrateur.' + NL + NL +
+             'Choisissez un dossier dont vous êtes propriétaire (celui proposé par défaut convient), ' +
+             'ou relancez l''installation en administrateur.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
 { Valeur d'une ligne "cle=valeur". }
 function ReadKey(const Lines: TArrayOfString; const Key: String): String;
 var

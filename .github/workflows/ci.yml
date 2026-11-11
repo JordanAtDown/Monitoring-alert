@@ -90,3 +90,82 @@ jobs:
       # Syntax and [Code] check only: any file stands in for the executable.
       - name: Compile the installer script
         run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.0.0 "/DExePath=..\frontend\package.json" installer\monitoring.iss'
+
+  installer-smoke:
+    name: Installer (install, run and uninstall on Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the dashboard
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "backend -> target"
+
+      - name: Build the executable
+        working-directory: backend
+        run: cargo build --release
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build the installer
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.0.0 "/DExePath=..\backend\target\release\monitoring.exe" installer\monitoring.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Run it the way a user does: no flags. It must go to the user's own folder.
+      - name: Install
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'setup.log'
+          $p = Start-Process -FilePath 'dist\monitoring_0.0.0.exe' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LOG=$log" -Wait -PassThru
+          Get-Content $log | Select-Object -First 60
+          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+
+      - name: Check the installation
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Monitoring'
+          foreach ($f in 'monitoring.exe', 'monitoring-daemon.exe', 'config.toml') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f in $dir" }
+          }
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').Monitoring
+          if (-not $run) { throw 'the start-up entry is missing' }
+          Write-Host "start-up entry: $run"
+          $up = $false
+          for ($i = 0; $i -lt 40; $i++) {
+            try { Invoke-WebRequest -Uri 'http://127.0.0.1:8787/api/series' -UseBasicParsing | Out-Null; $up = $true; break }
+            catch { Start-Sleep -Seconds 1 }
+          }
+          if (-not $up) {
+            Get-ChildItem $dir | Format-Table Name, Length
+            Get-Content (Join-Path $dir 'monitoring*.log') -ErrorAction SilentlyContinue
+            throw 'the dashboard did not answer'
+          }
+          $page = (Invoke-WebRequest -Uri 'http://127.0.0.1:8787/' -UseBasicParsing).Content
+          if ($page -notmatch '<title>Monitoring</title>') { throw 'unexpected dashboard page' }
+          & (Join-Path $dir 'monitoring.exe') db locate
+
+      - name: Uninstall
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Monitoring'
+          $p = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "uninstaller exited with $($p.ExitCode)" }
+          Start-Sleep -Seconds 3
+          if (Get-Process -Name 'monitoring-daemon' -ErrorAction SilentlyContinue) { throw 'the daemon is still running' }
+          if ((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).Monitoring) { throw 'the start-up entry is still there' }
+          if (Test-Path (Join-Path $dir 'monitoring.exe')) { throw 'monitoring.exe was not removed' }
+

@@ -30,7 +30,12 @@ fn the_installer_only_copies_and_delegates_to_the_tested_installer() {
 fn the_installer_installs_per_user_without_administrator_rights() {
     let iss = installer();
     assert!(iss.contains("PrivilegesRequired=lowest"));
+    // Per user, {autopf} is %LOCALAPPDATA%\Programs: no administrator rights needed.
     assert!(iss.contains("DefaultDirName={autopf}\\Monitoring"));
+    // A folder that needs administrator rights (Program Files…) is refused on the folder page,
+    // instead of failing at the end with "Access denied".
+    assert!(iss.contains("function NextButtonClick"));
+    assert!(iss.contains("{commonpf}") && iss.contains("{commonpf32}"));
 }
 
 #[test]
