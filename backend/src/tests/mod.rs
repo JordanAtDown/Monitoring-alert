@@ -11,6 +11,7 @@ mod config;
 mod deploy;
 mod http;
 mod lhm;
+mod locate;
 mod pe;
 mod sqlite;
 

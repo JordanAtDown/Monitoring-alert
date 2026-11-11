@@ -24,6 +24,7 @@ fn layout() -> Layout {
         source_exe: archive.join("monitoring-alert.exe"),
         install_dir: dir.path().join("Program Files").join("MonitoringAlert"),
         data_dir: dir.path().join("AppData").join("MonitoringAlert"),
+        db_path: None,
     };
     Layout {
         _dir: dir,

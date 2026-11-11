@@ -94,6 +94,11 @@ pub fn install(host: &dyn HostSystem, plan: &DeployPlan) -> Result<Report> {
             plan.install_dir.display()
         )
     })?);
+    if let Some(db_path) = &plan.db_path {
+        host.set_db_path(&config_path, db_path)
+            .context("Choix de la base de données")?;
+        report.add(format!("Base de données : {}", db_path.display()));
+    }
     let daemon = plan.daemon_exe();
     host.autostart_enable(&daemon)
         .context("Enregistrement du démarrage automatique")?;

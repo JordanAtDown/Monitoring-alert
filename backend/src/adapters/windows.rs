@@ -125,6 +125,10 @@ impl HostSystem for WindowsHost {
         config::migrate_config_file(config_path)
     }
 
+    fn set_db_path(&self, config_path: &Path, db_path: &Path) -> Result<()> {
+        config::set_db_path(config_path, db_path)
+    }
+
     fn deploy(&self, plan: &DeployPlan) -> Result<Vec<String>> {
         deploy::deploy_files(plan)
     }

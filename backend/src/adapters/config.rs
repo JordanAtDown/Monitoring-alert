@@ -286,3 +286,59 @@ pub fn migrate_config_file(
         removed_keys,
     })
 }
+
+// ──────────────────────────────────────────────────────────────
+// Choosing the database from the installer
+// ──────────────────────────────────────────────────────────────
+
+fn is_key_line(line: &str, key: &str) -> bool {
+    let t = line.trim_start();
+    t.strip_prefix(key)
+        .is_some_and(|rest| rest.trim_start().starts_with('='))
+}
+
+fn is_commented_key_line(line: &str, key: &str) -> bool {
+    line.trim_start()
+        .strip_prefix('#')
+        .is_some_and(|rest| is_key_line(rest, key))
+}
+
+/// Sets `db_path` in a config file, keeping every other line and comment as it is.
+/// Creates the file (in the current format) if it does not exist.
+pub fn set_db_path(config_path: &Path, db_path: &Path) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let value = db_path.display().to_string();
+    let Ok(text) = std::fs::read_to_string(config_path) else {
+        if let Some(parent) = config_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Création de {}", parent.display()))?;
+        }
+        let raw = RawConfig {
+            db_path: Some(value),
+            ..RawConfig::default()
+        };
+        return std::fs::write(config_path, render_config(&raw))
+            .with_context(|| format!("Écriture de {}", config_path.display()));
+    };
+
+    let new_line = format!("db_path = {}", toml::Value::String(value));
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    if let Some(i) = lines.iter().position(|l| is_key_line(l, "db_path")) {
+        lines[i] = new_line;
+    } else if let Some(i) = lines
+        .iter()
+        .position(|l| is_commented_key_line(l, "db_path"))
+    {
+        // Right under the commented default, where the user expects it.
+        lines.insert(i + 1, new_line);
+    } else {
+        lines.push(new_line);
+    }
+
+    let tmp = PathBuf::from(format!("{}.new", config_path.display()));
+    std::fs::write(&tmp, lines.join("\n") + "\n")
+        .with_context(|| format!("Écriture de {}", tmp.display()))?;
+    std::fs::rename(&tmp, config_path)
+        .with_context(|| format!("Remplacement de {}", config_path.display()))
+}

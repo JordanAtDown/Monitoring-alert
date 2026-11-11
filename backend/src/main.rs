@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use monitoring_alert::adapters::locate::locate;
 use monitoring_alert::adapters::sqlite::{self as db, SqliteStore};
 use monitoring_alert::adapters::{config, http, lhm, logging};
 use monitoring_alert::application::collect::collect_and_store;
@@ -33,6 +34,9 @@ enum Commands {
         /// la copie sans fenêtre à côté de lui
         #[arg(long)]
         in_place: bool,
+        /// Base de données à utiliser (inscrite dans config.toml) ; sinon celle de la config actuelle
+        #[arg(long)]
+        db_path: Option<PathBuf>,
     },
     /// Arrête le processus d'arrière-plan et retire le démarrage automatique
     Uninstall,
@@ -57,6 +61,12 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DbAction {
+    /// Affiche l'emplacement et le contenu de la base de données actuelle
+    Locate {
+        /// Sortie `clé=valeur`, pour un script d'installation
+        #[arg(long)]
+        porcelain: bool,
+    },
     /// Affiche les statistiques de la base de données
     Stats,
     /// Compacte la base de données et libère l'espace disque (à faire après une purge)
@@ -86,7 +96,7 @@ fn data_dir() -> PathBuf {
 ///
 /// Extracted from the portable archive, it installs itself into the data directory.
 /// With `in_place` (the .exe installer already put it where it belongs) it stays where it is.
-fn deploy_plan(in_place: bool) -> Result<DeployPlan> {
+fn deploy_plan(in_place: bool, db_path: Option<PathBuf>) -> Result<DeployPlan> {
     let data_dir = data_dir();
     let source_exe = std::env::current_exe().context("Chemin de l'exécutable introuvable")?;
     let install_dir = match source_exe.parent() {
@@ -97,6 +107,7 @@ fn deploy_plan(in_place: bool) -> Result<DeployPlan> {
         source_exe,
         install_dir,
         data_dir,
+        db_path,
     })
 }
 
@@ -121,7 +132,7 @@ fn start_daemon(cfg: &config::AppConfig) -> Result<()> {
         return Ok(());
     }
     // `start` runs from the installed executable: the daemon copy sits next to it.
-    let plan = deploy_plan(true)?;
+    let plan = deploy_plan(true, None)?;
     let daemon_exe = plan.daemon_exe();
     if !daemon_exe.is_file() {
         bail!(
@@ -146,8 +157,8 @@ fn run_cli() -> Result<()> {
     let _ = logging::init(&log_path, &cfg.log_level);
 
     match cli.command {
-        Commands::Install { in_place } => {
-            let plan = deploy_plan(in_place)?;
+        Commands::Install { in_place, db_path } => {
+            let plan = deploy_plan(in_place, db_path)?;
             println!("Installation de monitoring-alert…");
             let report = install::install(host()?.as_ref(), &plan)?;
             print_report(&report);
@@ -187,6 +198,16 @@ fn run_cli() -> Result<()> {
         }
         Commands::Check => run_check(&db_path, &cfg),
         Commands::Db { action } => match action {
+            DbAction::Locate { porcelain } => {
+                let found = locate(&db_path, &data_dir().join("temperatures.db"));
+                if porcelain {
+                    print!("{}", found.porcelain());
+                } else {
+                    println!("Base de données : {}", found.path.display());
+                    println!("Contenu         : {}", found.summary());
+                    println!("Emplacement par défaut : {}", found.default_path.display());
+                }
+            }
             DbAction::Stats => {
                 let store = db::open_read_model(&db_path)?;
                 let stats = ReadModel::overall_stats(&store)?;

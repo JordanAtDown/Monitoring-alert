@@ -8,6 +8,7 @@ pub mod config;
 pub mod deploy;
 pub mod http;
 pub mod lhm;
+pub mod locate;
 pub mod logging;
 pub mod pe;
 pub mod sqlite;

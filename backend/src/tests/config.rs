@@ -348,3 +348,97 @@ monthly_report_time    = "19:00"
         );
     }
 }
+
+// ── Choosing the database from the installer ──────────────────
+
+mod set_db_path {
+    use crate::adapters::config::{render_config, set_db_path, AppConfig, RawConfig};
+    use std::fs;
+    use std::path::Path;
+
+    fn write(text: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, text).unwrap();
+        (dir, path)
+    }
+
+    fn active_db_lines(text: &str) -> usize {
+        text.lines()
+            .filter(|l| l.trim_start().starts_with("db_path"))
+            .count()
+    }
+
+    #[test]
+    fn an_existing_setting_is_replaced_and_everything_else_is_kept() {
+        let (_dir, path) = write(
+            "# my notes\nlhm_port = 9000\ndb_path = \"C:\\\\old\\\\t.db\"\n\n# keep me\nlog_level = \"debug\"\n",
+        );
+        set_db_path(&path, Path::new(r"E:\monitoring.db\temperatures.db")).unwrap();
+
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# my notes") && text.contains("# keep me"));
+        assert_eq!(active_db_lines(&text), 1);
+        let cfg = AppConfig::load_from(&path);
+        assert_eq!(cfg.db_path, Path::new(r"E:\monitoring.db\temperatures.db"));
+        assert_eq!((cfg.lhm_port, cfg.log_level.as_str()), (9000, "debug"));
+    }
+
+    #[test]
+    fn a_commented_default_gets_the_real_setting_right_under_it() {
+        let (_dir, path) = write(&render_config(&RawConfig::default()));
+        set_db_path(&path, Path::new("/data/t.db")).unwrap();
+
+        let text = fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let at = lines.iter().position(|l| l.starts_with("db_path")).unwrap();
+        assert!(lines[at - 1].starts_with("# db_path"), "{text}");
+        assert_eq!(AppConfig::load_from(&path).db_path, Path::new("/data/t.db"));
+    }
+
+    #[test]
+    fn a_config_without_any_mention_gets_it_appended() {
+        let (_dir, path) = write("lhm_port = 9000\n");
+        set_db_path(&path, Path::new("/data/t.db")).unwrap();
+        let cfg = AppConfig::load_from(&path);
+        assert_eq!(
+            (cfg.db_path.as_path(), cfg.lhm_port),
+            (Path::new("/data/t.db"), 9000)
+        );
+    }
+
+    #[test]
+    fn a_missing_file_is_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("AppData").join("config.toml");
+        set_db_path(&path, Path::new("/data/t.db")).unwrap();
+        assert_eq!(AppConfig::load_from(&path).db_path, Path::new("/data/t.db"));
+    }
+
+    #[test]
+    fn setting_the_same_value_twice_changes_nothing() {
+        let (_dir, path) = write("lhm_port = 9000\n");
+        set_db_path(&path, Path::new("/data/t.db")).unwrap();
+        let once = fs::read_to_string(&path).unwrap();
+        set_db_path(&path, Path::new("/data/t.db")).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), once);
+        assert_eq!(active_db_lines(&once), 1);
+    }
+
+    #[test]
+    fn backslashes_quotes_and_accents_survive() {
+        let (_dir, path) = write("");
+        let tricky = Path::new("E:\\Données \"été\"\\t.db");
+        set_db_path(&path, tricky).unwrap();
+        assert_eq!(AppConfig::load_from(&path).db_path, tricky);
+    }
+
+    #[test]
+    fn a_key_that_merely_starts_with_db_path_is_not_touched() {
+        let (_dir, path) = write("db_path_backup = \"x\"\n");
+        set_db_path(&path, Path::new("/data/t.db")).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("db_path_backup = \"x\""));
+        assert_eq!(AppConfig::load_from(&path).db_path, Path::new("/data/t.db"));
+    }
+}

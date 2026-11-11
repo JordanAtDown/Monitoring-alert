@@ -66,6 +66,10 @@ impl HostSystem for FakeHost {
         self.log("migrate_config");
         Ok(self.config.clone().unwrap_or(ConfigMigration::Current))
     }
+    fn set_db_path(&self, _: &Path, db_path: &Path) -> Result<()> {
+        self.log(&format!("set_db_path {}", db_path.display()));
+        Ok(())
+    }
     fn deploy(&self, _: &DeployPlan) -> Result<Vec<String>> {
         self.log("deploy");
         if self.deploy_fails {
@@ -99,6 +103,7 @@ fn plan() -> DeployPlan {
         source_exe: PathBuf::from("C:/zip/monitoring-alert.exe"),
         install_dir: PathBuf::from("C:/Program Files/MonitoringAlert"),
         data_dir: PathBuf::from("C:/Users/me/AppData/Local/Programs/MonitoringAlert"),
+        db_path: None,
     }
 }
 
@@ -269,6 +274,29 @@ fn a_refused_copy_tells_how_to_fix_it_and_starts_nothing() {
     assert!(error.contains("administrateur"), "{error}");
     assert!(error.contains("os error 5"), "{error}");
     assert!(!host.called("autostart_enable") && !host.called("start_daemon"));
+}
+
+#[test]
+fn the_database_chosen_in_the_installer_is_written_after_the_files_are_in_place() {
+    let host = FakeHost::default();
+    let plan = DeployPlan {
+        db_path: Some(PathBuf::from(r"E:\monitoring.db\temperatures.db")),
+        ..plan()
+    };
+    let report = install(&host, &plan).unwrap();
+
+    let set = r"set_db_path E:\monitoring.db\temperatures.db";
+    // After the config exists (deploy may create it) and before the daemon reads it.
+    assert!(host.position("deploy") < host.position(set));
+    assert!(host.position(set) < host.position("start_daemon"));
+    assert!(report.lines.iter().any(|l| l.contains(r"E:\monitoring.db")));
+}
+
+#[test]
+fn without_a_chosen_database_the_configuration_is_left_alone() {
+    let host = FakeHost::default();
+    install(&host, &plan()).unwrap();
+    assert!(!host.calls().iter().any(|c| c.starts_with("set_db_path")));
 }
 
 #[test]

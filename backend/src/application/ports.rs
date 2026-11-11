@@ -148,6 +148,8 @@ pub struct DeployPlan {
     pub install_dir: std::path::PathBuf,
     /// Directory of `config.toml`, the database and the logs.
     pub data_dir: std::path::PathBuf,
+    /// Database chosen by the installer; `None` keeps what the configuration says.
+    pub db_path: Option<std::path::PathBuf>,
 }
 
 impl DeployPlan {
@@ -176,6 +178,9 @@ pub trait HostSystem {
     /// Puts the executables, the default config and the helper scripts in place.
     /// Returns what was written, one line per file.
     fn deploy(&self, plan: &DeployPlan) -> Result<Vec<String>>;
+
+    /// Points `config.toml` at the database `db_path` (creating the file if needed).
+    fn set_db_path(&self, config_path: &std::path::Path, db_path: &std::path::Path) -> Result<()>;
 
     /// Stops the background process; `false` if it was not running.
     fn stop_daemon(&self) -> Result<bool>;
