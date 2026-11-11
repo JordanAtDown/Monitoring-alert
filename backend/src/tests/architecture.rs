@@ -162,7 +162,11 @@ fn every_api_route_is_served_by_an_endpoint_file() {
 fn use_cases_are_called_from_the_endpoints_only() {
     for layer in ["adapters", "daemon"] {
         for (file, n, line) in code_lines(layer) {
-            let in_endpoints = file.to_string_lossy().contains("http/endpoints");
+            // Windows separates the folders with backslashes.
+            let in_endpoints = file
+                .to_string_lossy()
+                .replace('\\', "/")
+                .contains("http/endpoints");
             assert!(
                 in_endpoints || !line.contains("application::usecases"),
                 "{}:{n}: only the endpoints call the use cases",
