@@ -482,3 +482,81 @@ fn a_second_instance_cannot_bind_the_same_port() {
     let port = first.server_addr().to_ip().unwrap().port();
     assert!(server::bind("127.0.0.1", port).is_err());
 }
+
+// ── /api/overview ─────────────────────────────────────────────
+
+#[test]
+fn the_overview_gives_the_components_and_the_headline_ready_to_display() {
+    let f = fixture();
+    let (code, v) = get(&f, "/api/overview?load=idle");
+    assert_eq!(code, 200);
+
+    let titles: Vec<&str> = v["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["title"].as_str().unwrap())
+        .collect();
+    // The processor, the graphics card, and the one disk: a single disk is not numbered.
+    assert_eq!(titles, ["Processeur", "Carte graphique", "Disque"]);
+
+    let cpu = &v["components"][0];
+    assert_eq!(cpu["subtitle"], "AMD Ryzen 7");
+    assert_eq!(cpu["main"]["name"], "Cœurs du processeur");
+    assert_eq!(cpu["main"]["verdict"]["id"], "warmer");
+    assert_eq!(cpu["main"]["verdict"]["label"], "Plus chaud");
+    assert!(cpu["main"]["verdict"]["detail"]
+        .as_str()
+        .unwrap()
+        .starts_with('+'));
+    assert!(cpu["main"]["baseline"].as_str().unwrap().ends_with(" °C"));
+    assert_eq!(cpu["slot"], 0);
+
+    // The disk has too little history: said in words, no figure invented.
+    let disk = &v["components"][2];
+    assert_eq!(disk["main"]["verdict"]["id"], "unknown");
+    assert_eq!(disk["main"]["baseline"], serde_json::Value::Null);
+    assert_eq!(disk["main"]["verdict"]["detail"], "(20 j de mesures)");
+
+    assert_eq!(v["headline"]["state"], "ok");
+    let lead = v["headline"]["lead"].as_str().unwrap();
+    assert!(lead.starts_with("Depuis le "), "{lead}");
+    assert!(lead.ends_with("quand le PC est au repos :"), "{lead}");
+    let tiles = v["headline"]["tiles"].as_array().unwrap();
+    assert_eq!(tiles[0]["verdict"], "warmer");
+    assert_eq!(tiles[0]["words"], "composant plus chaud qu'au début");
+    assert_eq!(tiles[1]["words"], "composant stable");
+    assert_eq!(tiles[3]["words"], "composant sans assez de recul");
+    assert!(v["headline"]["detail"]
+        .as_str()
+        .unwrap()
+        .starts_with("Le changement le plus marqué : Processeur (+"));
+}
+
+#[test]
+fn the_overview_offers_the_load_levels_with_their_explanation() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/overview?load=heavy");
+    assert_eq!(v["load"]["id"], "heavy");
+    assert_eq!(v["load"]["choices"].as_array().unwrap().len(), 4);
+    assert!(v["load"]["note"]
+        .as_str()
+        .unwrap()
+        .starts_with("Charge élevée : plus de 75 % d'utilisation"));
+    // 100 days at heavy load for the processor only.
+    assert_eq!(v["components"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn an_overview_without_enough_history_says_how_much_is_needed() {
+    let f = fixture();
+    let (_, v) = get(&f, "/api/overview?load=moderate");
+    assert_eq!(v["headline"]["state"], "empty");
+    assert_eq!(v["components"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn the_overview_rejects_an_unknown_load() {
+    let f = fixture();
+    assert_eq!(get(&f, "/api/overview?load=turbo").0, 400);
+}

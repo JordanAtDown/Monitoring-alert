@@ -64,6 +64,23 @@ pub struct Component {
     pub main: (String, String),
 }
 
+impl Component {
+    /// The same component reduced to the sensors that satisfy `keep` (those that have figures);
+    /// `None` when none is left. The sensor standing for it is chosen again among them.
+    pub fn restricted_to(&self, keep: impl Fn(&(String, String)) -> bool) -> Option<Component> {
+        let sensors: Vec<(String, String)> =
+            self.sensors.iter().filter(|s| keep(s)).cloned().collect();
+        if sensors.is_empty() {
+            return None;
+        }
+        Some(Component {
+            main: pick_main(self.kind, &sensors),
+            sensors,
+            ..self.clone()
+        })
+    }
+}
+
 // ── Classification ───────────────────────────────────────────────────────────
 
 fn starts_with_ci(text: &str, prefix: &str) -> bool {

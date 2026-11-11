@@ -8,8 +8,8 @@ paths:
 ## Architecture hexagonale simplifiée
 
 ```
-domain/       pur : modèle, catégories de charge, calcul de dérive (trends), composants du PC (components). Aucune E/S.
-application/  cas d'usage + ports (traits dans ports.rs) : collect, monitor, queries, install, status, clock
+domain/       pur : modèle, catégories de charge, calcul de dérive (trends), composants du PC (components), vocabulaire (wording). Aucune E/S.
+application/  cas d'usage + ports (traits dans ports.rs) : collect, monitor, queries, overview, install, status, clock
 adapters/     technique : sqlite, lhm (HTTP), http (serveur + assets), config, logging, windows, pe, deploy
 daemon.rs     racine de composition : branche les adapters sur les cas d'usage
 ```
@@ -22,6 +22,8 @@ daemon.rs     racine de composition : branche les adapters sur les cas d'usage
   `adapters/`, avec un faux dans les tests. Pas de trait « au cas où » : il en faut une vraie raison
   (second implémenteur, ou test sans E/S).
 - Le serveur HTTP ne fait que parser la requête, appeler un cas d'usage et sérialiser la réponse.
+- **Le backend décide, le frontend affiche** : regroupement par composant, verdicts, phrases, nombres mis en forme
+  (`42,3 °C`), tout vient de l'API (`/api/overview`…). Le frontend n'a ni seuil ni vocabulaire métier.
 - L'heure et la date passent par `application/clock.rs`.
 
 ## Qualité

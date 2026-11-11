@@ -6,6 +6,7 @@
 //! * `GET /api/update`  — is a newer version available, and where to get it
 //! * `GET /api/trend?hardware=&sensor=&load=` — drift chart data of one sensor
 //! * `GET /api/summary?load=` — drift overview of all the sensors
+//! * `GET /api/overview?load=` — the home of the dashboard: headline and components, ready to display
 //!
 //! The server only reads. It listens on the loopback interface by default and
 //! refuses requests whose `Host` header is not a loopback name, which blocks
@@ -168,6 +169,7 @@ pub fn route(state: &AppState, method: &str, url: &str, host: Option<&str>) -> R
         "/api/update" => Ok(Reply::json(&queries::update(&state.updates))),
         "/api/trend" => api_trend(state, &params),
         "/api/summary" => api_summary(state, &params),
+        "/api/overview" => api_overview(state, &params),
         p if p.starts_with("/api/") => Ok(Reply::error(404, "unknown endpoint")),
         p => Ok(static_file(p)),
     };
@@ -257,6 +259,15 @@ fn api_summary(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
     };
     let read = (state.open_read_model)()?;
     Ok(Reply::json(&queries::summary(read.as_ref(), load)?))
+}
+
+fn api_overview(state: &AppState, params: &[(String, String)]) -> Result<Reply> {
+    let load = match load_param(params) {
+        Ok(load) => load,
+        Err(reply) => return Ok(reply),
+    };
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::overview(read.as_ref(), load)?))
 }
 
 // ──────────────────────────────────────────────────────────────

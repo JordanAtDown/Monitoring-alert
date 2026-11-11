@@ -9,6 +9,7 @@ pub mod collect;
 pub mod health;
 pub mod install;
 pub mod monitor;
+pub mod overview;
 pub mod ports;
 pub mod queries;
 pub mod status;

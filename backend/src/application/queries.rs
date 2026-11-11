@@ -138,3 +138,11 @@ pub fn summary(read: &dyn ReadModel, load: &str) -> Result<Vec<SensorSummary>> {
     trends::sort_summaries(&mut summaries);
     Ok(summaries)
 }
+
+/// The home of the dashboard at one load level, ready to display.
+pub fn overview(
+    read: &dyn ReadModel,
+    load: &str,
+) -> Result<crate::application::overview::Overview> {
+    crate::application::overview::overview(read, load)
+}

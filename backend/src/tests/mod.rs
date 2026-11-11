@@ -4,6 +4,7 @@ mod health;
 mod load;
 mod trends;
 mod updates;
+mod wording;
 
 // Application
 mod collect;
