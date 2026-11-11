@@ -54,9 +54,10 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   l'exécutable), sans jamais écraser une configuration existante.
 - **Plus de service Windows** : un seul processus d'arrière-plan, sans droits administrateur
   (sauf pour supprimer l'ancien service). Le collecteur est relancé automatiquement s'il échoue.
-- Mesures brutes conservées **90 jours** par défaut (`raw_retention_days`, minimum 7, remplace
-  `retention_days`, minimum 360). Elles sont agrégées par jour avant d'être supprimées ; la base
-  migrée est compactée après la première grosse purge.
+- Mesures brutes : `raw_retention_days` (minimum 7) remplace `retention_days` (minimum 360). **90 jours** par
+  défaut pour une installation neuve ; la migration d'une 1.x **conserve la durée choisie** (`retention_days`
+  devient `raw_retention_days`). Les mesures brutes sont agrégées par jour avant d'être supprimées, et les
+  agrégats sont conservés sans limite.
 - Migration automatique de la base : copie de sécurité `temperatures.db.v1.bak`, puis agrégation de
   tout l'historique existant.
 - `check` ne modifie plus rien et vérifie le tableau de bord, le démarrage automatique et les

@@ -176,8 +176,13 @@ monthly_report_time    = "08:00"
 
         let migrated = fs::read_to_string(&path).unwrap();
         assert!(obsolete_keys_in(&migrated).is_empty());
-        // `retention_days` is gone, `raw_retention_days` (its replacement) is only a commented default.
+        // `retention_days` is gone, carried over as `raw_retention_days`: the user chose to keep a
+        // year of readings, the migration must not shrink it to the new default (90 days).
         assert!(!migrated.lines().any(|l| l.starts_with("retention_days")));
+        assert!(
+            migrated.lines().any(|l| l == "raw_retention_days = 365"),
+            "{migrated}"
+        );
         for key in [
             "reports_dir",
             "daily_report",
@@ -198,8 +203,8 @@ monthly_report_time    = "08:00"
         assert_eq!(cfg.collect_interval_secs, 120);
         assert_eq!((cfg.lhm_host.as_str(), cfg.lhm_port), ("192.168.1.5", 9000));
         assert_eq!(cfg.log_level, "debug");
-        // New keys get their defaults.
-        assert_eq!(cfg.raw_retention_days, 90);
+        // The retention the user had chosen is kept; keys that did not exist get their defaults.
+        assert_eq!(cfg.raw_retention_days, 365);
         assert_eq!(cfg.web_port, 8787);
     }
 
@@ -338,6 +343,8 @@ monthly_report_time    = "19:00"
             std::path::Path::new(r"C:\Users\Test\AppData\Local\Programs\MonitoringAlert\log")
         );
         assert_eq!((cfg.collect_interval_secs, cfg.lhm_port), (300, 8085));
+        // The year of readings chosen in v1.x (retention_days = 365) is kept, not cut to 90 days.
+        assert_eq!(cfg.raw_retention_days, 365);
         // The migrated file no longer mentions the reports at all, nor install_dir: the
         // installer decides where the executables go, so Program Files is not carried over.
         let migrated = fs::read_to_string(&path).unwrap();

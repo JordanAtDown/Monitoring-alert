@@ -58,6 +58,9 @@ pub(crate) struct RawConfig {
     pub log_dir: Option<String>,
     pub collect_interval_secs: Option<u64>,
     pub raw_retention_days: Option<u32>,
+    /// v1.x name of the same idea (days of data kept). Not read by the loader; the migration
+    /// of a v1.x file carries it over as `raw_retention_days` so the user keeps what they chose.
+    pub retention_days: Option<u32>,
     pub log_level: Option<String>,
     pub lhm_host: Option<String>,
     pub lhm_port: Option<u16>,
@@ -219,7 +222,8 @@ pub(crate) fn render_config(raw: &RawConfig) -> String {
     );
     out += &number_line(
         "raw_retention_days",
-        raw.raw_retention_days.map(i64::from),
+        // A v1.x file kept `retention_days` days of readings: keep honouring that choice.
+        raw.raw_retention_days.or(raw.retention_days).map(i64::from),
         90,
         "# Jours de mesures brutes conservées (minimum 7). Les agrégats quotidiens sont conservés sans limite.",
     );

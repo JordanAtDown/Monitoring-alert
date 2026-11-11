@@ -69,7 +69,7 @@ cas où il en faut : supprimer ce service l'exige). Il :
 | Tâches planifiées de rapport (journalier / hebdo / mensuel) | supprimées |
 | Enregistrement des notifications toast (AUMID) | supprimé |
 | `apply-config.bat`, `Register-Tasks.ps1`, `update.bat`, `uninstall.bat` du dossier de données | `apply-config.bat` et `Register-Tasks.ps1` sont supprimés (les deux autres sont inoffensifs : supprimez-les) |
-| `config.toml` | clés obsolètes retirées (`install_dir`, `reports_dir`, `*_report_*`, `retention_days`), vos autres valeurs (dont `db_path`) conservées, ancienne version sauvegardée en `config.toml.v1.bak` |
+| `config.toml` | clés obsolètes retirées (`install_dir`, `reports_dir`, `*_report_*`), vos autres valeurs conservées (dont `db_path`, et `retention_days` qui devient `raw_retention_days`), ancienne version sauvegardée en `config.toml.v1.bak` |
 | `temperatures.db` | **migrée sur place** au premier démarrage, où qu'elle soit : une copie de sécurité `temperatures.db.v1.bak` est écrite à côté, puis l'historique est agrégé par jour |
 | Rapports `.md` du dossier `rapports\` | non touchés (supprimez-les si vous n'en voulez plus) |
 
@@ -77,10 +77,13 @@ Si le dossier `\MonitoringAlert\` vide reste visible dans le Planificateur de t�
 L'ancien `update.bat` de la 1.x ne fonctionne plus (il cherchait une archive zip, qui n'est plus publiée) :
 utilisez l'installateur.
 
-> **Mesures brutes** : par défaut seuls les **90 derniers jours** de mesures brutes sont gardés
-> (`raw_retention_days`). Avant toute suppression, elles sont résumées par jour (médiane, min, p95,
-> max) dans une table qui n'est **jamais purgée** : c'est elle qui permet de suivre la dérive sur toute
-> la durée. Après la migration, la base peut donc rétrécir nettement.
+> **Vos données** : tout l'historique est conservé.
+> - Les **agrégats quotidiens** (médiane, min, p95, max par jour, capteur et niveau de charge) sont conservés
+>   **sans limite** : ce sont eux qui permettent de suivre la dérive sur toute la durée.
+> - Les **mesures brutes** (une toutes les 5 minutes) sont conservées `raw_retention_days` jours. Une installation
+>   qui vient de la 1.x garde **sa** durée (`retention_days`, 365 jours par défaut en 1.x) ; une installation
+>   neuve garde 90 jours. Mettez `3650` pour tout garder : la base reste petite (de l'ordre de quelques dizaines de
+>   Mo par an). Avant toute suppression, les mesures brutes sont résumées dans les agrégats.
 
 ### Repartir de zéro (en gardant la base)
 
