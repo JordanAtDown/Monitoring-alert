@@ -38,7 +38,14 @@ function monthStarts(from: number, to: number): number[] {
  *  - shading between the baseline and the rolling median, warm above / cool below
  *  - month bands and labels, so a seasonal swing is easy to recognise
  */
-export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
+export interface ChartOptions {
+  /** The faint band from the lowest to the 95th percentile of each day. */
+  band: boolean;
+  /** The least-squares line through all the days. */
+  trendLine: boolean;
+}
+
+export function drawTrendChart(host: HTMLElement, trend: Trend, options: ChartOptions): () => void {
   clear(host);
   const theme = readTheme();
 
@@ -105,7 +112,7 @@ export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
     ctx.rect(left, top, width, height);
     ctx.clip();
 
-    // min–p95 band, one polygon per run of consecutive days.
+    // min–p95 band, one polygon per run of consecutive days (only when asked for).
     ctx.fillStyle = withAlpha(t.series, 0.1);
     let run: number[] = [];
     const flush = (): void => {
@@ -125,7 +132,7 @@ export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
       }
       run = [];
     };
-    for (let i = 0; i < xs.length; i++) {
+    for (let i = 0; options.band && i < xs.length; i++) {
       if (run.length && xs[i] - xs[run[run.length - 1]] > 2 * DAY) flush();
       run.push(i);
     }
@@ -192,7 +199,7 @@ export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
       const y = u.valToPos(trend.baseline, "y", true);
       ctx.fillStyle = t.inkSecondary;
       ctx.textBaseline = "bottom";
-      ctx.fillText(`Référence ${fmtTemp(trend.baseline)}`, left + 6 * dpr, y - 5 * dpr);
+      ctx.fillText(`Au début : ${fmtTemp(trend.baseline)}`, left + 6 * dpr, y - 5 * dpr);
     }
     ctx.restore();
     void top;
@@ -208,16 +215,16 @@ export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
   const series: uPlot.Series[] = [
     {},
     {
-      label: "Médiane quotidienne",
+      label: "Un jour",
       stroke: withAlpha(theme.series, 0.5),
       width: 0,
       paths: () => null,
       points: { show: true, size: 4, width: 0, fill: withAlpha(theme.series, 0.5), stroke: "transparent" },
     },
-    { label: "Médiane glissante (30 j)", stroke: theme.series, width: 2, points: { show: false } },
-    { label: "Référence", ...dash(1.5, theme.inkSecondary, [6, 4]) },
-    { label: "Tendance", ...dash(1.5, theme.inkMuted, [2, 3]) },
+    { label: "30 derniers jours", stroke: theme.series, width: 2.5, points: { show: false } },
+    { label: "Au début", ...dash(1.5, theme.inkSecondary, [6, 4]) },
   ];
+  if (options.trendLine) series.push({ label: "Tendance", ...dash(1.5, theme.inkMuted, [2, 3]) });
 
   const axisBase = {
     stroke: theme.inkMuted,
@@ -270,14 +277,14 @@ export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
           clear(tooltip);
           const rows: HTMLElement[] = [
             h("div", { class: "tt-date" }, fmtLongDay(xs[idx])),
-            ttRow("Médiane", fmtTemp(p.median), theme.series, true),
+            ttRow("Ce jour-là", fmtTemp(p.median), theme.series, true),
           ];
-          if (roll !== null) rows.push(ttRow("Glissante 30 j", fmtTemp(roll), theme.series, false));
-          rows.push(ttRow("Min – p95", `${fmtTemp(p.min)} – ${fmtTemp(p.p95)}`, null, false));
+          if (roll !== null) rows.push(ttRow("Sur 30 jours", fmtTemp(roll), theme.series, false));
+          rows.push(ttRow("Entre", `${fmtTemp(p.min)} et ${fmtTemp(p.p95)}`, null, false));
           if (trend.baseline !== null && roll !== null) {
-            rows.push(ttRow("Écart à la réf.", fmtSigned(roll - trend.baseline), null, false));
+            rows.push(ttRow("Depuis le début", fmtSigned(roll - trend.baseline), null, false));
           }
-          rows.push(h("div", { class: "tt-n" }, `${fmtInt(p.n)} mesures`));
+          rows.push(h("div", { class: "tt-n" }, `${fmtInt(p.n)} mesures ce jour-là`));
           tooltip.append(...rows);
           tooltip.hidden = false;
           const left = (u.cursor.left ?? 0) + u.bbox.left / devicePixelRatio;
@@ -289,7 +296,9 @@ export function drawTrendChart(host: HTMLElement, trend: Trend): () => void {
     },
   };
 
-  const data: uPlot.AlignedData = [xs, median, rolling, baseline, trendLine];
+  const data: uPlot.AlignedData = options.trendLine
+    ? [xs, median, rolling, baseline, trendLine]
+    : [xs, median, rolling, baseline];
   const plot = new uPlot(opts, data, frame);
 
   const resize = new ResizeObserver(() => plot.setSize({ width: Math.max(frame.clientWidth, 320), height: 380 }));

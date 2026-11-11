@@ -28,7 +28,21 @@ paths:
 - Les mois en alternance claire/foncée sont voulus : sans capteur ambiant, la saisonnalité doit se voir.
 - Pas d'alerte, pas de vocabulaire d'urgence (« critique », « danger »…) : l'écart est un chiffre à regarder.
 
+## Langage courant
+
+L'interface s'adresse à quelqu'un qui n'a **aucune notion de statistiques**. Les mots de la vue principale sont
+dans `src/text.ts` (jamais en dur dans le rendu) : « au début », « ces 30 derniers jours », « Plus chaud / Stable /
+Plus froid ». Médiane, p95, pente, moindres carrés : seulement dans « Détails techniques ». Une phrase vaut mieux qu'un
+chiffre seul. Les accords (singulier/pluriel) et la ponctuation se vérifient dans les tests.
+
+## Tests
+
+`npm test` exécute la vraie page dans un navigateur simulé (jsdom) avec des réponses d'API enregistrées
+(`test/fixtures/`, forme réelle de l'API) : texte affiché, regroupement, bouton de mise à jour, liens hostiles.
+uPlot est remplacé par une doublure (pas de canvas) : on teste **ce que dit la page**, pas ses pixels. Régénérer les
+fixtures depuis un vrai backend si le JSON de l'API change. Un changement de wording = un test qui le dit.
+
 ## Limite connue
 
-L'interface n'a été vérifiée que par typecheck, build et tests de l'API : pas de rendu visuel automatisé.
-Ouvrir le tableau de bord réel après un changement de rendu.
+Le rendu graphique (couleurs, disposition, courbe) n'est vérifié ni par `npm test` ni par la CI : ouvrir le tableau de
+bord réel après un changement de style ou de graphique.

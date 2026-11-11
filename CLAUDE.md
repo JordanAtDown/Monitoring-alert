@@ -25,6 +25,7 @@ cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings   # cod
 
 # Frontend (depuis frontend/)
 npm ci && npm run build            # typecheck + build → frontend/dist
+npm test                           # la vraie page dans jsdom, réponses d'API enregistrées
 ```
 
 Le hook `pre-commit` (cargo fmt, clippy, tests) et le hook `commit-msg` (Conventional Commits) sont dans

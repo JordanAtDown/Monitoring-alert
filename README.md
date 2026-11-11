@@ -55,7 +55,15 @@ relancer l'installateur met à jour sans rien casser, et `config.toml` n'est jam
 Désinstaller : *Paramètres › Applications* (ou le menu Démarrer). Il propose de supprimer aussi le dossier de
 données (non par défaut) ; une base placée dans un autre dossier n'est **jamais** supprimée.
 
-Mise à jour : lancer le nouvel installateur (`/VERYSILENT` pour le faire sans fenêtre).
+### Mettre à jour
+
+Une mise à jour est simplement **le nouvel installateur lancé par-dessus l'ancien** : il remplace le programme, le
+redémarre, et conserve votre configuration et vos données (`/VERYSILENT` pour le faire sans fenêtre).
+
+Quand une nouvelle version existe, le tableau de bord affiche en haut à droite un bouton **Mise à jour disponible**. Il ouvre
+trois étapes : télécharger `monitoring_X.Y.Z.exe`, le lancer, suivre l'assistant. **Rien n'est téléchargé ni installé tout seul.**
+Pour cela le programme demande une fois par jour à GitHub quelle est la dernière version (une requête anonyme, sans aucune
+information sur votre machine) ; `check_updates = false` désactive cette recherche.
 
 ### Migration depuis la version 1.x
 
@@ -95,30 +103,30 @@ supprime l'ancien système.
 
 ## Le tableau de bord
 
-**<http://127.0.0.1:8787/>**
+**<http://127.0.0.1:8787/>** — il répond à une question : *les températures de mon PC ont-elles changé depuis le début ?*
+Il est écrit en langage courant ; les termes techniques sont dans « Détails techniques ».
 
-- **En-tête** : état de la collecte (dernière mesure, LibreHardwareMonitor joignable ou non).
-  Si LHM est arrêté, vous le voyez ici, sans être dérangé.
-- **Charge de la machine** (Repos / Léger / Modéré / Intense) : une température n'a de sens qu'à
-  charge équivalente ; on compare toujours « repos » avec « repos ». *Repos* est le plus sensible.
-- **Tableau de tous les capteurs**, du plus fort écart au plus faible : température actuelle,
-  référence, médiane 30 jours, **écart**, **pente** en °C/mois, mini-courbe, durée de suivi.
-- **Graphique de dérive** du capteur choisi :
-  - points : médiane de chaque jour, avec une bande claire du min au p95 ;
-  - ligne : médiane glissante sur 30 jours (le signal à suivre) ;
-  - tiretés : la **référence** (médiane des 30 premiers jours) ;
-  - pointillés : droite de tendance ;
-  - zone teintée entre la référence et la ligne, plus marquée quand l'écart grandit
-    (chaude au-dessus, froide au-dessous) ;
-  - **mois alternés** en fond : un été chaud ressemble à une dérive, la saisonnalité doit se voir.
-  Glisser pour zoomer, double-clic pour revenir. Une *vue tableau* mensuelle est dépliable sous le graphique.
+De haut en bas :
+- **État** : « Tout fonctionne, dernière mesure il y a 3 min », ou ce qu'il faut faire si LibreHardwareMonitor ne répond plus.
+- **Comment lire cette page ?** : cinq lignes d'explication, ouvertes la première fois.
+- **En résumé** : « Depuis le 8 avril (environ 7 mois de suivi), quand le PC est au repos : 4 composants plus chauds,
+  9 stables, 2 plus froids », et le changement le plus marqué.
+- **Le PC est…** (au repos, charge légère, moyenne, élevée) : on ne compare que des situations identiques. « Au repos »
+  est le plus parlant.
+- **Vos composants**, regroupés (processeur, carte graphique, carte mère, disques) : température *au début* (les 30
+  premiers jours de suivi), *ces 30 derniers jours*, et l'évolution en un mot (*Stable*, *Plus chaud*, *Plus froid*) avec
+  l'écart. « Stable » veut dire moins de 1,5 °C d'écart : la plupart des capteurs ne mesurent qu'au degré près.
+- **Le composant choisi** : une phrase qui explique ses chiffres, sa courbe (un point par jour, ligne pleine = température
+  habituelle sur 30 jours, tirets = niveau du début, zone teintée = écart, mois alternés en fond), deux options (plage de
+  chaque jour, tendance générale), une vue « chiffres, mois par mois » et les « Détails techniques ».
+- **Vos données** : ce qui est conservé, pour combien de temps, et où.
+- En haut à droite, un bouton **Mise à jour disponible** quand une nouvelle version existe (voir plus bas).
 
-Tant qu'il y a moins de **60 jours** de suivi (et 40 jours avec mesures), aucune dérive n'est
-affichée : seules les médianes quotidiennes le sont.
+Tant qu'il y a moins de **60 jours** de suivi (et 40 jours avec mesures), aucun changement n'est annoncé : la page dit
+combien il en faut. Une installation qui vient de la 1.x reprend tout son historique et n'attend pas.
 
-> **Limite connue** : il n'y a pas de capteur de température ambiante. Une saison chaude peut
-> donc se voir comme une dérive de quelques degrés. Regardez la courbe sur plus d'un an et
-> comparez les mêmes mois.
+> **Limite connue** : il n'y a pas de capteur de température ambiante. Une saison chaude peut faire monter légèrement
+> presque tous les composants. Un composant qui chauffe **seul** est plus parlant que tous à la fois.
 
 Le serveur n'écoute que sur **cette machine** et ne fait que lire. `web_host = "0.0.0.0"` l'ouvre
 au réseau local, **sans authentification** : à ne faire que sur un réseau de confiance.
@@ -139,6 +147,7 @@ Après modification : `monitoring.exe restart`.
 | `raw_retention_days` | `90` | Jours de mesures brutes conservées (minimum 7) |
 | `lhm_host` / `lhm_port` | `127.0.0.1` / `8085` | Serveur HTTP de LibreHardwareMonitor |
 | `web_host` / `web_port` | `127.0.0.1` / `8787` | Écoute du tableau de bord |
+| `check_updates` | `true` | Chercher une nouvelle version une fois par jour sur GitHub (le tableau de bord l'indique) |
 | `log_level` | `info` | `error` · `warn` · `info` · `debug` · `trace` |
 
 ---

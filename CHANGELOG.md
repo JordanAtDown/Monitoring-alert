@@ -14,6 +14,10 @@ profit d'un processus d'arrière-plan et d'un tableau de bord local. **La base d
 conservée et migrée automatiquement** (voir « Migration » dans le README).
 
 ### Added
+- **Bouton « Mise à jour disponible »** dans le tableau de bord, avec les trois étapes à suivre (télécharger, lancer,
+  suivre l'assistant). Le programme demande une fois par jour à GitHub la dernière version (requête anonyme,
+  rien sur la machine) et l'expose sur `/api/update` ; il ne télécharge ni n'installe rien tout seul.
+  `check_updates = false` désactive la recherche. Seuls des liens `https://github.com/` sont proposés.
 - **Installateur Windows** (`monitoring_X.Y.Z.exe`, Inno Setup) : assistant en français,
   installation par utilisateur **sans droits administrateur**, entrée dans les Applications installées,
   raccourci vers le tableau de bord, mise à jour en relançant l'installateur. Il détecte la base de
@@ -44,6 +48,12 @@ conservée et migrée automatiquement** (voir « Migration » dans le README).
   test qui impose le sens des dépendances.
 
 ### Changed
+- **Tableau de bord réécrit en langage courant** : une phrase de synthèse (« 4 composants plus chauds, 9 stables,
+  2 plus froids »), des composants regroupés (processeur, carte graphique, carte mère, disques) avec des noms lisibles,
+  « au début » / « ces 30 derniers jours » / « Plus chaud · Stable · Plus froid », une phrase qui explique chaque courbe,
+  un encart « Comment lire cette page ? » et un encart « Vos données » (ce qui est conservé, combien de temps, où).
+  Les termes statistiques (médiane, p95, pente) passent dans « Détails techniques » ; la plage de chaque jour et la
+  tendance générale deviennent des options du graphique.
 - **Le produit s'appelle « Monitoring »** (seul le nom du dépôt garde `monitoring-alert`) : installateur
   `monitoring_X.Y.Z.exe` (seul fichier publié), application « Monitoring » dans les Applications installées
   et le menu Démarrer, exécutable `monitoring.exe` (au lieu de `monitoring-alert.exe`), copie sans fenêtre

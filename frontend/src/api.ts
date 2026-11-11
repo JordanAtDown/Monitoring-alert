@@ -22,6 +22,8 @@ export interface Status {
   };
   lhm: { host: string; port: number };
   db: {
+    path: string;
+    history_since: string | null;
     size_bytes: number;
     total_snapshots: number;
     first_ts: string | null;
@@ -35,6 +37,23 @@ export interface Status {
     load_cat: Load;
     readings: Reading[];
   } | null;
+}
+
+export interface Release {
+  version: string;
+  page_url: string;
+  download_url: string | null;
+  notes: string | null;
+  published_at: string | null;
+}
+
+export interface UpdateInfo {
+  current: string;
+  enabled: boolean;
+  available: boolean;
+  latest: Release | null;
+  checked_at: string | null;
+  error: string | null;
 }
 
 export interface Point {
@@ -83,6 +102,7 @@ async function getJson<T>(path: string, params: Record<string, string> = {}): Pr
 
 export const api = {
   status: () => getJson<Status>("/api/status"),
+  update: () => getJson<UpdateInfo>("/api/update"),
   summary: (load: Load) => getJson<Summary[]>("/api/summary", { load }),
   trend: (hardware: string, sensor: string, load: Load) =>
     getJson<Trend>("/api/trend", { hardware, sensor, load }),
