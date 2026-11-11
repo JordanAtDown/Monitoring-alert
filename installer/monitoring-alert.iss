@@ -68,6 +68,9 @@ Type: files; Name: "{app}\monitoring-daemon.exe"
 Type: files; Name: "{app}\Tableau de bord.url"
 
 [Code]
+const
+  NL = #13#10;
+
 var
   DbPage: TInputFileWizardPage;
   DefaultDb: String;
@@ -103,8 +106,8 @@ begin
   if Exec(ExpandConstant('{sys}\sc.exe'), 'query MonitoringAlert', '', SW_HIDE, ewWaitUntilTerminated, Code)
      and (Code = 0) and (not IsAdmin) then
   begin
-    if MsgBox('Une ancienne version de Monitoring Alert (service Windows) est installée.' + #13#10 +
-              'Pour la remplacer, l''installation doit s''exécuter en administrateur.' + #13#10#13#10 +
+    if MsgBox('Une ancienne version de Monitoring Alert (service Windows) est installée.' + NL +
+              'Pour la remplacer, l''installation doit s''exécuter en administrateur.' + NL + NL +
               'Relancer en administrateur maintenant ?', mbConfirmation, MB_YESNO) = IDYES then
       ShellExec('runas', ExpandConstant('{srcexe}'), '', '', SW_SHOWNORMAL, ewNoWait, Code);
     Result := False;
@@ -133,7 +136,7 @@ begin
   end;
 
   if Summary <> '' then
-    Info := 'Base détectée : ' + Summary + '.' + #13#10 +
+    Info := 'Base détectée : ' + Summary + '.' + NL +
             'Gardez ce fichier pour retrouver tout votre historique, ou choisissez-en un autre.'
   else
     Info := 'Choisissez l''emplacement de la base de données (elle sera créée si elle n''existe pas).';
@@ -168,9 +171,9 @@ begin
     if (not RunCapture(ExpandConstant('{app}\monitoring-alert.exe'),
                        'install --in-place' + DbPathParam(''),
                        ExpandConstant('{tmp}\install-output.txt'), Code)) or (Code <> 0) then
-      MsgBox('La configuration automatique a échoué (code ' + IntToStr(Code) + ').' + #13#10#13#10 +
-             'Ouvrez une invite de commandes et lancez :' + #13#10 +
-             '"' + ExpandConstant('{app}\monitoring-alert.exe') + '" install --in-place' + #13#10 +
+      MsgBox('La configuration automatique a échoué (code ' + IntToStr(Code) + ').' + NL + NL +
+             'Ouvrez une invite de commandes et lancez :' + NL +
+             '"' + ExpandConstant('{app}\monitoring-alert.exe') + '" install --in-place' + NL +
              'pour voir le message d''erreur.', mbError, MB_OK);
   end;
 end;
@@ -184,7 +187,7 @@ begin
     DataDir := ExpandConstant('{localappdata}\Programs\MonitoringAlert');
     if DirExists(DataDir) then
       if MsgBox('Supprimer aussi la configuration, les journaux et la base de données de ce dossier ?' +
-                #13#10#13#10 + DataDir + #13#10#13#10 +
+                NL + NL + DataDir + NL + NL +
                 'Une base de données placée dans un autre dossier n''est jamais supprimée.',
                 mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
         DelTree(DataDir, True, True, True);
