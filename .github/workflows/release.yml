@@ -50,6 +50,21 @@ jobs:
         with:
           workspaces: "backend -> target"
 
+      # The dashboard is embedded in the executable: build it first.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install the dashboard dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build the dashboard
+        working-directory: frontend
+        run: npm run build
+
       - name: Build (release)
         working-directory: backend
         run: cargo build --release --target x86_64-pc-windows-msvc
@@ -116,7 +131,7 @@ jobs:
           DIR="monitoring-alert-v${VERSION}-windows-x64"
           mkdir "$DIR"
           cp artifact/monitoring-alert.exe "$DIR/"
-          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/apply-config.bat "$DIR/"
+          cp scripts/config.toml scripts/install.bat scripts/update.bat scripts/uninstall.bat scripts/Register-Tasks.ps1 "$DIR/"
           zip -r "${DIR}.zip" "$DIR/"
           echo "ARCHIVE=${DIR}.zip" >> "$GITHUB_ENV"
 

@@ -2,93 +2,78 @@
 setlocal EnableDelayedExpansion
 
 :: ============================================================
-::  uninstall.bat — Arrete, desinstalle et nettoie MonitoringAlert
+::  uninstall.bat — Supprime monitoring-alert (version 1.x OU 2.x)
 ::
-::  Lit le dossier d'installation depuis :
-::    %LOCALAPPDATA%\Programs\MonitoringAlert\config.toml  (cle install_dir)
+::  N'utilise que des commandes Windows (sc, schtasks, reg, taskkill) : il
+::  fonctionne quelle que soit la version installee, et peut etre lance
+::  directement depuis l'archive decompressee pour nettoyer une ancienne
+::  installation avant de lancer install.bat.
+::
+::  La base de donnees et config.toml sont CONSERVES, sauf si vous
+::  repondez "o" a la question finale.
+::
+::  A lancer en tant qu'Administrateur (suppression de l'ancien service Windows).
 :: ============================================================
 
-:: --- Vérification des droits admin ---
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERREUR] Ce script doit etre execute en tant qu'Administrateur.
+    echo          Clic droit sur uninstall.bat ^> "Executer en tant qu'administrateur"
     pause
     exit /b 1
 )
 
 set "DATA_DIR=%LOCALAPPDATA%\Programs\MonitoringAlert"
-set "EXE_NAME=monitoring-alert.exe"
 set "CONFIG_FILE=%DATA_DIR%\config.toml"
+set "INSTALL_DIR="
 
-:: --- Lecture de install_dir depuis config.toml ---
-if not exist "%CONFIG_FILE%" (
-    echo [AVERTISSEMENT] config.toml introuvable dans %DATA_DIR%
-    echo                 Utilisation du chemin par defaut.
-    set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
-) else (
-    for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('install_dir\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "INSTALL_DIR=%%v"
+:: install_dir est lu dans config.toml (absent = meme dossier que config.toml)
+if exist "%CONFIG_FILE%" (
+    for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;if($c-match('(?m)^\s*install_dir\s*=\s*'+$q+'([^'+$q+']+)'+$q)){$matches[1]-replace '\\\\','\'}"`) do set "INSTALL_DIR=%%v"
 )
-
-if "!INSTALL_DIR!"=="" set "INSTALL_DIR=C:\Program Files\MonitoringAlert"
-echo  Dossier d'installation : !INSTALL_DIR!
+if "!INSTALL_DIR!"=="" set "INSTALL_DIR=%DATA_DIR%"
+echo  Executables : !INSTALL_DIR!
+echo  Donnees     : %DATA_DIR%
 echo.
 
-:: --- 1. Arrêt du service ---
-echo [1/5] Arret du service...
-for /f "usebackq delims=" %%s in (`"!INSTALL_DIR!\%EXE_NAME%" service status 2^>nul`) do set "SVC_STATUS=%%s"
-echo !SVC_STATUS! | findstr /i "Arret\|Stopped\|Non install" >nul 2>&1
-if %errorLevel% neq 0 (
-    "!INSTALL_DIR!\%EXE_NAME%" service stop >nul 2>&1
-    timeout /t 3 /nobreak >nul
-) else (
-    echo        Service deja arrete.
-)
+echo [1/5] Arret des processus...
+taskkill /F /IM monitoring-daemon.exe >nul 2>&1
+taskkill /F /IM monitoring-alertd.exe >nul 2>&1
+sc stop MonitoringAlert >nul 2>&1
+timeout /t 5 /nobreak >nul
 
-:: --- 2. Suppression du service et de l'exécutable ---
-echo [2/5] Suppression du service Windows...
-"!INSTALL_DIR!\%EXE_NAME%" service uninstall
-if %errorLevel% neq 0 (
-    echo [AVERTISSEMENT] La suppression du service a echoue -- il est peut-etre deja supprime.
-)
+echo [2/5] Suppression de l'ancien service Windows (1.x)...
+sc delete MonitoringAlert >nul 2>&1
 
-if exist "!INSTALL_DIR!" (
-    rd /s /q "!INSTALL_DIR!"
-    echo        Executable supprime : !INSTALL_DIR!
-)
-
-:: --- 3. Suppression des tâches planifiées ---
-echo [3/5] Suppression des taches planifiees de rapport...
-powershell -NoProfile -Command "foreach ($n in 'RapportJournalier','RapportHebdomadaire','RapportMensuel') { Unregister-ScheduledTask -TaskPath '\MonitoringAlert\' -TaskName $n -Confirm:$false -ErrorAction SilentlyContinue }"
+echo [3/5] Suppression des taches planifiees de rapport (1.x)...
+schtasks /delete /tn "\MonitoringAlert\RapportJournalier" /f >nul 2>&1
+schtasks /delete /tn "\MonitoringAlert\RapportHebdomadaire" /f >nul 2>&1
+schtasks /delete /tn "\MonitoringAlert\RapportMensuel" /f >nul 2>&1
 schtasks /delete /tn "MonitoringAlert" /f >nul 2>&1
-if exist "%DATA_DIR%\Register-Tasks.ps1" del /f /q "%DATA_DIR%\Register-Tasks.ps1"
-echo        Taches planifiees supprimees.
 
-:: --- 4. Suppression de l'AUMID du registre ---
-echo [4/5] Suppression de l'AUMID des notifications...
+echo [4/5] Suppression du demarrage automatique et des notifications (registre)...
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "MonitoringAlert" /f >nul 2>&1
 reg delete "HKCU\Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor" /f >nul 2>&1
-echo        AUMID supprime.
 
-:: --- 5. Suppression optionnelle des données ---
-echo [5/5] Suppression des donnees...
-if exist "%DATA_DIR%" (
-    echo.
-    echo  Le dossier de donnees contient la base de temperatures et la configuration :
-    echo    %DATA_DIR%
-    echo.
-    set /p "CONFIRM=Supprimer ce dossier ? Les donnees seront perdues. [o/N] : "
-    if /i "!CONFIRM!"=="o" (
-        rd /s /q "%DATA_DIR%"
-        echo        Donnees supprimees.
-    ) else (
-        echo        Donnees conservees dans %DATA_DIR%
-    )
+echo [5/5] Suppression des executables et des scripts...
+del /f /q "!INSTALL_DIR!\monitoring-alert.exe" "!INSTALL_DIR!\monitoring-daemon.exe" "!INSTALL_DIR!\monitoring-alertd.exe" >nul 2>&1
+if /i not "!INSTALL_DIR!"=="%DATA_DIR%" rd "!INSTALL_DIR!" >nul 2>&1
+del /f /q "%DATA_DIR%\Register-Tasks.ps1" "%DATA_DIR%\apply-config.bat" "%DATA_DIR%\update.bat" >nul 2>&1
+
+echo.
+echo  Le systeme est supprime. Conserves dans "%DATA_DIR%" :
+echo    config.toml, la base de donnees (temperatures.db) et les logs.
+echo  Ils seront reutilises par install.bat (la base est migree sur place).
+echo.
+set /p "CONFIRM=Supprimer AUSSI la base de donnees, la configuration et les logs ? Les donnees seront perdues. [o/N] : "
+if /i "!CONFIRM!"=="o" (
+    rd /s /q "%DATA_DIR%"
+    echo  Donnees supprimees.
 ) else (
-    echo        Aucun dossier de donnees trouve.
+    echo  Donnees conservees.
 )
 
 echo.
 echo Desinstallation terminee.
-echo.
 pause
-
 endlocal

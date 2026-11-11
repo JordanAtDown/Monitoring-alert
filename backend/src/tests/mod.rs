@@ -16,3 +16,4 @@ mod sqlite;
 
 mod architecture;
 mod common;
+mod scripts;

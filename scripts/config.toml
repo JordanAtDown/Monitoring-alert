@@ -1,17 +1,21 @@
 # =============================================================
 #  MonitoringAlert — configuration
 #
-#  Editez ce fichier AVANT de lancer install.bat
-#  Ce fichier sera copié dans %LOCALAPPDATA%\Programs\MonitoringAlert\
+#  Facultatif : éditez ce fichier AVANT de lancer install.bat (installation neuve).
+#  Il est copié dans %LOCALAPPDATA%\Programs\MonitoringAlert\ s'il n'y en a pas
+#  déjà un : une configuration existante n'est jamais écrasée.
+#  Après modification d'une configuration installée : monitoring-alert.exe restart
 # =============================================================
 
-# Dossier où sera installé l'exécutable monitoring-alert.exe
+# Dossier des exécutables monitoring-alert.exe et monitoring-daemon.exe
+# Défaut : le dossier de ce fichier (%LOCALAPPDATA%\Programs\MonitoringAlert : aucun droit administrateur requis)
 # Exemple : "D:\\Apps\\MonitoringAlert"
-install_dir = "C:\\Program Files\\MonitoringAlert"
+# install_dir = "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert"
 
 # Chemin complet de la base de données de températures
+# Défaut : temperatures.db à côté de ce fichier
 # Exemple : "D:\\Backup\\MonitoringAlert\\temperatures.db"
-db_path = "C:\\Users\\Jordan\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
+# db_path = "C:\\Users\\<vous>\\AppData\\Local\\Programs\\MonitoringAlert\\temperatures.db"
 
 # Dossier des fichiers de log (défaut : même répertoire que db_path)
 # Les fichiers sont nommés monitoring-alert-YYYY-MM-DD.log (rotation quotidienne)

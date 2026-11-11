@@ -132,6 +132,10 @@ pub enum ConfigMigration {
     },
 }
 
+/// Text that identifies `scripts/Register-Tasks.ps1` as the migration shim shipped since 2.0
+/// (and not the v1.x script of the same name, which created the report tasks).
+pub const MIGRATION_SHIM_MARKER: &str = "monitoring-alert-migration-shim";
+
 /// File name of the background executable.
 pub const DAEMON_EXE_NAME: &str = "monitoring-daemon.exe";
 

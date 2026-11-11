@@ -1,123 +1,39 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal
 
 :: ============================================================
-::  install.bat — Installe et démarre MonitoringAlert
+::  install.bat — Installe ou met a jour monitoring-alert
 ::
-::  AVANT de lancer ce script :
-::    1. Editez config.toml (dans ce meme dossier)
-::       - install_dir : dossier d'installation de l'executable
-::       - db_path     : chemin de la base de donnees
-::    2. Lancez ce script en tant qu'Administrateur
+::  - Installation neuve : copie les fichiers, demarre en arriere-plan,
+::    demarrage automatique a l'ouverture de session.
+::  - Depuis la version 1.x : supprime automatiquement l'ancien systeme
+::    (service Windows, taches de rapport, notifications, scripts) et
+::    migre config.toml. La base de donnees est CONSERVEE.
 ::
-::  Ce script copie ensuite config.toml, uninstall.bat et
-::  update.bat dans %LOCALAPPDATA%\Programs\MonitoringAlert\
+::  Lancez-le en tant qu'Administrateur (clic droit) la premiere fois si une
+::  version 1.x est installee : supprimer son service Windows l'exige.
+::  Sinon, un double-clic suffit.
+::
+::  Facultatif : editez config.toml (dans ce dossier) avant de lancer ce
+::  script pour une installation neuve. Une configuration deja installee
+::  n'est jamais ecrasee.
 :: ============================================================
 
-:: --- Vérification des droits admin ---
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [ERREUR] Ce script doit etre execute en tant qu'Administrateur.
-    echo          Clic droit sur install.bat ^> "Executer en tant qu'administrateur"
+if not exist "%~dp0monitoring-alert.exe" (
+    echo [ERREUR] monitoring-alert.exe introuvable dans "%~dp0"
+    echo          Lancez ce script depuis le dossier de l'archive decompressee.
     pause
     exit /b 1
 )
 
-set "SCRIPT_DIR=%~dp0"
-set "DATA_DIR=%LOCALAPPDATA%\Programs\MonitoringAlert"
-set "EXE_NAME=monitoring-alert.exe"
-set "CONFIG_FILE=%SCRIPT_DIR%config.toml"
-
-:: --- Vérification de la présence de config.toml ---
-if not exist "%CONFIG_FILE%" (
-    echo [ERREUR] config.toml introuvable dans %SCRIPT_DIR%
-    echo         Assurez-vous que config.toml est present dans le meme dossier que install.bat.
+"%~dp0monitoring-alert.exe" install
+if errorlevel 1 (
+    echo.
+    echo [ERREUR] L'installation a echoue. Voir le message ci-dessus.
     pause
     exit /b 1
 )
 
-:: --- Vérification de la présence de l'exécutable ---
-if not exist "%SCRIPT_DIR%%EXE_NAME%" (
-    echo [ERREUR] %EXE_NAME% introuvable dans %SCRIPT_DIR%
-    echo         Assurez-vous que monitoring-alert.exe est present dans le meme dossier.
-    pause
-    exit /b 1
-)
-
-:: --- Lecture de la configuration depuis config.toml ---
-:: Note: [char]34 = " — evite les conflits de guillemets dans for/f
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('install_dir\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "INSTALL_DIR=%%v"
-
-if "!INSTALL_DIR!"=="" (
-    echo [ERREUR] Cle 'install_dir' introuvable dans config.toml.
-    pause
-    exit /b 1
-)
-
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$q=[char]34;$c=gc '%CONFIG_FILE%' -Raw;$null=$c-match('db_path\s*=\s*'+$q+'([^'+$q+']+)'+$q);$matches[1]"`) do set "DB_PATH=%%v"
-
-echo  Dossier d'installation : !INSTALL_DIR!
-echo  Chemin DB              : !DB_PATH!
-echo.
-
-:: --- 1. Installation de l'exécutable ---
-echo [1/4] Installation de l'executable dans "!INSTALL_DIR!"...
-if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
-copy /Y "%SCRIPT_DIR%%EXE_NAME%" "!INSTALL_DIR!\%EXE_NAME%" >nul
-if %errorLevel% neq 0 (
-    echo [ERREUR] Impossible de copier l'executable.
-    pause
-    exit /b 1
-)
-
-:: --- 2. Création du dossier de données et copie des fichiers ---
-echo [2/4] Creation du dossier de donnees "%DATA_DIR%"...
-if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
-
-:: Création du dossier parent de db_path s'il est différent de DATA_DIR
-if not "!DB_PATH!"=="" (
-    for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "Split-Path '!DB_PATH!'"`) do (
-        if not exist "%%p" mkdir "%%p"
-    )
-)
-
-echo        Copie de config.toml, uninstall.bat, update.bat, apply-config.bat...
-copy /Y "%CONFIG_FILE%"                    "%DATA_DIR%\config.toml"          >nul
-copy /Y "%SCRIPT_DIR%uninstall.bat"        "%DATA_DIR%\uninstall.bat"        >nul
-copy /Y "%SCRIPT_DIR%update.bat"           "%DATA_DIR%\update.bat"           >nul
-copy /Y "%SCRIPT_DIR%apply-config.bat"     "%DATA_DIR%\apply-config.bat"     >nul
-
-:: --- 3. Enregistrement et démarrage du service ---
-echo [3/4] Enregistrement du service Windows...
-"!INSTALL_DIR!\%EXE_NAME%" service install
-if %errorLevel% neq 0 (
-    echo [ERREUR] L'enregistrement du service a echoue.
-    pause
-    exit /b 1
-)
-
-echo [4/4] Demarrage du service...
-"!INSTALL_DIR!\%EXE_NAME%" service start
-if %errorLevel% neq 0 (
-    echo [ERREUR] Le demarrage du service a echoue.
-    pause
-    exit /b 1
-)
-
-
-echo.
-echo Installation terminee. Le service MonitoringAlert est actif.
-echo.
-echo  Fichiers installes :
-echo    Executable : !INSTALL_DIR!\%EXE_NAME%
-echo    Donnees    : %DATA_DIR%\
-echo      config.toml    (chemin DB + dossier d'installation)
-echo      temperatures.db (creee au 1er demarrage du service)
-echo      uninstall.bat / update.bat
-echo.
-echo  Verification : sc query MonitoringAlert
-echo              ou services.msc
 echo.
 pause
-
 endlocal

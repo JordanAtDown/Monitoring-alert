@@ -14,7 +14,7 @@ use winreg::RegKey;
 
 use crate::adapters::{config, deploy};
 use crate::application::ports::{
-    ConfigMigration, DeployPlan, HostSystem, LegacyFindings, DAEMON_EXE_NAME,
+    ConfigMigration, DeployPlan, HostSystem, LegacyFindings, DAEMON_EXE_NAME, MIGRATION_SHIM_MARKER,
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -31,11 +31,6 @@ const LEGACY_AUMID_KEY: &str =
     r"Software\Classes\AppUserModelId\MonitoringAlert.TemperatureMonitor";
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_VALUE: &str = "MonitoringAlert";
-
-/// `Register-Tasks.ps1` of v1.x created the report tasks. The archive ships a small
-/// replacement with the same name (so that a v1.x `update.bat` migrates the install);
-/// it contains this marker and must not be deleted.
-const SHIM_MARKER: &str = "monitoring-alert-migration-shim";
 
 const ERROR_ACCESS_DENIED: i32 = 5;
 const ERROR_SERVICE_MARKED_FOR_DELETE: i32 = 1072;
@@ -74,7 +69,7 @@ impl HostSystem for WindowsHost {
         let register = data_dir.join("Register-Tasks.ps1");
         if register.is_file()
             && !std::fs::read_to_string(&register)
-                .map(|t| t.contains(SHIM_MARKER))
+                .map(|t| t.contains(MIGRATION_SHIM_MARKER))
                 .unwrap_or(false)
         {
             scripts.push("Register-Tasks.ps1".to_string());
