@@ -20,6 +20,19 @@ use crate::application::queries::AppInfo;
 use crate::application::status::CollectorStatus;
 use crate::application::updates::{check_now, UpdateStatus};
 
+/// How the dashboard learns whether the start-up entry exists (Windows only).
+#[cfg(windows)]
+fn autostart_probe() -> Box<dyn Fn() -> Option<bool> + Send + Sync> {
+    use crate::adapters::windows::WindowsHost;
+    use crate::application::ports::HostSystem;
+    Box::new(|| WindowsHost.autostart_enabled().ok())
+}
+
+#[cfg(not(windows))]
+fn autostart_probe() -> Box<dyn Fn() -> Option<bool> + Send + Sync> {
+    Box::new(|| None)
+}
+
 /// Where releases are published.
 const RELEASES_REPO: &str = "JordanAtDown/Monitoring-alert";
 /// Wait before the first check (the dashboard and the collector come first), then between checks.
@@ -139,6 +152,7 @@ pub fn run(cfg: &AppConfig, db_path: &Path, stop: Arc<AtomicBool>) -> Result<()>
         }),
         status: status.clone(),
         updates: updates.clone(),
+        autostart: autostart_probe(),
         info: AppInfo {
             db_path: db_path.display().to_string(),
             lhm_host: cfg.lhm_host.clone(),

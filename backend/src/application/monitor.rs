@@ -180,8 +180,12 @@ pub fn run_monitor(
 
         if iterations.is_multiple_of(rollup_every) {
             // Yesterday + today: yesterday may have been completed since the last pass.
-            if let Err(e) = store.rollup_since(&day_string(1)) {
-                tracing::warn!("Daily roll-up error: {:#}", e);
+            match store.rollup_since(&day_string(1)) {
+                Ok(_) => status.record_maintenance_ok(),
+                Err(e) => {
+                    tracing::warn!("Daily roll-up error: {:#}", e);
+                    status.record_maintenance_error(&format!("{e:#}"));
+                }
             }
         }
 
@@ -203,7 +207,10 @@ pub fn run_monitor(
                         }
                     }
                 }
-                Err(e) => tracing::warn!("Purge error: {:#}", e),
+                Err(e) => {
+                    tracing::warn!("Purge error: {:#}", e);
+                    status.record_maintenance_error(&format!("{e:#}"));
+                }
             }
         }
 

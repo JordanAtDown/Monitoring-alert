@@ -12,6 +12,8 @@ struct StatusInner {
     last_error: Option<String>,
     consecutive_failures: u32,
     last_sensor_count: usize,
+    last_rollup: Option<String>,
+    maintenance_error: Option<String>,
 }
 
 /// What the collector is doing, as shown by the dashboard.
@@ -24,6 +26,10 @@ pub struct StatusSnapshot {
     pub last_error: Option<String>,
     pub consecutive_failures: u32,
     pub last_sensor_count: usize,
+    /// When the daily summaries were last computed.
+    pub last_rollup: Option<String>,
+    /// Why the last daily-summary / purge pass failed, if it did.
+    pub maintenance_error: Option<String>,
 }
 
 /// Health of the collection loop, written by the collector and read by the web server.
@@ -66,6 +72,18 @@ impl CollectorStatus {
         s.consecutive_failures = s.consecutive_failures.saturating_add(1);
     }
 
+    /// The daily summaries were computed (and old readings purged) without error.
+    pub fn record_maintenance_ok(&self) {
+        let mut s = self.lock();
+        s.last_rollup = Some(now_string());
+        s.maintenance_error = None;
+    }
+
+    /// A daily-summary or purge pass failed.
+    pub fn record_maintenance_error(&self, error: &str) {
+        self.lock().maintenance_error = Some(error.to_string());
+    }
+
     pub fn snapshot(&self) -> StatusSnapshot {
         let s = self.lock();
         StatusSnapshot {
@@ -76,6 +94,8 @@ impl CollectorStatus {
             last_error: s.last_error.clone(),
             consecutive_failures: s.consecutive_failures,
             last_sensor_count: s.last_sensor_count,
+            last_rollup: s.last_rollup.clone(),
+            maintenance_error: s.maintenance_error.clone(),
         }
     }
 }

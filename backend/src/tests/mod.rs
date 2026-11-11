@@ -1,4 +1,5 @@
 // Domain
+mod health;
 mod load;
 mod trends;
 mod updates;

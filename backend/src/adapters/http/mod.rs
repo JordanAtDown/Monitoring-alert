@@ -2,6 +2,7 @@
 //!
 //! * `GET /api/status`  — collector health, database figures, latest readings
 //! * `GET /api/series`  — every (sensor, load category) with data
+//! * `GET /api/health`  — is everything working, check by check
 //! * `GET /api/update`  — is a newer version available, and where to get it
 //! * `GET /api/trend?hardware=&sensor=&load=` — drift chart data of one sensor
 //! * `GET /api/summary?load=` — drift overview of all the sensors
@@ -33,6 +34,8 @@ pub struct AppState {
     pub open_read_model: ReadModelFactory,
     pub status: Arc<CollectorStatus>,
     pub updates: Arc<UpdateStatus>,
+    /// Whether the start-up entry exists (`None` where that does not apply).
+    pub autostart: Box<dyn Fn() -> Option<bool> + Send + Sync>,
     pub info: AppInfo,
     /// Accepted `Host` header names; `None` accepts any (when listening beyond loopback).
     pub allowed_hosts: Option<Vec<String>>,
@@ -161,6 +164,7 @@ pub fn route(state: &AppState, method: &str, url: &str, host: Option<&str>) -> R
     let result = match path {
         "/api/status" => api_status(state),
         "/api/series" => api_series(state),
+        "/api/health" => api_health(state),
         "/api/update" => Ok(Reply::json(&queries::update(&state.updates))),
         "/api/trend" => api_trend(state, &params),
         "/api/summary" => api_summary(state, &params),
@@ -210,6 +214,16 @@ fn api_status(state: &AppState) -> Result<Reply> {
         read.as_ref(),
         &state.status,
         &state.info,
+    )?))
+}
+
+fn api_health(state: &AppState) -> Result<Reply> {
+    let read = (state.open_read_model)()?;
+    Ok(Reply::json(&queries::health(
+        read.as_ref(),
+        &state.status,
+        &state.updates,
+        (state.autostart)(),
     )?))
 }
 

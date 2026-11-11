@@ -47,6 +47,7 @@ fn fixture() -> Fixture {
         open_read_model: reader_for(path.clone()),
         status: Arc::new(CollectorStatus::new(300)),
         updates: Arc::new(UpdateStatus::new("2.0.0", true)),
+        autostart: Box::new(|| Some(true)),
         info: AppInfo {
             db_path: r"E:\monitoring.db\temperatures.db".into(),
             lhm_host: "127.0.0.1".into(),
@@ -275,6 +276,64 @@ fn status_tells_where_the_database_is_and_since_when_the_history_goes() {
     assert_eq!(v["db"]["path"], r"E:\monitoring.db\temperatures.db");
     // The oldest daily aggregate of the fixture: 365 days + 1 back.
     assert_eq!(v["db"]["history_since"], clock::day_string(366));
+}
+
+// ── /api/health ───────────────────────────────────────────────
+
+#[test]
+fn health_lists_every_check_of_a_working_system() {
+    let f = fixture();
+    f.state.status.record_success(12);
+    f.state.status.record_maintenance_ok();
+    let (code, v) = get(&f, "/api/health");
+    assert_eq!(code, 200);
+    // The fixture's only snapshot dates from 2030: it is "in the future", so it counts as fresh.
+    let ids: Vec<&str> = v["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "collection",
+            "sensors",
+            "database",
+            "maintenance",
+            "autostart",
+            "updates"
+        ]
+    );
+    assert_eq!(v["checks"][0]["level"], "ok");
+    assert_eq!(v["checks"][4]["level"], "ok");
+}
+
+#[test]
+fn health_turns_bad_when_the_collector_fails() {
+    let f = fixture();
+    f.state
+        .status
+        .record_failure("Cannot reach LibreHardwareMonitor");
+    let (_, v) = get(&f, "/api/health");
+    assert_eq!(v["overall"], "bad");
+    assert_eq!(v["summary"], "Un problème empêche le suivi");
+    assert!(v["checks"][0]["advice"]
+        .as_str()
+        .unwrap()
+        .contains("Remote Web Server"));
+}
+
+#[test]
+fn health_without_a_known_startup_state_leaves_that_check_out() {
+    let mut f = fixture();
+    f.state.autostart = Box::new(|| None);
+    let (_, v) = get(&f, "/api/health");
+    assert!(v["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|c| c["id"] != "autostart"));
 }
 
 // ── Safety nets ───────────────────────────────────────────────

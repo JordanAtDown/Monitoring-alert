@@ -6,6 +6,7 @@
 
 pub mod clock;
 pub mod collect;
+pub mod health;
 pub mod install;
 pub mod monitor;
 pub mod ports;
